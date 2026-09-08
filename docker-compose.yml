@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  cims-postgres:
+    image: postgres:15-alpine
+    container_name: cims-postgres-db
+    environment:
+      POSTGRES_DB: cims_db
+      POSTGRES_USER: cims_user
+      POSTGRES_PASSWORD: cims_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - cims-postgres-data:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  cims-postgres-data:

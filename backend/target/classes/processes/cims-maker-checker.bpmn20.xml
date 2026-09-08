@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://cims.bank.com/workflow">
+
+    <process id="PROC_MAKER_CHECKER" name="CIMS Generic Maker-Checker Process" isExecutable="true">
+        <startEvent id="startEvent" name="Maker Submits Transaction" />
+        
+        <sequenceFlow id="flow1" sourceRef="startEvent" targetRef="checkerReviewTask" />
+        
+        <userTask id="checkerReviewTask" name="Checker Review and Approval" flowable:candidateGroups="${candidateRole}" flowable:assignee="${candidateUserId}">
+            <documentation>Review Maker submission diff and approve, reject, or return to maker.</documentation>
+        </userTask>
+        
+        <sequenceFlow id="flow2" sourceRef="checkerReviewTask" targetRef="decisionGateway" />
+        
+        <exclusiveGateway id="decisionGateway" name="Checker Decision" />
+        
+        <!-- Path 1: Approved -->
+        <sequenceFlow id="flowApproved" name="Approved" sourceRef="decisionGateway" targetRef="serviceAuthorize">
+            <conditionExpression xsi:type="tFormalExpression">${decision == 'APPROVED'}</conditionExpression>
+        </sequenceFlow>
+        
+        <serviceTask id="serviceAuthorize" name="Authorize Business Record" flowable:expression="${cimsWorkflowDelegate.onApproved(execution)}" />
+        
+        <sequenceFlow id="flowAuthToEnd" sourceRef="serviceAuthorize" targetRef="endApproved" />
+        <endEvent id="endApproved" name="Record Authorized and Active" />
+        
+        <!-- Path 2: Rejected -->
+        <sequenceFlow id="flowRejected" name="Rejected" sourceRef="decisionGateway" targetRef="serviceReject">
+            <conditionExpression xsi:type="tFormalExpression">${decision == 'REJECTED'}</conditionExpression>
+        </sequenceFlow>
+        
+        <serviceTask id="serviceReject" name="Mark Record Rejected" flowable:expression="${cimsWorkflowDelegate.onRejected(execution)}" />
+        
+        <sequenceFlow id="flowRejToEnd" sourceRef="serviceReject" targetRef="endRejected" />
+        <endEvent id="endRejected" name="Transaction Rejected" />
+        
+        <!-- Path 3: Returned to Maker -->
+        <sequenceFlow id="flowReturned" name="Returned to Maker" sourceRef="decisionGateway" targetRef="makerCorrectionTask">
+            <conditionExpression xsi:type="tFormalExpression">${decision == 'RETURNED'}</conditionExpression>
+        </sequenceFlow>
+        
+        <userTask id="makerCorrectionTask" name="Maker Correction" flowable:assignee="${makerId}">
+            <documentation>Revise transaction based on checker feedback and resubmit.</documentation>
+        </userTask>
+        
+        <sequenceFlow id="flowResubmit" sourceRef="makerCorrectionTask" targetRef="checkerReviewTask" />
+    </process>
+
+</definitions>

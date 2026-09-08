@@ -1,0 +1,29 @@
+server:
+  port: 8082
+
+spring:
+  main:
+    allow-circular-references: true
+  application:
+    name: cims-backend
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/cims_db_dev
+    username: cims_user
+    password: cims_password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+logging:
+  level:
+    org.hibernate.SQL: INFO
+    com.bank.cims: INFO

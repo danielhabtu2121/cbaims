@@ -1,0 +1,191 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  CIMS visual identity - "The Ledger"
+  ------------------------------------------------------------------
+  This system deliberately borrows from physical banking artifacts the
+  maker-checker workflow already mirrors: an ink-navy cover, parchment
+  pages, a brass seal for anything awaiting authorization, and a rubber
+  ink stamp for record status (see StatusChip). Numbers are always set
+  in a mono face with tabular figures, because in a collateral system a
+  misaligned decimal is a real risk, not a style nit.
+*/
+
+:root {
+  /* Ink & Parchment palette - Rich Dark Blue */
+  --ink-900: #0e284e;
+  --ink-800: #143666;
+  --ink-700: #1b4580;
+  --ink-100: #e6effd;
+  --parchment: #f6f3ec;
+  --parchment-card: #fffdf8;
+  --brass: #b8863b;
+  --brass-dark: #8a5a17;
+  --ledger-green: #1f5d45;
+  --ink-red: #a6332f;
+  --slate: #445468;
+  --hairline: #ded6c2;
+
+  --font-display: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--parchment);
+  background-image:
+    linear-gradient(var(--hairline) 1px, transparent 1px);
+  background-size: 100% 32px;
+  background-attachment: local;
+  color: var(--ink-900);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.tabular-nums, .font-mono-figures {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Cards & surfaces ---------- */
+.cims-card {
+  background: var(--parchment-card);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 36, 54, 0.04);
+}
+
+.cims-panel {
+  background: var(--parchment-card);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--ink-800);
+  border-radius: 8px;
+}
+
+/* ---------- Buttons ---------- */
+.btn-primary {
+  background: var(--ink-900);
+  color: #fff;
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 8px 16px;
+  border-radius: 7px;
+  border: 1px solid var(--ink-900);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.btn-primary:hover { background: var(--ink-700); }
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--ink-900);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 8px 16px;
+  border-radius: 7px;
+  border: 1px solid var(--hairline);
+  transition: background-color 0.15s ease;
+}
+.btn-secondary:hover { background: var(--ink-100); }
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-100);
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.08); }
+
+.btn-accent {
+  background: var(--brass);
+  color: var(--ink-900);
+  font-weight: 700;
+  border-radius: 7px;
+  border: 1px solid var(--brass-dark);
+}
+.btn-accent:hover { background: #c8975094; }
+
+/* ---------- Status "ink stamp" chip ---------- */
+.stamp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-radius: 9999px;
+  border: 1.5px solid;
+  white-space: nowrap;
+  font-family: var(--font-body);
+}
+.stamp-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* A larger circular "approval stamp" used on the maker-checker inbox and 360 headers */
+.approval-stamp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2.5px dashed currentColor;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  transform: rotate(-8deg);
+  line-height: 1.2;
+  padding: 4px;
+}
+
+/* ---------- Inputs ---------- */
+input, select, textarea {
+  font-family: var(--font-body);
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--ink-700) !important;
+  box-shadow: 0 0 0 3px rgba(15, 36, 54, 0.08);
+}
+
+/* ---------- Scrollbars (subtle, ledger-consistent) ---------- */
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cfc6ad; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #b8ac86; }
+
+.custom-scrollbar-dark::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar-dark::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar-dark::-webkit-scrollbar-thumb {
+  background: #183d6d;
+  border-radius: 6px;
+}
+.custom-scrollbar-dark::-webkit-scrollbar-thumb:hover {
+  background: #235594;
+}
+
