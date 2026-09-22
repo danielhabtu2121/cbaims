@@ -1,191 +1,283 @@
-@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
-  CIMS visual identity - "The Ledger"
-  ------------------------------------------------------------------
-  This system deliberately borrows from physical banking artifacts the
-  maker-checker workflow already mirrors: an ink-navy cover, parchment
-  pages, a brass seal for anything awaiting authorization, and a rubber
-  ink stamp for record status (see StatusChip). Numbers are always set
-  in a mono face with tabular figures, because in a collateral system a
-  misaligned decimal is a real risk, not a style nit.
+  CIMS visual identity - clean, modern fintech blue + white.
+  A single confident blue anchors navigation and primary actions; the working
+  surface stays white/near-white so dense financial data stays legible. Numbers
+  are always tabular-mono so amounts and codes align predictably in tables.
 */
 
 :root {
-  /* Ink & Parchment palette - Rich Dark Blue */
-  --ink-900: #0e284e;
-  --ink-800: #143666;
-  --ink-700: #1b4580;
-  --ink-100: #e6effd;
-  --parchment: #f6f3ec;
-  --parchment-card: #fffdf8;
-  --brass: #b8863b;
-  --brass-dark: #8a5a17;
-  --ledger-green: #1f5d45;
-  --ink-red: #a6332f;
-  --slate: #445468;
-  --hairline: #ded6c2;
+  /* Brand blue scale (slightly darker, desaturated corporate blue) */
+  --blue-50: #EFF5FB;
+  --blue-100: #DCE9F5;
+  --blue-200: #B9D3EB;
+  --blue-300: #8FB8DC;
+  --blue-400: #5F97C7;
+  --blue-500: #3E7AB0;
+  --blue-600: #2C6295;
+  --blue-700: #1F4E7A;
+  /* primary brand blue */
+  --blue-800: #1986e6;
+  --blue-900: #2279ca;
+  /* deep navy - sidebar / header */
+  --blue-950: #0f71cd;
 
-  --font-display: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  /* Neutrals */
+  --ink: #101828;
+  --ink-soft: #344054;
+  --slate: #5B6472;
+  --slate-soft: #94A3B8;
+  --border: #E2E8F0;
+  --border-soft: #EEF2F6;
+  --surface: #FFFFFF;
+  --canvas: #F7F9FC;
+
+  /* Semantic */
+  --success: #16A34A;
+  --success-bg: #ECFDF3;
+  --success-line: #A6E9C1;
+  --warning: #D97706;
+  --warning-bg: #FFF7E8;
+  --warning-line: #F3D9A0;
+  --danger: #DC2626;
+  --danger-bg: #FEF0EF;
+  --danger-line: #F3B7B3;
+  --info: #2C6295;
+  --info-bg: #EFF5FB;
+  --info-line: #B9D3EB;
+  --accent: #7C5CFC;
+  /* violet accent for variety - highlights, secondary CTAs */
+  --accent-bg: #F2EFFE;
+
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 2px 8px rgba(16, 24, 40, 0.07), 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.10), 0 2px 6px rgba(16, 24, 40, 0.06);
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
 }
 
 body {
   font-family: var(--font-body);
-  background-color: var(--parchment);
-  background-image:
-    linear-gradient(var(--hairline) 1px, transparent 1px);
-  background-size: 100% 32px;
-  background-attachment: local;
-  color: var(--ink-900);
+  background-color: var(--canvas);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, .font-display {
-  font-family: var(--font-display);
-  letter-spacing: -0.01em;
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.015em;
+  color: var(--ink);
 }
 
-.tabular-nums, .font-mono-figures {
+.tabular-nums,
+.font-mono-figures {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- Cards & surfaces ---------- */
+/* ---------- Surfaces ---------- */
 .cims-card {
-  background: var(--parchment-card);
-  border: 1px solid var(--hairline);
-  border-radius: 10px;
-  box-shadow: 0 1px 2px rgba(15, 36, 54, 0.04);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
 }
 
 .cims-panel {
-  background: var(--parchment-card);
-  border: 1px solid var(--hairline);
-  border-left: 3px solid var(--ink-800);
-  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--blue-700);
+  border-radius: var(--radius-sm);
+}
+
+.cims-elevated {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
 }
 
 /* ---------- Buttons ---------- */
 .btn-primary {
-  background: var(--ink-900);
+  background: var(--blue-700);
   color: #fff;
   font-weight: 600;
   font-size: 12.5px;
   padding: 8px 16px;
-  border-radius: 7px;
-  border: 1px solid var(--ink-900);
-  transition: background-color 0.15s ease, transform 0.1s ease;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--blue-700);
+  box-shadow: var(--shadow-sm);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 }
-.btn-primary:hover { background: var(--ink-700); }
-.btn-primary:active { transform: translateY(1px); }
-.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.btn-primary:hover {
+  background: var(--blue-800);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
 
 .btn-secondary {
-  background: transparent;
-  color: var(--ink-900);
+  background: var(--surface);
+  color: var(--blue-700);
   font-weight: 600;
   font-size: 12.5px;
   padding: 8px 16px;
-  border-radius: 7px;
-  border: 1px solid var(--hairline);
-  transition: background-color 0.15s ease;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
-.btn-secondary:hover { background: var(--ink-100); }
+
+.btn-secondary:hover {
+  background: var(--blue-50);
+  border-color: var(--blue-200);
+}
 
 .btn-ghost {
   background: transparent;
   border: 1px solid transparent;
-  color: var(--ink-100);
+  color: rgba(255, 255, 255, 0.85);
   font-weight: 600;
   transition: background-color 0.15s ease;
 }
-.btn-ghost:hover { background: rgba(255,255,255,0.08); }
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.10);
+}
 
 .btn-accent {
-  background: var(--brass);
-  color: var(--ink-900);
+  background: var(--accent);
+  color: #fff;
   font-weight: 700;
-  border-radius: 7px;
-  border: 1px solid var(--brass-dark);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  box-shadow: var(--shadow-sm);
 }
-.btn-accent:hover { background: #c8975094; }
 
-/* ---------- Status "ink stamp" chip ---------- */
+.btn-accent:hover {
+  filter: brightness(0.94);
+}
+
+/* ---------- Status pill (soft-tint badge, modern SaaS style) ---------- */
 .stamp-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   border-radius: 9999px;
-  border: 1.5px solid;
+  border: 1px solid;
   white-space: nowrap;
   font-family: var(--font-body);
 }
+
 .stamp-chip-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 
-/* A larger circular "approval stamp" used on the maker-checker inbox and 360 headers */
+/* Larger circular status ring, used sparingly on 360 headers */
 .approval-stamp {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
-  border: 2.5px dashed currentColor;
-  font-family: var(--font-display);
+  border: 3px solid currentColor;
   font-weight: 700;
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   text-align: center;
-  transform: rotate(-8deg);
-  line-height: 1.2;
+  line-height: 1.15;
   padding: 4px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ---------- KPI cards ---------- */
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 18px;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.kpi-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 /* ---------- Inputs ---------- */
-input, select, textarea {
+input,
+select,
+textarea {
   font-family: var(--font-body);
 }
-input:focus, select:focus, textarea:focus {
+
+input:focus,
+select:focus,
+textarea:focus {
   outline: none;
-  border-color: var(--ink-700) !important;
-  box-shadow: 0 0 0 3px rgba(15, 36, 54, 0.08);
+  border-color: var(--blue-500) !important;
+  box-shadow: 0 0 0 3px var(--blue-100);
 }
 
-/* ---------- Scrollbars (subtle, ledger-consistent) ---------- */
-::-webkit-scrollbar { width: 7px; height: 7px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cfc6ad; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #b8ac86; }
-
-.custom-scrollbar-dark::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+/* ---------- Tables ---------- */
+table thead th {
+  font-weight: 600;
+  color: var(--slate);
+  background: var(--canvas);
 }
-.custom-scrollbar-dark::-webkit-scrollbar-track {
+
+table tbody tr:hover {
+  background: var(--blue-50);
+}
+
+/* ---------- Scrollbars ---------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
   background: transparent;
 }
-.custom-scrollbar-dark::-webkit-scrollbar-thumb {
-  background: #183d6d;
-  border-radius: 6px;
-}
-.custom-scrollbar-dark::-webkit-scrollbar-thumb:hover {
-  background: #235594;
+
+::-webkit-scrollbar-thumb {
+  background: #C7D2DD;
+  border-radius: 8px;
 }
 
+::-webkit-scrollbar-thumb:hover {
+  background: #A9B7C6;
+}

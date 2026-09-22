@@ -261,7 +261,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
           </strong>
           <p style={{ fontSize: '12px', color: '#5B6B82', margin: '2px 0 0 0' }}>
             Data entered here represents mock core-banking data for testing. Use <strong>Sync</strong> on any record or{' '}
-            <strong>Sync All Pending</strong> to push it into CIMS.
+            <strong>Sync All Pending</strong> to push it into CBAIMS.
           </p>
         </div>
         <button
@@ -276,11 +276,11 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-border gap-2 bg-white px-4 pt-3 rounded-t-lg">
+      <div className="flex border-b border-[#E2E8F0] gap-2 bg-white px-4 pt-3 rounded-t-lg">
         <button
           onClick={() => setActiveTab('customers')}
           className={`pb-3 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'customers' ? 'border-brand-900 text-brand-900' : 'border-transparent text-text-secondary hover:text-text-primary'
+            activeTab === 'customers' ? 'border-[#102E4A] text-[#102E4A]' : 'border-transparent text-[#5B6472] hover:text-[#101828]'
           }`}
         >
           <Users className="w-4 h-4" />
@@ -289,7 +289,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
         <button
           onClick={() => setActiveTab('facilities')}
           className={`pb-3 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'facilities' ? 'border-brand-900 text-brand-900' : 'border-transparent text-text-secondary hover:text-text-primary'
+            activeTab === 'facilities' ? 'border-[#102E4A] text-[#102E4A]' : 'border-transparent text-[#5B6472] hover:text-[#101828]'
           }`}
         >
           <CreditCard className="w-4 h-4" />
@@ -298,7 +298,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
         <button
           onClick={() => setActiveTab('collaterals')}
           className={`pb-3 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'collaterals' ? 'border-brand-900 text-brand-900' : 'border-transparent text-text-secondary hover:text-text-primary'
+            activeTab === 'collaterals' ? 'border-[#102E4A] text-[#102E4A]' : 'border-transparent text-[#5B6472] hover:text-[#101828]'
           }`}
         >
           <Building2 className="w-4 h-4" />
@@ -307,7 +307,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
         <button
           onClick={() => setActiveTab('logs')}
           className={`pb-3 px-4 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'logs' ? 'border-brand-900 text-brand-900' : 'border-transparent text-text-secondary hover:text-text-primary'
+            activeTab === 'logs' ? 'border-[#102E4A] text-[#102E4A]' : 'border-transparent text-[#5B6472] hover:text-[#101828]'
           }`}
         >
           <Clock className="w-4 h-4" />
@@ -426,9 +426,9 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
 
       {/* Customer Create/Edit Modal */}
       {showCustModal && selectedCust && (
-        <div className="fixed inset-0 bg-brand-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg border border-border shadow-xl max-w-lg w-full overflow-hidden">
-            <div className="p-4 bg-brand-900 text-white flex justify-between items-center">
+        <div className="fixed inset-0 bg-[#102E4A]/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg border border-[#E2E8F0] shadow-xl max-w-lg w-full overflow-hidden">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
               <h3 className="text-sm font-bold">Create/Edit Simulated CBS Customer</h3>
               <button onClick={() => setShowCustModal(false)} className="text-white hover:text-gray-300">✕</button>
             </div>
@@ -442,21 +442,21 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
             >
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">CIF (Customer ID) (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">CIF (Customer ID) (M)</label>
                   <input
                     type="text"
                     required
                     value={selectedCust.cif || ''}
                     onChange={(e) => setSelectedCust({ ...selectedCust, cif: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Customer Type (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Customer Type (M)</label>
                   <select
                     value={selectedCust.customerType || 'Individual'}
                     onChange={(e) => setSelectedCust({ ...selectedCust, customerType: e.target.value as any })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   >
                     <option value="Individual">Individual</option>
                     <option value="Business">Business</option>
@@ -466,66 +466,66 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-text-primary mb-1">Full / Business Name (M)</label>
+                <label className="block text-xs font-semibold text-[#101828] mb-1">Full / Business Name (M)</label>
                 <input
                   type="text"
                   required
                   value={selectedCust.fullName || ''}
                   onChange={(e) => setSelectedCust({ ...selectedCust, fullName: e.target.value })}
-                  className="w-full text-xs p-2 border border-border rounded"
+                  className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">National ID / Passport (O)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">National ID / Passport (O)</label>
                   <input
                     type="text"
                     value={selectedCust.nationalId || ''}
                     onChange={(e) => setSelectedCust({ ...selectedCust, nationalId: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Business Reg No. (O)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Business Reg No. (O)</label>
                   <input
                     type="text"
                     value={selectedCust.businessRegNo || ''}
                     onChange={(e) => setSelectedCust({ ...selectedCust, businessRegNo: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Phone Number (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Phone Number (M)</label>
                   <input
                     type="text"
                     required
                     value={selectedCust.phone || ''}
                     onChange={(e) => setSelectedCust({ ...selectedCust, phone: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Email</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Email</label>
                   <input
                     type="email"
                     value={selectedCust.email || ''}
                     onChange={(e) => setSelectedCust({ ...selectedCust, email: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Business Segment (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Business Segment (M)</label>
                   <select
                     value={selectedCust.businessSegment || 'Corporate Banking'}
                     onChange={(e) => setSelectedCust({ ...selectedCust, businessSegment: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   >
                     <option value="Corporate Banking">Corporate Banking</option>
                     <option value="Retail Banking">Retail Banking</option>
@@ -534,18 +534,18 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Branch (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Branch (M)</label>
                   <input
                     type="text"
                     required
                     value={selectedCust.branch || 'Bole Special Branch'}
                     onChange={(e) => setSelectedCust({ ...selectedCust, branch: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
                 <button type="button" onClick={() => setShowCustModal(false)} className="btn-secondary">
                   Cancel
                 </button>
@@ -560,9 +560,9 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
 
       {/* Facility Create/Edit Modal */}
       {showFacModal && selectedFac && (
-        <div className="fixed inset-0 bg-brand-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg border border-border shadow-xl max-w-lg w-full overflow-hidden">
-            <div className="p-4 bg-brand-900 text-white flex justify-between items-center">
+        <div className="fixed inset-0 bg-[#102E4A]/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg border border-[#E2E8F0] shadow-xl max-w-lg w-full overflow-hidden">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
               <h3 className="text-sm font-bold">Create/Edit Simulated Facility (GETM_FACILITY)</h3>
               <button onClick={() => setShowFacModal(false)} className="text-white hover:text-gray-300">✕</button>
             </div>
@@ -576,44 +576,44 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
             >
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Line Code (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Line Code (M)</label>
                   <input
                     type="text"
                     required
                     value={selectedFac.lineCode || ''}
                     onChange={(e) => setSelectedFac({ ...selectedFac, lineCode: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Customer CIF (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Customer CIF (M)</label>
                   <input
                     type="text"
                     required
                     value={selectedFac.customerCif || ''}
                     onChange={(e) => setSelectedFac({ ...selectedFac, customerCif: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Loan Ref No. (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Loan Ref No. (M)</label>
                   <input
                     type="text"
                     required
                     value={selectedFac.loanRefNo || ''}
                     onChange={(e) => setSelectedFac({ ...selectedFac, loanRefNo: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Facility Type (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Facility Type (M)</label>
                   <select
                     value={selectedFac.facilityType || 'Term Loan'}
                     onChange={(e) => setSelectedFac({ ...selectedFac, facilityType: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   >
                     <option value="Term Loan">Term Loan</option>
                     <option value="Overdraft">Overdraft</option>
@@ -626,51 +626,51 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Approved Limit (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Approved Limit (M)</label>
                   <input
                     type="number"
                     required
                     value={selectedFac.approvedLimit || 0}
                     onChange={(e) => setSelectedFac({ ...selectedFac, approvedLimit: Number(e.target.value) })}
-                    className="w-full text-xs p-2 border border-border rounded tabular-nums"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded tabular-nums"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Outstanding Amount (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Outstanding Amount (M)</label>
                   <input
                     type="number"
                     required
                     value={selectedFac.outstandingAmount || 0}
                     onChange={(e) => setSelectedFac({ ...selectedFac, outstandingAmount: Number(e.target.value) })}
-                    className="w-full text-xs p-2 border border-border rounded tabular-nums"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded tabular-nums"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Start Date (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Start Date (M)</label>
                   <input
                     type="date"
                     required
                     value={selectedFac.lineStartDate || ''}
                     onChange={(e) => setSelectedFac({ ...selectedFac, lineStartDate: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Expiry Date (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Expiry Date (M)</label>
                   <input
                     type="date"
                     required
                     value={selectedFac.lineExpiryDate || ''}
                     onChange={(e) => setSelectedFac({ ...selectedFac, lineExpiryDate: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
                 <button type="button" onClick={() => setShowFacModal(false)} className="btn-secondary">
                   Cancel
                 </button>
@@ -685,9 +685,9 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
 
       {/* Collateral Create/Edit Modal */}
       {showColModal && selectedCol && (
-        <div className="fixed inset-0 bg-brand-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg border border-border shadow-xl max-w-lg w-full overflow-hidden">
-            <div className="p-4 bg-brand-900 text-white flex justify-between items-center">
+        <div className="fixed inset-0 bg-[#102E4A]/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg border border-[#E2E8F0] shadow-xl max-w-lg w-full overflow-hidden">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
               <h3 className="text-sm font-bold">Create/Edit Simulated Collateral (GETM_COLLAT)</h3>
               <button onClick={() => setShowColModal(false)} className="text-white hover:text-gray-300">✕</button>
             </div>
@@ -701,45 +701,45 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
             >
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Collateral Code (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Collateral Code (M)</label>
                   <input
                     type="text"
                     required
                     value={selectedCol.collateralCode || ''}
                     onChange={(e) => setSelectedCol({ ...selectedCol, collateralCode: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Customer CIF (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Customer CIF (M)</label>
                   <input
                     type="text"
                     required
                     value={selectedCol.customerCif || ''}
                     onChange={(e) => setSelectedCol({ ...selectedCol, customerCif: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-text-primary mb-1">Description (M)</label>
+                <label className="block text-xs font-semibold text-[#101828] mb-1">Description (M)</label>
                 <textarea
                   required
                   rows={2}
                   value={selectedCol.description || ''}
                   onChange={(e) => setSelectedCol({ ...selectedCol, description: e.target.value })}
-                  className="w-full text-xs p-2 border border-border rounded"
+                  className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Category (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Category (M)</label>
                   <select
                     value={selectedCol.category || 'Immovable Properties'}
                     onChange={(e) => setSelectedCol({ ...selectedCol, category: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   >
                     <option value="Immovable Properties">Immovable Properties</option>
                     <option value="Movable Properties">Movable Properties</option>
@@ -749,11 +749,11 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Owner Type (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Owner Type (M)</label>
                   <select
                     value={selectedCol.collateralType || 'Borrower-owned'}
                     onChange={(e) => setSelectedCol({ ...selectedCol, collateralType: e.target.value })}
-                    className="w-full text-xs p-2 border border-border rounded"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded"
                   >
                     <option value="Borrower-owned">Borrower-owned</option>
                     <option value="Third-party-owned">Third-party-owned</option>
@@ -763,27 +763,27 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Collateral Value (M)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Collateral Value (M)</label>
                   <input
                     type="number"
                     required
                     value={selectedCol.collateralValue || 0}
                     onChange={(e) => setSelectedCol({ ...selectedCol, collateralValue: Number(e.target.value) })}
-                    className="w-full text-xs p-2 border border-border rounded tabular-nums"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded tabular-nums"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">Haircut % (O)</label>
+                  <label className="block text-xs font-semibold text-[#101828] mb-1">Haircut % (O)</label>
                   <input
                     type="number"
                     value={selectedCol.haircut || 0}
                     onChange={(e) => setSelectedCol({ ...selectedCol, haircut: Number(e.target.value) })}
-                    className="w-full text-xs p-2 border border-border rounded tabular-nums"
+                    className="w-full text-xs p-2 border border-[#E2E8F0] rounded tabular-nums"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
                 <button type="button" onClick={() => setShowColModal(false)} className="btn-secondary">
                   Cancel
                 </button>

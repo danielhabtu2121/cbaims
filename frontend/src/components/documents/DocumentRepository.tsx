@@ -158,7 +158,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
     }
 
     const fileContent =
-      `Bank Collateral Insurance Management System (CIMS) - DMS Repository Archive\n` +
+      `Bank Collateral & Insurance Management System (CBAIMS) - DMS Repository Archive\n` +
       `=========================================================================\n` +
       `Document Reference: ${doc.name}\n` +
       `Document File Name: ${doc.fileName || doc.name}\n` +
@@ -218,12 +218,12 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
       sortable: true,
       cell: (r) => (
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-800 shrink-0">
+          <div className="w-8 h-8 rounded bg-[#EFF5FB] border border-[#DCE9F5] flex items-center justify-center text-[#173F63] shrink-0">
             <FileText className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <div className="font-bold text-brand-900 truncate">{r.name}</div>
-            <div className="text-[11px] text-text-secondary flex items-center gap-2">
+            <div className="font-bold text-[#102E4A] truncate">{r.name}</div>
+            <div className="text-[11px] text-[#5B6472] flex items-center gap-2">
               <span className="font-mono">{r.fileName || 'document.pdf'}</span>
               <span>•</span>
               <span>{formatFileSize(r.fileSize)}</span>
@@ -236,7 +236,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
       header: 'Category / Document Type',
       accessorKey: 'type',
       sortable: true,
-      cell: (r) => <div className="font-semibold text-text-primary text-xs">{r.type}</div>,
+      cell: (r) => <div className="font-semibold text-[#101828] text-xs">{r.type}</div>,
     },
     {
       header: 'Linked Entity',
@@ -245,8 +245,8 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
         const col = collaterals.find(c => c.id === r.entityId || c.code === r.entityId);
         return (
           <div>
-            <span className="font-bold text-brand-900 text-xs">{r.entityType || 'Collateral'}: </span>
-            <span className="font-mono text-brand-700 text-xs font-semibold">{col?.code || r.entityId}</span>
+            <span className="font-bold text-[#102E4A] text-xs">{r.entityType || 'Collateral'}: </span>
+            <span className="font-mono text-[#1F4E7A] text-xs font-semibold">{col?.code || r.entityId}</span>
           </div>
         );
       },
@@ -263,10 +263,10 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
             loadDocumentVersions(r);
             setShowPreviewDrawer(true);
           }}
-          className="px-2 py-0.5 rounded text-xs font-bold bg-brand-100 text-brand-900 hover:bg-brand-200 transition-colors flex items-center gap-1 mx-auto"
+          className="px-2 py-0.5 rounded text-xs font-bold bg-[#DCE9F5] text-[#102E4A] hover:bg-[#B9D3EB] transition-colors flex items-center gap-1 mx-auto"
           title="Click to view full version history"
         >
-          <GitBranch className="w-3 h-3 text-brand-700" />
+          <GitBranch className="w-3 h-3 text-[#1F4E7A]" />
           <span>v{r.version || 1}</span>
         </button>
       ),
@@ -276,8 +276,8 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
       accessorKey: 'uploadDate',
       cell: (r) => (
         <div>
-          <div className="font-semibold text-text-primary">{r.uploadDate?.substring(0, 10) || r.uploadedAt?.substring(0, 10)}</div>
-          <div className="text-[10px] text-text-secondary">By: {r.uploadedBy || 'COLLDOCOFF'}</div>
+          <div className="font-semibold text-[#101828]">{r.uploadDate?.substring(0, 10) || r.uploadedAt?.substring(0, 10)}</div>
+          <div className="text-[10px] text-[#5B6472]">By: {r.uploadedBy || 'COLLDOCOFF'}</div>
         </div>
       ),
       sortable: true,
@@ -288,7 +288,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
       cell: (r) => {
         const isExpired = r.expiryDate && new Date(r.expiryDate).getTime() < Date.now();
         return (
-          <div className={`font-semibold ${isExpired ? 'text-red-600' : 'text-text-primary'}`}>
+          <div className={`font-semibold ${isExpired ? 'text-red-600' : 'text-[#101828]'}`}>
             {r.expiryDate || 'N/A'}
           </div>
         );
@@ -334,7 +334,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                 setVersionExpiryDate(r.expiryDate || '2031-12-31');
                 setShowNewVersionModal(true);
               }}
-              className="btn-ghost py-1 px-2 text-xs text-brand-900 border border-brand-200 rounded flex items-center gap-1 hover:bg-brand-50"
+              className="btn-ghost py-1 px-2 text-xs text-[#102E4A] border border-[#B9D3EB] rounded flex items-center gap-1 hover:bg-[#EFF5FB]"
               title="Upload new superseded version"
             >
               <GitBranch className="w-3.5 h-3.5" />
@@ -346,7 +346,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
               e.stopPropagation();
               handleDownloadFile(r);
             }}
-            className="btn-primary py-1 px-2 text-xs bg-brand-900"
+            className="btn-primary py-1 px-2 text-xs bg-[#102E4A]"
             title="Download Document"
           >
             <Download className="w-3.5 h-3.5" />
@@ -360,20 +360,20 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
     <div className="p-6 space-y-6">
       {/* KPI Metric Summary Cards */}
       <div className="grid grid-cols-4 gap-4">
-        <div className="cims-card p-4 bg-brand-50 border-brand-100 flex items-center justify-between">
+        <div className="cims-card p-4 bg-[#EFF5FB] border-[#DCE9F5] flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-bold uppercase text-brand-700">Total DMS Documents</div>
-            <div className="text-2xl font-black text-brand-900 mt-1 tabular-nums">{totalDocsCount}</div>
-            <div className="text-[11px] text-text-secondary mt-0.5">Secure Document Archive</div>
+            <div className="text-[11px] font-bold uppercase text-[#1F4E7A]">Total DMS Documents</div>
+            <div className="text-2xl font-black text-[#102E4A] mt-1 tabular-nums">{totalDocsCount}</div>
+            <div className="text-[11px] text-[#5B6472] mt-0.5">Secure Document Archive</div>
           </div>
-          <FolderOpen className="w-8 h-8 text-brand-600" />
+          <FolderOpen className="w-8 h-8 text-[#2C6295]" />
         </div>
 
         <div className="cims-card p-4 bg-emerald-50 border-emerald-100 flex items-center justify-between">
           <div>
             <div className="text-[11px] font-bold uppercase text-emerald-700">Collateral Deeds</div>
             <div className="text-2xl font-black text-emerald-900 mt-1 tabular-nums">{collateralDocsCount}</div>
-            <div className="text-[11px] text-text-secondary mt-0.5">Title deeds & ownership files</div>
+            <div className="text-[11px] text-[#5B6472] mt-0.5">Title deeds & ownership files</div>
           </div>
           <FileCheck className="w-8 h-8 text-emerald-600" />
         </div>
@@ -382,7 +382,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
           <div>
             <div className="text-[11px] font-bold uppercase text-blue-700">Insurance Policies</div>
             <div className="text-2xl font-black text-blue-900 mt-1 tabular-nums">{policyDocsCount}</div>
-            <div className="text-[11px] text-text-secondary mt-0.5">Schedules & premium receipts</div>
+            <div className="text-[11px] text-[#5B6472] mt-0.5">Schedules & premium receipts</div>
           </div>
           <ShieldCheck className="w-8 h-8 text-blue-600" />
         </div>
@@ -393,7 +393,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
             <div className="text-2xl font-black text-purple-900 mt-1 tabular-nums">
               {totalDocsCount > 0 ? Math.round((verifiedDocsCount / totalDocsCount) * 100) : 100}%
             </div>
-            <div className="text-[11px] text-text-secondary mt-0.5">{verifiedDocsCount} Verified documents</div>
+            <div className="text-[11px] text-[#5B6472] mt-0.5">{verifiedDocsCount} Verified documents</div>
           </div>
           <CheckCircle className="w-8 h-8 text-purple-600" />
         </div>
@@ -402,7 +402,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
       {/* Filter Toolbar */}
       <div className="cims-card p-4 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-text-secondary flex items-center gap-1">
+          <span className="text-xs font-bold text-[#5B6472] flex items-center gap-1">
             <Filter className="w-3.5 h-3.5" /> Entity:
           </span>
           {['All', 'Collateral', 'Insurance Policy', 'Customer'].map((t) => (
@@ -411,8 +411,8 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
               onClick={() => setEntityFilter(t)}
               className={`py-1 px-2.5 rounded text-xs font-semibold transition-colors ${
                 entityFilter === t
-                  ? 'bg-brand-900 text-white'
-                  : 'bg-brand-50 text-text-secondary hover:bg-brand-100'
+                  ? 'bg-[#102E4A] text-white'
+                  : 'bg-[#EFF5FB] text-[#5B6472] hover:bg-[#DCE9F5]'
               }`}
             >
               {t === 'All' ? 'All Entities' : t}
@@ -428,7 +428,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
               placeholder="Search documents, entities, files..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs border border-border rounded"
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-[#E2E8F0] rounded"
             />
           </div>
         </div>
@@ -437,7 +437,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="p-1.5 border border-border rounded text-xs font-semibold"
+            className="p-1.5 border border-[#E2E8F0] rounded text-xs font-semibold"
           >
             <option value="All">All Statuses</option>
             <option value="Verified">Verified Only</option>
@@ -480,10 +480,10 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
 
       {/* Document Preview & Version History Drawer */}
       {showPreviewDrawer && selectedDoc && (
-        <div className="fixed inset-0 bg-brand-900/60 backdrop-blur-xs flex justify-end z-50">
+        <div className="fixed inset-0 bg-[#102E4A]/60 backdrop-blur-xs flex justify-end z-50">
           <div className="bg-white w-full max-w-2xl h-full shadow-2xl flex flex-col overflow-hidden text-xs">
             {/* Drawer Header */}
-            <div className="p-5 bg-brand-900 text-white flex justify-between items-start">
+            <div className="p-5 bg-[#102E4A] text-white flex justify-between items-start">
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-base font-bold">{selectedDoc.name}</h2>
@@ -492,7 +492,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                     variant={selectedDoc.verificationStatus === 'Verified' ? 'success' : 'warning'}
                     size="sm"
                   />
-                  <span className="text-xs px-2 py-0.5 rounded bg-brand-700 text-white font-mono font-bold">
+                  <span className="text-xs px-2 py-0.5 rounded bg-[#1F4E7A] text-white font-mono font-bold">
                     v{selectedDoc.version || 1}
                   </span>
                 </div>
@@ -507,39 +507,39 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
             {/* Drawer Body */}
             <div className="p-6 overflow-y-auto flex-1 space-y-5">
               {/* Repository Metadata */}
-              <div className="cims-card p-4 space-y-2 bg-brand-50 border-brand-100">
-                <h4 className="font-bold text-brand-900 uppercase text-[11px] tracking-wider border-b border-brand-200 pb-1">
+              <div className="cims-card p-4 space-y-2 bg-[#EFF5FB] border-[#DCE9F5]">
+                <h4 className="font-bold text-[#102E4A] uppercase text-[11px] tracking-wider border-b border-[#B9D3EB] pb-1">
                   DMS Repository Metadata
                 </h4>
                 <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div><span className="text-text-secondary">DMS System ID:</span> <strong className="font-mono">{selectedDoc.id}</strong></div>
-                  <div><span className="text-text-secondary">File Name:</span> <strong className="font-mono">{selectedDoc.fileName || selectedDoc.name}</strong></div>
-                  <div><span className="text-text-secondary">Document Category:</span> <strong>{selectedDoc.type}</strong></div>
-                  <div><span className="text-text-secondary">Attached Entity:</span> <strong className="font-mono">{selectedDoc.entityType} → {selectedDoc.entityId}</strong></div>
-                  <div><span className="text-text-secondary">Verification Status:</span> <strong className="text-emerald-700">{selectedDoc.verificationStatus || 'Verified'}</strong></div>
-                  <div><span className="text-text-secondary">Uploaded By:</span> <strong>{selectedDoc.uploadedBy || 'COLLDOCOFF'}</strong></div>
-                  <div><span className="text-text-secondary">Upload Date:</span> <strong>{selectedDoc.uploadDate || selectedDoc.uploadedAt}</strong></div>
-                  <div><span className="text-text-secondary">Expiry Date:</span> <strong>{selectedDoc.expiryDate || 'N/A'}</strong></div>
-                  <div><span className="text-text-secondary">File Size:</span> <strong>{formatFileSize(selectedDoc.fileSize)}</strong></div>
-                  <div><span className="text-text-secondary">MIME Content Type:</span> <strong>{selectedDoc.contentType || 'application/pdf'}</strong></div>
+                  <div><span className="text-[#5B6472]">DMS System ID:</span> <strong className="font-mono">{selectedDoc.id}</strong></div>
+                  <div><span className="text-[#5B6472]">File Name:</span> <strong className="font-mono">{selectedDoc.fileName || selectedDoc.name}</strong></div>
+                  <div><span className="text-[#5B6472]">Document Category:</span> <strong>{selectedDoc.type}</strong></div>
+                  <div><span className="text-[#5B6472]">Attached Entity:</span> <strong className="font-mono">{selectedDoc.entityType} → {selectedDoc.entityId}</strong></div>
+                  <div><span className="text-[#5B6472]">Verification Status:</span> <strong className="text-emerald-700">{selectedDoc.verificationStatus || 'Verified'}</strong></div>
+                  <div><span className="text-[#5B6472]">Uploaded By:</span> <strong>{selectedDoc.uploadedBy || 'COLLDOCOFF'}</strong></div>
+                  <div><span className="text-[#5B6472]">Upload Date:</span> <strong>{selectedDoc.uploadDate || selectedDoc.uploadedAt}</strong></div>
+                  <div><span className="text-[#5B6472]">Expiry Date:</span> <strong>{selectedDoc.expiryDate || 'N/A'}</strong></div>
+                  <div><span className="text-[#5B6472]">File Size:</span> <strong>{formatFileSize(selectedDoc.fileSize)}</strong></div>
+                  <div><span className="text-[#5B6472]">MIME Content Type:</span> <strong>{selectedDoc.contentType || 'application/pdf'}</strong></div>
                 </div>
                 {selectedDoc.remarks && (
-                  <div className="pt-1 border-t border-brand-200">
-                    <span className="text-text-secondary">Remarks:</span> <em>{selectedDoc.remarks}</em>
+                  <div className="pt-1 border-t border-[#B9D3EB]">
+                    <span className="text-[#5B6472]">Remarks:</span> <em>{selectedDoc.remarks}</em>
                   </div>
                 )}
               </div>
 
               {/* Realistic Document Preview Card */}
-              <div className="border border-border rounded-lg p-6 bg-gray-50 flex flex-col items-center justify-center text-center space-y-3 relative overflow-hidden">
-                <div className="w-16 h-16 rounded-full bg-brand-100 text-brand-900 flex items-center justify-center">
+              <div className="border border-[#E2E8F0] rounded-lg p-6 bg-gray-50 flex flex-col items-center justify-center text-center space-y-3 relative overflow-hidden">
+                <div className="w-16 h-16 rounded-full bg-[#DCE9F5] text-[#102E4A] flex items-center justify-center">
                   <FileCheck className="w-8 h-8" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-brand-900">{selectedDoc.fileName || selectedDoc.name}</h3>
-                  <p className="text-xs text-text-secondary mt-0.5">Encrypted Digital Document Repository Vault</p>
+                  <h3 className="font-bold text-sm text-[#102E4A]">{selectedDoc.fileName || selectedDoc.name}</h3>
+                  <p className="text-xs text-[#5B6472] mt-0.5">Encrypted Digital Document Repository Vault</p>
                 </div>
-                <div className="p-3 bg-white border border-border rounded text-xs text-left w-full space-y-1 font-mono text-gray-700">
+                <div className="p-3 bg-white border border-[#E2E8F0] rounded text-xs text-left w-full space-y-1 font-mono text-gray-700">
                   <div>[ORIGINAL BANK SECURITY WATERMARK - VERIFIED]</div>
                   <div>Document Type: {selectedDoc.type}</div>
                   <div>Target Asset / Entity: {selectedDoc.entityId}</div>
@@ -547,7 +547,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                 </div>
                 <button
                   onClick={() => handleDownloadFile(selectedDoc)}
-                  className="btn-primary py-2 px-5 text-xs flex items-center gap-2 bg-brand-900"
+                  className="btn-primary py-2 px-5 text-xs flex items-center gap-2 bg-[#102E4A]"
                 >
                   <Download className="w-4 h-4" /> Download Official File ({selectedDoc.fileName || selectedDoc.name})
                 </button>
@@ -556,8 +556,8 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
               {/* Version History Tree */}
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <h4 className="font-bold text-brand-900 text-xs flex items-center gap-1.5">
-                    <GitBranch className="w-4 h-4 text-brand-700" />
+                  <h4 className="font-bold text-[#102E4A] text-xs flex items-center gap-1.5">
+                    <GitBranch className="w-4 h-4 text-[#1F4E7A]" />
                     Version Control History ({docVersions.length > 0 ? docVersions.length : 1})
                   </h4>
                   {currentUser.canCreate !== false && (
@@ -570,7 +570,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                         setVersionExpiryDate(selectedDoc.expiryDate || '2031-12-31');
                         setShowNewVersionModal(true);
                       }}
-                      className="btn-ghost text-brand-900 border border-brand-200 py-1 px-2.5 rounded text-xs flex items-center gap-1 font-semibold hover:bg-brand-50"
+                      className="btn-ghost text-[#102E4A] border border-[#B9D3EB] py-1 px-2.5 rounded text-xs flex items-center gap-1 font-semibold hover:bg-[#EFF5FB]"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       + Upload New Version (v{(selectedDoc.version || 1) + 1})
@@ -580,7 +580,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
 
                 <div className="cims-card overflow-hidden">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-brand-50 border-b border-border text-text-secondary font-semibold">
+                    <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
                       <tr>
                         <th className="p-2">Version</th>
                         <th className="p-2">File Name</th>
@@ -590,7 +590,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                         <th className="p-2 text-right">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border">
+                    <tbody className="divide-y divide-[#E2E8F0]">
                       {docVersions.length === 0 ? (
                         <tr className="bg-emerald-50/50">
                           <td className="p-2 font-bold font-mono text-emerald-800">v{selectedDoc.version || 1}</td>
@@ -599,15 +599,15 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                           <td className="p-2">{selectedDoc.uploadedBy || 'COLLDOCOFF'}</td>
                           <td className="p-2"><StatusChip label="Active / Current" variant="success" size="sm" /></td>
                           <td className="p-2 text-right">
-                            <button onClick={() => handleDownloadFile(selectedDoc)} className="text-brand-700 hover:underline">
+                            <button onClick={() => handleDownloadFile(selectedDoc)} className="text-[#1F4E7A] hover:underline">
                               Download
                             </button>
                           </td>
                         </tr>
                       ) : (
                         docVersions.map((v) => (
-                          <tr key={v.id} className={v.isLatest !== false ? 'bg-emerald-50/40' : 'hover:bg-brand-50'}>
-                            <td className="p-2 font-bold font-mono text-brand-900">
+                          <tr key={v.id} className={v.isLatest !== false ? 'bg-emerald-50/40' : 'hover:bg-[#EFF5FB]'}>
+                            <td className="p-2 font-bold font-mono text-[#102E4A]">
                               v{v.version || 1} {v.isLatest !== false && <span className="text-[10px] text-emerald-700 font-normal">(Current)</span>}
                             </td>
                             <td className="p-2 font-semibold">{v.fileName || v.name}</td>
@@ -621,7 +621,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                               />
                             </td>
                             <td className="p-2 text-right">
-                              <button onClick={() => handleDownloadFile(v)} className="text-brand-700 hover:underline">
+                              <button onClick={() => handleDownloadFile(v)} className="text-[#1F4E7A] hover:underline">
                                 Download
                               </button>
                             </td>
@@ -634,10 +634,10 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
               </div>
 
               {/* Verification Actions */}
-              <div className="p-4 bg-brand-50 border border-brand-200 rounded-lg space-y-2">
-                <h4 className="font-bold text-brand-900 text-xs">Four-Eyes Verification Status</h4>
+              <div className="p-4 bg-[#EFF5FB] border border-[#B9D3EB] rounded-lg space-y-2">
+                <h4 className="font-bold text-[#102E4A] text-xs">Four-Eyes Verification Status</h4>
                 <div className="flex items-center justify-between">
-                  <span className="text-text-secondary">Current Status: <strong>{selectedDoc.verificationStatus || 'Verified'}</strong></span>
+                  <span className="text-[#5B6472]">Current Status: <strong>{selectedDoc.verificationStatus || 'Verified'}</strong></span>
                   <div className="flex gap-2">
                     <button
                       onClick={async () => {
@@ -677,7 +677,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-border bg-brand-50 flex justify-between items-center">
+            <div className="p-4 border-t border-[#E2E8F0] bg-[#EFF5FB] flex justify-between items-center">
               <button
                 onClick={async () => {
                   if (confirm(`Archive document ${selectedDoc.name}?`)) {
@@ -703,9 +703,9 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
 
       {/* Fresh Ingest Document Modal with Real File Drag-and-Drop & Selector */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-brand-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl border border-border shadow-2xl max-w-lg w-full overflow-hidden text-xs">
-            <div className="p-4 bg-brand-900 text-white flex justify-between items-center">
+        <div className="fixed inset-0 bg-[#102E4A]/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-2xl max-w-lg w-full overflow-hidden text-xs">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
               <div>
                 <h3 className="text-sm font-bold">Upload Document to DMS</h3>
                 <p className="text-[11px] text-blue-200">Upload and attach files (PDF, TIFF, Word, JPG) with metadata</p>
@@ -762,7 +762,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                 }}
                 onClick={() => fileInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-lg p-5 text-center cursor-pointer transition-colors ${
-                  isDragging ? 'border-brand-600 bg-brand-50' : 'border-border hover:border-brand-400 bg-gray-50'
+                  isDragging ? 'border-[#2C6295] bg-[#EFF5FB]' : 'border-[#E2E8F0] hover:border-[#5F97C7] bg-gray-50'
                 }`}
               >
                 <input
@@ -776,26 +776,26 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                   <div className="flex items-center justify-center gap-3">
                     <FileCheck className="w-8 h-8 text-emerald-600 shrink-0" />
                     <div className="text-left">
-                      <div className="font-bold text-text-primary">{selectedFile.name}</div>
-                      <div className="text-[11px] text-text-secondary">{formatFileSize(selectedFile.size)} • {selectedFile.type || 'Document'}</div>
+                      <div className="font-bold text-[#101828]">{selectedFile.name}</div>
+                      <div className="text-[11px] text-[#5B6472]">{formatFileSize(selectedFile.size)} • {selectedFile.type || 'Document'}</div>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    <UploadCloud className="w-8 h-8 text-brand-700 mx-auto" />
-                    <div className="font-bold text-brand-900">Click to browse or drag file here</div>
-                    <div className="text-[10px] text-text-secondary">PDF, TIFF, Word, JPG up to 25MB</div>
+                    <UploadCloud className="w-8 h-8 text-[#1F4E7A] mx-auto" />
+                    <div className="font-bold text-[#102E4A]">Click to browse or drag file here</div>
+                    <div className="text-[10px] text-[#5B6472]">PDF, TIFF, Word, JPG up to 25MB</div>
                   </div>
                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-text-primary mb-1">Target Entity Type (M)</label>
+                  <label className="block font-semibold text-[#101828] mb-1">Target Entity Type (M)</label>
                   <select
                     value={uploadEntityType}
                     onChange={(e) => setUploadEntityType(e.target.value as any)}
-                    className="w-full p-2 border border-border rounded font-semibold text-xs"
+                    className="w-full p-2 border border-[#E2E8F0] rounded font-semibold text-xs"
                   >
                     <option value="Collateral">Collateral Asset</option>
                     <option value="Insurance Policy">Insurance Policy</option>
@@ -804,23 +804,23 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-text-primary mb-1">Target Entity ID / Code (M)</label>
+                  <label className="block font-semibold text-[#101828] mb-1">Target Entity ID / Code (M)</label>
                   <input
                     type="text"
                     value={uploadEntityId}
                     onChange={(e) => setUploadEntityId(e.target.value)}
                     placeholder="e.g. COL-001, POL-990"
-                    className="w-full p-2 border border-border rounded font-semibold font-mono text-xs"
+                    className="w-full p-2 border border-[#E2E8F0] rounded font-semibold font-mono text-xs"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-text-primary mb-1">Document Category / Type (M)</label>
+                <label className="block font-semibold text-[#101828] mb-1">Document Category / Type (M)</label>
                 <select
                   value={uploadDocType}
                   onChange={(e) => setUploadDocType(e.target.value)}
-                  className="w-full p-2 border border-border rounded font-semibold text-xs"
+                  className="w-full p-2 border border-[#E2E8F0] rounded font-semibold text-xs"
                 >
                   <option value="Title Deed / Property Ownership Certificate">Title Deed / Property Ownership Certificate</option>
                   <option value="Approved Building Plan">Approved Building Plan</option>
@@ -837,45 +837,45 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-text-primary mb-1">Document Title (M)</label>
+                  <label className="block font-semibold text-[#101828] mb-1">Document Title (M)</label>
                   <input
                     type="text"
                     value={uploadDocName}
                     onChange={(e) => setUploadDocName(e.target.value)}
                     placeholder="e.g. Title Deed Certificate #9901"
-                    className="w-full p-2 border border-border rounded font-semibold text-xs"
+                    className="w-full p-2 border border-[#E2E8F0] rounded font-semibold text-xs"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-text-primary mb-1">Expiry Date</label>
+                  <label className="block font-semibold text-[#101828] mb-1">Expiry Date</label>
                   <input
                     type="date"
                     value={uploadExpiryDate}
                     onChange={(e) => setUploadExpiryDate(e.target.value)}
-                    className="w-full p-2 border border-border rounded text-xs"
+                    className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-text-primary mb-1">Remarks & Ingestion Notes</label>
+                <label className="block font-semibold text-[#101828] mb-1">Remarks & Ingestion Notes</label>
                 <textarea
                   rows={2}
                   value={uploadRemarks}
                   onChange={(e) => setUploadRemarks(e.target.value)}
                   placeholder="Optional audit remarks..."
-                  className="w-full p-2 border border-border rounded text-xs"
+                  className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
                 <button type="button" onClick={() => setShowUploadModal(false)} className="btn-secondary">
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploading}
-                  className="btn-primary bg-brand-900 disabled:opacity-60 flex items-center gap-1"
+                  className="btn-primary bg-[#102E4A] disabled:opacity-60 flex items-center gap-1"
                 >
                   {uploading ? 'Uploading to DMS…' : 'Upload Document'}
                 </button>
@@ -887,9 +887,9 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
 
       {/* Upload New Version Modal */}
       {showNewVersionModal && versionTargetDoc && (
-        <div className="fixed inset-0 bg-brand-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl border border-border shadow-2xl max-w-md w-full overflow-hidden text-xs">
-            <div className="p-4 bg-brand-900 text-white flex justify-between items-center">
+        <div className="fixed inset-0 bg-[#102E4A]/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-2xl max-w-md w-full overflow-hidden text-xs">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
               <div>
                 <h3 className="text-sm font-bold">Upload New Superseded Version</h3>
                 <p className="text-[11px] text-blue-200">
@@ -931,7 +931,7 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
               {/* File Drop for New Version */}
               <div
                 onClick={() => versionFileInputRef.current?.click()}
-                className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer border-border hover:border-brand-400 bg-gray-50"
+                className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer border-[#E2E8F0] hover:border-[#5F97C7] bg-gray-50"
               >
                 <input
                   type="file"
@@ -944,49 +944,49 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                   <div className="flex items-center justify-center gap-2">
                     <FileCheck className="w-6 h-6 text-emerald-600 shrink-0" />
                     <div className="text-left">
-                      <div className="font-bold text-text-primary">{versionFile.name}</div>
-                      <div className="text-[11px] text-text-secondary">{formatFileSize(versionFile.size)}</div>
+                      <div className="font-bold text-[#101828]">{versionFile.name}</div>
+                      <div className="text-[11px] text-[#5B6472]">{formatFileSize(versionFile.size)}</div>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    <UploadCloud className="w-6 h-6 text-brand-700 mx-auto" />
-                    <div className="font-bold text-brand-900">Select replacement file for v{(versionTargetDoc.version || 1) + 1}</div>
-                    <div className="text-[10px] text-text-secondary">Click to browse file</div>
+                    <UploadCloud className="w-6 h-6 text-[#1F4E7A] mx-auto" />
+                    <div className="font-bold text-[#102E4A]">Select replacement file for v{(versionTargetDoc.version || 1) + 1}</div>
+                    <div className="text-[10px] text-[#5B6472]">Click to browse file</div>
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="block font-semibold text-text-primary mb-1">Reason / Version Notes (M)</label>
+                <label className="block font-semibold text-[#101828] mb-1">Reason / Version Notes (M)</label>
                 <textarea
                   rows={2}
                   required
                   value={versionNotes}
                   onChange={(e) => setVersionNotes(e.target.value)}
                   placeholder="e.g. Updated 2026 valuation report after re-assessment"
-                  className="w-full p-2 border border-border rounded text-xs"
+                  className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-text-primary mb-1">Updated Expiry Date</label>
+                <label className="block font-semibold text-[#101828] mb-1">Updated Expiry Date</label>
                 <input
                   type="date"
                   value={versionExpiryDate}
                   onChange={(e) => setVersionExpiryDate(e.target.value)}
-                  className="w-full p-2 border border-border rounded text-xs"
+                  className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
                 <button type="button" onClick={() => setShowNewVersionModal(false)} className="btn-secondary">
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingVersion}
-                  className="btn-primary bg-brand-900 disabled:opacity-60"
+                  className="btn-primary bg-[#102E4A] disabled:opacity-60"
                 >
                   {submittingVersion ? 'Uploading Version…' : `Commit Version v${(versionTargetDoc.version || 1) + 1}`}
                 </button>

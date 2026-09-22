@@ -86,7 +86,7 @@ export const SessionTimeoutModal: React.FC<SessionTimeoutModalProps> = ({
         </h3>
 
         <p style={{ fontSize: '13px', color: '#5B6B82', margin: '0 0 20px 0', lineHeight: 1.5 }}>
-          Your active CIMS session will automatically terminate in{' '}
+          Your active CBAIMS session will automatically terminate in{' '}
           <strong style={{ color: '#C0362C' }}>
             {minutes}:{seconds < 10 ? `0${seconds}` : seconds}
           </strong>{' '}

@@ -52,7 +52,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <span
               style={{
-                backgroundColor: '#B8863B',
+                backgroundColor: '#2C6295',
                 color: '#FFFFFF',
                 fontSize: '11px',
                 fontWeight: 700,
@@ -63,10 +63,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             >
               System Administration &amp; Telemetry (§16)
             </span>
-            <span style={{ fontSize: '11px', color: '#AEC0D2' }}>Live Engine &amp; Configuration State</span>
+            <span style={{ fontSize: '11px', color: '#B9D3EB' }}>Live Engine &amp; Configuration State</span>
           </div>
           <h1 style={{ fontSize: '20px', fontWeight: 800, margin: 0, letterSpacing: '0.3px' }}>
-            CDIMS Platform Operations &amp; Configuration Hub
+            CBAIMS Platform Operations &amp; Configuration Hub
           </h1>
         </div>
 
@@ -76,7 +76,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            backgroundColor: '#B8863B',
+            backgroundColor: '#2C6295',
             color: '#FFFFFF',
             border: 'none',
             borderRadius: '6px',

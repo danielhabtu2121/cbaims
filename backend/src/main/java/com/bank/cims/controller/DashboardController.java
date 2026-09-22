@@ -1,6 +1,7 @@
 package com.bank.cims.controller;
 
 import com.bank.cims.dto.*;
+import com.bank.cims.model.DashboardSnapshot;
 import com.bank.cims.service.DashboardService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -179,12 +180,71 @@ public class DashboardController {
     @GetMapping("/history")
     public ResponseEntity<Map<String, Object>> getHistory(
             @RequestParam(required = false) String userId,
-            @RequestParam(required = false) String segment) {
-        return ResponseEntity.ok(Map.of(
-                "snapshots", List.of(),
-                "status", "NO_FABRICATED_DATA",
-                "message", "Historical data not yet available. Daily snapshot aggregation is active."
-        ));
+            @RequestParam(required = false, defaultValue = "BANK") String scopeLevel,
+            @RequestParam(required = false, defaultValue = "ALL") String scopeId) {
+        return ResponseEntity.ok(dashboardService.getHistoricalSnapshots(scopeLevel, scopeId, userId));
+    }
+
+    @GetMapping("/snapshots")
+    public ResponseEntity<Map<String, Object>> getSnapshots(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false, defaultValue = "BANK") String scopeLevel,
+            @RequestParam(required = false, defaultValue = "ALL") String scopeId) {
+        return ResponseEntity.ok(dashboardService.getHistoricalSnapshots(scopeLevel, scopeId, userId));
+    }
+
+    @PostMapping("/snapshots/capture")
+    public ResponseEntity<DashboardSnapshot> captureSnapshot(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false, defaultValue = "BANK") String scopeLevel,
+            @RequestParam(required = false, defaultValue = "ALL") String scopeId) {
+        return ResponseEntity.ok(dashboardService.captureSnapshot(scopeLevel, scopeId, userId));
+    }
+
+    @GetMapping("/kpi-explanation")
+    public ResponseEntity<KpiExplanationDto> getKpiExplanation(
+            @RequestParam(required = false) String kpiKey,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String segment,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String branch) {
+        return ResponseEntity.ok(dashboardService.getKpiExplanatoryBreakdown(kpiKey, userId, segment, district, branch));
+    }
+
+    @GetMapping("/shared-collaterals")
+    public ResponseEntity<List<Map<String, Object>>> getSharedCollaterals(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String segment,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String branch) {
+        return ResponseEntity.ok(dashboardService.getSharedCollaterals(userId, segment, district, branch));
+    }
+
+    @GetMapping("/requires-attention")
+    public ResponseEntity<List<Map<String, Object>>> getRequiresAttention(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String segment,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String branch) {
+        return ResponseEntity.ok(dashboardService.getRequiresAttention(userId, segment, district, branch));
+    }
+
+    @GetMapping("/portfolio/paginated")
+    public ResponseEntity<PaginatedPortfolioResponseDto> getPaginatedPortfolio(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String segment,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String branch,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String expiry,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false, defaultValue = "customerName") String sortField,
+            @RequestParam(required = false, defaultValue = "asc") String sortDir) {
+        return ResponseEntity.ok(dashboardService.getPaginatedPortfolio(
+                userId, segment, district, branch, category, status, expiry, search, page, size, sortField, sortDir));
     }
 
     @GetMapping("/portfolio")
@@ -222,5 +282,75 @@ public class DashboardController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"CDIMS_Portfolio_Export.csv\"")
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .body(csv);
+    }
+
+    // =========================================================================
+    // PROGRESSIVE HIERARCHICAL DRILL-DOWN ENDPOINTS
+    // =========================================================================
+
+    @GetMapping("/hierarchy/bank")
+    public ResponseEntity<Map<String, Object>> getHierarchyBank(
+            @RequestParam(required = false) String userId) {
+        return ResponseEntity.ok(dashboardService.getHierarchyBank(userId));
+    }
+
+    @GetMapping("/hierarchy/segment")
+    public ResponseEntity<Map<String, Object>> getHierarchySegment(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String segment) {
+        return ResponseEntity.ok(dashboardService.getHierarchySegment(userId, segment));
+    }
+
+    @GetMapping("/hierarchy/district")
+    public ResponseEntity<Map<String, Object>> getHierarchyDistrict(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String segment) {
+        return ResponseEntity.ok(dashboardService.getHierarchyDistrict(userId, district, segment));
+    }
+
+    @GetMapping("/hierarchy/area")
+    public ResponseEntity<Map<String, Object>> getHierarchyArea(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String area,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String segment) {
+        return ResponseEntity.ok(dashboardService.getHierarchyArea(userId, area, district, segment));
+    }
+
+    @GetMapping("/hierarchy/branch")
+    public ResponseEntity<Map<String, Object>> getHierarchyBranch(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String branch,
+            @RequestParam(required = false) String segment) {
+        return ResponseEntity.ok(dashboardService.getHierarchyBranch(userId, branch, segment));
+    }
+
+    @GetMapping("/hierarchy/customer/{cif}")
+    public ResponseEntity<Map<String, Object>> getHierarchyCustomer(
+            @PathVariable String cif,
+            @RequestParam(required = false) String userId) {
+        return ResponseEntity.ok(dashboardService.getHierarchyCustomer(userId, cif));
+    }
+
+    @GetMapping("/hierarchy/facility/{facilityId}")
+    public ResponseEntity<Map<String, Object>> getHierarchyFacility(
+            @PathVariable String facilityId,
+            @RequestParam(required = false) String userId) {
+        return ResponseEntity.ok(dashboardService.getHierarchyFacility(userId, facilityId));
+    }
+
+    @GetMapping("/hierarchy/collateral/{collateralId}")
+    public ResponseEntity<Map<String, Object>> getHierarchyCollateral(
+            @PathVariable String collateralId,
+            @RequestParam(required = false) String userId) {
+        return ResponseEntity.ok(dashboardService.getHierarchyCollateral(userId, collateralId));
+    }
+
+    @GetMapping("/hierarchy/policy/{policyId}")
+    public ResponseEntity<Map<String, Object>> getHierarchyPolicy(
+            @PathVariable String policyId,
+            @RequestParam(required = false) String userId) {
+        return ResponseEntity.ok(dashboardService.getHierarchyPolicy(userId, policyId));
     }
 }

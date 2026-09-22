@@ -40,12 +40,13 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
 
   const isBankWideRole = ['EXEC', 'SRMGMT', 'SYSADMIN', 'AUDITOR', 'COMPLIANCE', 'RISK', 'MGRCOLLDOC'].includes(currentUser.role);
+  const isMultiSegmentRole = isBankWideRole || ['DISTDIR', 'BRMGR', 'BRO', 'CRO'].includes(currentUser.role);
   const userSegmentList = currentUser.segmentIds && currentUser.segmentIds.length > 0
     ? currentUser.segmentIds
     : (currentUser.segment ? [currentUser.segment] : ['Corporate Banking']);
-  const canSelectSegment = isBankWideRole || userSegmentList.length > 1;
+  const canSelectSegment = isMultiSegmentRole || userSegmentList.length > 1;
 
-  const segmentOptions = isBankWideRole
+  const segmentOptions = isMultiSegmentRole
     ? (availableSegments && availableSegments.length > 0 ? availableSegments : ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'])
     : userSegmentList;
 
@@ -72,8 +73,8 @@ export const TopBar: React.FC<TopBarProps> = ({
             style={{
               width: '32px',
               height: '32px',
-              borderRadius: '6px',
-              backgroundColor: '#B8863B',
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #8B6BFF 0%, #6D4FE0 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -82,9 +83,9 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Shield style={{ width: '18px', height: '18px', color: '#FFFFFF' }} />
           </div>
           <div>
-            <div style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '0.5px' }}>CDIMS</div>
-            <div style={{ fontSize: '9px', fontWeight: 600, color: '#AEC0D2', textTransform: 'uppercase' }}>
-              Collateral Document &amp; Insurance Mgmt
+            <div style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '0.5px' }}>CBAIMS</div>
+            <div style={{ fontSize: '9px', fontWeight: 600, color: '#B9D3EB', textTransform: 'uppercase' }}>
+              Collateral &amp; Bank Asset Insurance Management
             </div>
           </div>
         </div>
@@ -92,7 +93,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Business Segment Selector / Scope Badge */}
         {canSelectSegment ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '12px' }}>
-            <span style={{ fontSize: '11px', color: '#AEC0D2', fontWeight: 600 }}>Segment:</span>
+            <span style={{ fontSize: '11px', color: '#B9D3EB', fontWeight: 600 }}>Segment:</span>
             <select
               value={selectedSegment}
               onChange={(e) => onSelectSegment(e.target.value)}
@@ -110,9 +111,9 @@ export const TopBar: React.FC<TopBarProps> = ({
               }}
               title="Filter entire application data by Business Segment"
             >
-              {isBankWideRole && (
+              {isMultiSegmentRole && (
                 <option value="ALL" style={{ backgroundColor: '#0E284E', color: '#FFFFFF' }}>
-                  🌐 All Segments (Bank-Wide)
+                  🌐 All Segments {currentUser.role === 'BRMGR' ? '(Branch-Wide)' : currentUser.role === 'DISTDIR' ? '(District-Wide)' : '(Bank-Wide)'}
                 </option>
               )}
               {segmentOptions.map((seg) => (
@@ -135,7 +136,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               borderRadius: '6px',
               border: '1px solid #1B4580',
               fontSize: '11px',
-              color: '#AEC0D2',
+              color: '#B9D3EB',
             }}
           >
             <span>Segment:</span>
@@ -154,7 +155,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             top: '8px',
             width: '14px',
             height: '14px',
-            color: '#AEC0D2',
+            color: '#B9D3EB',
           }}
         />
         <input
@@ -188,7 +189,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               position: 'relative',
               background: 'transparent',
               border: 'none',
-              color: '#AEC0D2',
+              color: '#B9D3EB',
               cursor: 'pointer',
               padding: '6px',
               borderRadius: '6px',
@@ -225,7 +226,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             position: 'relative',
             background: 'transparent',
             border: 'none',
-            color: '#AEC0D2',
+            color: '#B9D3EB',
             cursor: 'pointer',
             padding: '6px',
             borderRadius: '6px',
@@ -371,7 +372,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             </div>
             <div style={{ textAlign: 'left', display: 'none' }} className="md:block">
               <div style={{ fontSize: '12px', fontWeight: 600, lineHeight: 1.2 }}>{currentUser.name}</div>
-              <div style={{ fontSize: '10px', color: '#AEC0D2' }}>{currentUser.role}</div>
+              <div style={{ fontSize: '10px', color: '#B9D3EB' }}>{currentUser.role}</div>
             </div>
             <ChevronDown style={{ width: '12px', height: '12px', opacity: 0.7 }} />
           </button>

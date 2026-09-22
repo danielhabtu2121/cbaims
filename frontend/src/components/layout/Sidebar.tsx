@@ -204,7 +204,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => onNavigate(item.id)}
                       className={`w-full flex items-center justify-between py-2 px-2.5 rounded-md text-xs font-semibold transition-all group ${
                         isActive
-                          ? 'bg-[#1B4580] text-white border-l-4 border-[#B8863B] shadow-xs'
+                          ? 'bg-[#1B4580] text-white border-l-4 border-[#8B6BFF] shadow-xs'
                           : 'text-[#C5D5E8] hover:bg-[#143666] hover:text-white border-l-4 border-transparent'
                       } ${collapsed ? 'justify-center px-0' : ''}`}
                       title={collapsed ? item.label : undefined}
@@ -212,7 +212,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Icon
                           className={`w-4 h-4 shrink-0 transition-colors ${
-                            isActive ? 'text-[#B8863B]' : 'text-[#8FA5C2] group-hover:text-white'
+                            isActive ? 'text-[#8B6BFF]' : 'text-[#8FA5C2] group-hover:text-white'
                           }`}
                         />
                         {!collapsed && (
@@ -225,7 +225,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full shrink-0 ml-1 ${
                             item.id === 'exceptions'
                               ? 'bg-red-600 text-white'
-                              : 'bg-[#B8863B] text-[#0E284E]'
+                              : 'bg-[#8B6BFF] text-white'
                           }`}
                         >
                           {item.badgeCount}
@@ -244,8 +244,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="shrink-0 p-2.5 border-t border-[#1B4580] bg-[#0A1C36] flex items-center justify-between">
         {!collapsed && (
           <div className="flex items-center gap-1.5 text-[11px] text-[#8FA5C2] font-medium pl-1">
-            <Shield className="w-3 h-3 text-[#B8863B]" />
-            <span>CDIMS Enterprise</span>
+            <Shield className="w-3 h-3 text-[#8B6BFF]" />
+            <span>CBAIMS Enterprise</span>
           </div>
         )}
         <button

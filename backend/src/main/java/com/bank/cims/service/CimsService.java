@@ -157,9 +157,13 @@ public class CimsService {
     @Autowired
     private CbsAccCollLinkDtlsRepository cbsAccCollLinkDtlsRepository;
 
-    private String simulatedSystemDate = "2026-08-18";
+    private String simulatedSystemDate = null;
 
-    public String getSimulatedSystemDate() { return simulatedSystemDate != null ? simulatedSystemDate : "2026-08-18"; }
+    public String getSimulatedSystemDate() { 
+        return (simulatedSystemDate != null && !simulatedSystemDate.isBlank()) 
+            ? simulatedSystemDate 
+            : LocalDate.now().toString(); 
+    }
     public void setSimulatedSystemDate(String d) { this.simulatedSystemDate = d; }
 
     private static final String[] ALL_APP_ROLES = {
@@ -2212,7 +2216,23 @@ public class CimsService {
         policy.setVersion(1);
         policy.setMakerId(userId);
         policy.setMakerDtStamp(LocalDateTime.now().toString());
+
+        String initialHistory = String.format(Locale.ROOT,
+                "[{\"event\":\"REGISTRATION\",\"version\":1,\"status\":\"Pending Approval\",\"insuredAmount\":%.2f,\"premium\":%.2f,\"insurerName\":\"%s\",\"coverageType\":\"%s\",\"effectiveDate\":\"%s\",\"expiryDate\":\"%s\",\"makerId\":\"%s\",\"timestamp\":\"%s\"}]",
+                policy.getInsuredAmount(),
+                policy.getPremium(),
+                safe(policy.getInsurerName()),
+                safe(policy.getCoverageType()),
+                safe(policy.getEffectiveDate()),
+                safe(policy.getExpiryDate()),
+                safe(userId),
+                LocalDateTime.now().toString()
+        );
+        policy.setHistoryJson(initialHistory);
         insurancePolicyRepository.save(policy);
+
+        logAudit(userId, "CRO", "POLICY_REGISTRATION", "Insurance Policy", policy.getId(), "Status", "None", "Pending Approval",
+                "Policy registration submitted for checker approval: " + policy.getPolicyNumber());
 
         WorkflowActionResultDto wfResult = workflowExecutionService.submitToWorkflow(
                 "Insurance Policy", policy.getId(), "POLICY_REGISTRATION", userId,
@@ -2226,11 +2246,56 @@ public class CimsService {
         return result;
     }
 
+    private String safe(String s) {
+        return s == null ? "" : s.replace("\"", "\\\"");
+    }
+
+    public void appendHistory(InsurancePolicy policy, String jsonEntry) {
+        String current = policy.getHistoryJson() != null && !policy.getHistoryJson().isBlank()
+                ? policy.getHistoryJson().trim()
+                : "[]";
+        if (current.endsWith("]")) {
+            if (current.length() > 2) {
+                policy.setHistoryJson(current.substring(0, current.length() - 1) + "," + jsonEntry + "]");
+            } else {
+                policy.setHistoryJson("[" + jsonEntry + "]");
+            }
+        } else {
+            policy.setHistoryJson("[" + jsonEntry + "]");
+        }
+    }
+
     @Transactional
     public Map<String, Object> amendPolicy(String policyId, InsurancePolicy updated, String reason, String userId) {
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new IllegalArgumentException("Amendment reason is mandatory.");
+        }
         InsurancePolicy existing = insurancePolicyRepository.findById(policyId)
                 .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
                 .orElseThrow(() -> new IllegalArgumentException("Policy not found: " + policyId));
+
+        int prevVersion = existing.getVersion();
+        int newVersion = prevVersion + 1;
+
+        // Structured snapshot of previous version before applying amendments
+        String snapshot = String.format(Locale.ROOT,
+                "{\"event\":\"AMENDMENT_PROPOSED\",\"version\":%d,\"insurerName\":\"%s\",\"coverageType\":\"%s\",\"insuredAmount\":%.2f,\"premium\":%.2f,\"effectiveDate\":\"%s\",\"expiryDate\":\"%s\",\"reason\":\"%s\",\"makerId\":\"%s\",\"amendedAt\":\"%s\"}",
+                prevVersion,
+                safe(existing.getInsurerName()),
+                safe(existing.getCoverageType()),
+                existing.getInsuredAmount(),
+                existing.getPremium(),
+                safe(existing.getEffectiveDate()),
+                safe(existing.getExpiryDate()),
+                safe(reason),
+                safe(userId),
+                LocalDateTime.now().toString()
+        );
+
+        appendHistory(existing, snapshot);
+
+        String oldValState = String.format(Locale.ROOT, "v%d: Insurer=%s, Cover=%s, Insured=%.2f, Premium=%.2f, Exp=%s",
+                prevVersion, existing.getInsurerName(), existing.getCoverageType(), existing.getInsuredAmount(), existing.getPremium(), existing.getExpiryDate());
 
         existing.setInsurerName(updated.getInsurerName() != null ? updated.getInsurerName() : existing.getInsurerName());
         existing.setCoverageType(updated.getCoverageType() != null ? updated.getCoverageType() : existing.getCoverageType());
@@ -2238,13 +2303,23 @@ public class CimsService {
         existing.setPremium(updated.getPremium() > 0 ? updated.getPremium() : existing.getPremium());
         existing.setEffectiveDate(updated.getEffectiveDate() != null ? updated.getEffectiveDate() : existing.getEffectiveDate());
         existing.setExpiryDate(updated.getExpiryDate() != null ? updated.getExpiryDate() : existing.getExpiryDate());
-        existing.setVersion(existing.getVersion() + 1);
+        existing.setVersion(newVersion);
         existing.setStatus("Pending Approval");
         existing.setAuthStat("U");
         existing.setRecordStat("U");
         existing.setMakerId(userId);
         existing.setMakerDtStamp(LocalDateTime.now().toString());
+
+        // Validate updated policy terms
+        validationService.validatePolicy(existing);
+
         insurancePolicyRepository.save(existing);
+
+        String newValState = String.format(Locale.ROOT, "v%d: Insurer=%s, Cover=%s, Insured=%.2f, Premium=%.2f, Exp=%s",
+                newVersion, existing.getInsurerName(), existing.getCoverageType(), existing.getInsuredAmount(), existing.getPremium(), existing.getExpiryDate());
+
+        logAudit(userId, "CRO", "POLICY_AMENDMENT", "Insurance Policy", existing.getId(), "PolicyVersion", "v" + prevVersion, "v" + newVersion,
+                "Policy amendment requested: " + reason + " | " + oldValState + " -> " + newValState);
 
         WorkflowActionResultDto wfResult = workflowExecutionService.submitToWorkflow(
                 "Insurance Policy", existing.getId(), "POLICY_AMENDMENT", userId,
@@ -2264,6 +2339,10 @@ public class CimsService {
                 .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
                 .orElseThrow(() -> new IllegalArgumentException("Policy not found: " + policyId));
 
+        if (!"Active".equalsIgnoreCase(existing.getStatus()) && !"Pending Renewal".equalsIgnoreCase(existing.getStatus())) {
+            throw new IllegalStateException("Endorsements can only be added to active policies. Current status: " + existing.getStatus());
+        }
+
         PolicyEndorsement endorsement = new PolicyEndorsement();
         endorsement.setId("end-" + UUID.randomUUID().toString().substring(0, 8));
         endorsement.setPolicyId(existing.getId());
@@ -2275,6 +2354,24 @@ public class CimsService {
         endorsement.setMakerDtStamp(LocalDateTime.now().toString());
         endorsement.setRecordStat("U");
         policyEndorsementRepository.save(endorsement);
+
+        int prevEndorsementCount = existing.getEndorsementCount();
+        existing.setEndorsementCount(prevEndorsementCount + 1);
+
+        String endSnapshot = String.format(Locale.ROOT,
+                "{\"event\":\"ENDORSEMENT_PROPOSED\",\"endorsementNo\":\"%s\",\"description\":\"%s\",\"effectiveDate\":\"%s\",\"makerId\":\"%s\",\"timestamp\":\"%s\"}",
+                safe(endorsement.getEndorsementNo()),
+                safe(endorsement.getDescription()),
+                safe(endorsement.getEffectiveDate()),
+                safe(userId),
+                LocalDateTime.now().toString()
+        );
+        appendHistory(existing, endSnapshot);
+        insurancePolicyRepository.save(existing);
+
+        logAudit(userId, "CRO", "POLICY_ENDORSEMENT", "Insurance Policy", existing.getId(), "EndorsementCount",
+                String.valueOf(prevEndorsementCount), String.valueOf(existing.getEndorsementCount()),
+                "Policy endorsement created: " + endorsement.getEndorsementNo() + " - " + description);
 
         WorkflowActionResultDto wfResult = workflowExecutionService.submitToWorkflow(
                 "Insurance Policy", existing.getId(), "POLICY_ENDORSEMENT", userId,
@@ -2302,7 +2399,7 @@ public class CimsService {
         newPolicy.setInsurerName(renewed.getInsurerName() != null ? renewed.getInsurerName() : existing.getInsurerName());
         newPolicy.setCoverageType(renewed.getCoverageType() != null ? renewed.getCoverageType() : existing.getCoverageType());
         newPolicy.setInsuredAmount(renewed.getInsuredAmount() > 0 ? renewed.getInsuredAmount() : existing.getInsuredAmount());
-        newPolicy.setPremium(renewed.getPremium() > 0 ? renewed.getPremium() : existing.getPremium());
+        newPolicy.setPremium(renewed.getPremium() > 0 ? renewed.getPremium() : (existing.getPremium() > 0 ? existing.getPremium() : 25000.0));
         newPolicy.setEffectiveDate(renewed.getEffectiveDate() != null ? renewed.getEffectiveDate() : existing.getExpiryDate());
         newPolicy.setExpiryDate(renewed.getExpiryDate() != null ? renewed.getExpiryDate() : LocalDate.parse(existing.getExpiryDate()).plusYears(1).toString());
         newPolicy.setRenewedFromPolicyId(existing.getId());
@@ -2312,15 +2409,45 @@ public class CimsService {
         newPolicy.setRecordStat("U");
         newPolicy.setMakerId(userId);
         newPolicy.setMakerDtStamp(LocalDateTime.now().toString());
+
+        // Validate before registration/renewal!
+        validationService.validatePolicy(newPolicy);
+
+        String renewalHistory = String.format(Locale.ROOT,
+                "[{\"event\":\"RENEWAL_SUBMITTED\",\"renewedFromPolicyId\":\"%s\",\"previousPolicyNumber\":\"%s\",\"version\":1,\"insuredAmount\":%.2f,\"premium\":%.2f,\"expiryDate\":\"%s\",\"makerId\":\"%s\",\"timestamp\":\"%s\"}]",
+                safe(existing.getId()),
+                safe(existing.getPolicyNumber()),
+                newPolicy.getInsuredAmount(),
+                newPolicy.getPremium(),
+                safe(newPolicy.getExpiryDate()),
+                safe(userId),
+                LocalDateTime.now().toString()
+        );
+        newPolicy.setHistoryJson(renewalHistory);
         insurancePolicyRepository.save(newPolicy);
+
+        // Record renewal initiation in existing policy history
+        String existingNote = String.format(Locale.ROOT,
+                "{\"event\":\"RENEWAL_INITIATED\",\"renewalPolicyId\":\"%s\",\"renewalPolicyNumber\":\"%s\",\"makerId\":\"%s\",\"timestamp\":\"%s\"}",
+                safe(newPolicy.getId()),
+                safe(newPolicy.getPolicyNumber()),
+                safe(userId),
+                LocalDateTime.now().toString()
+        );
+        appendHistory(existing, existingNote);
+        insurancePolicyRepository.save(existing);
+
+        logAudit(userId, "CRO", "POLICY_RENEWAL", "Insurance Policy", newPolicy.getId(), "Status", "None", "Pending Approval",
+                "Renewal policy submitted for approval. Renewed from: " + existing.getPolicyNumber());
 
         WorkflowActionResultDto wfResult = workflowExecutionService.submitToWorkflow(
                 "Insurance Policy", newPolicy.getId(), "POLICY_RENEWAL", userId,
-                "Renewal policy submitted for approval.", null);
+                "Renewal policy submitted for approval (renewed from " + existing.getPolicyNumber() + ").", null);
 
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         result.put("policy", newPolicy);
+        result.put("newPolicyId", newPolicy.getId());
         result.put("workflowTaskId", wfResult.getWorkflowTaskId());
         result.put("message", "Renewal policy " + newPolicy.getPolicyNumber() + " submitted for approval.");
         return result;
@@ -2328,6 +2455,9 @@ public class CimsService {
 
     @Transactional
     public Map<String, Object> replacePolicy(String policyId, InsurancePolicy replacement, String reason, String userId) {
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new IllegalArgumentException("Replacement reason is mandatory.");
+        }
         InsurancePolicy existing = insurancePolicyRepository.findById(policyId)
                 .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
                 .orElseThrow(() -> new IllegalArgumentException("Policy not found: " + policyId));
@@ -2338,6 +2468,24 @@ public class CimsService {
         }
         replacement.setCollateralId(existing.getCollateralId());
         replacement.setCustomerId(existing.getCustomerId());
+        if (replacement.getInsurerName() == null || replacement.getInsurerName().isBlank()) {
+            replacement.setInsurerName(existing.getInsurerName());
+        }
+        if (replacement.getCoverageType() == null || replacement.getCoverageType().isBlank()) {
+            replacement.setCoverageType(existing.getCoverageType());
+        }
+        if (replacement.getInsuredAmount() <= 0) {
+            replacement.setInsuredAmount(existing.getInsuredAmount());
+        }
+        if (replacement.getPremium() <= 0) {
+            replacement.setPremium(existing.getPremium());
+        }
+        if (replacement.getEffectiveDate() == null || replacement.getEffectiveDate().isBlank()) {
+            replacement.setEffectiveDate(LocalDate.now().toString());
+        }
+        if (replacement.getExpiryDate() == null || replacement.getExpiryDate().isBlank()) {
+            replacement.setExpiryDate(LocalDate.now().plusYears(1).toString());
+        }
         replacement.setReplacesPolicyId(existing.getId());
         replacement.setVersion(1);
         replacement.setStatus("Pending Approval");
@@ -2345,7 +2493,35 @@ public class CimsService {
         replacement.setRecordStat("U");
         replacement.setMakerId(userId);
         replacement.setMakerDtStamp(LocalDateTime.now().toString());
+
+        // Validate before registration/replacement!
+        validationService.validatePolicy(replacement);
+
+        String repHistory = String.format(Locale.ROOT,
+                "[{\"event\":\"REPLACEMENT_SUBMITTED\",\"replacesPolicyId\":\"%s\",\"previousPolicyNumber\":\"%s\",\"reason\":\"%s\",\"makerId\":\"%s\",\"timestamp\":\"%s\"}]",
+                safe(existing.getId()),
+                safe(existing.getPolicyNumber()),
+                safe(reason),
+                safe(userId),
+                LocalDateTime.now().toString()
+        );
+        replacement.setHistoryJson(repHistory);
         insurancePolicyRepository.save(replacement);
+
+        // Record replacement initiation in existing policy history
+        String existingNote = String.format(Locale.ROOT,
+                "{\"event\":\"REPLACEMENT_INITIATED\",\"replacementPolicyId\":\"%s\",\"replacementPolicyNumber\":\"%s\",\"reason\":\"%s\",\"makerId\":\"%s\",\"timestamp\":\"%s\"}",
+                safe(replacement.getId()),
+                safe(replacement.getPolicyNumber()),
+                safe(reason),
+                safe(userId),
+                LocalDateTime.now().toString()
+        );
+        appendHistory(existing, existingNote);
+        insurancePolicyRepository.save(existing);
+
+        logAudit(userId, "CRO", "POLICY_REPLACEMENT", "Insurance Policy", replacement.getId(), "Status", "None", "Pending Approval",
+                "Replacement policy submitted: " + reason + " | Replaces: " + existing.getPolicyNumber());
 
         WorkflowActionResultDto wfResult = workflowExecutionService.submitToWorkflow(
                 "Insurance Policy", replacement.getId(), "POLICY_REPLACEMENT", userId,
@@ -2354,6 +2530,7 @@ public class CimsService {
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         result.put("policy", replacement);
+        result.put("replacementPolicyId", replacement.getId());
         result.put("workflowTaskId", wfResult.getWorkflowTaskId());
         result.put("message", "Replacement policy " + replacement.getPolicyNumber() + " submitted for approval.");
         return result;
@@ -2361,13 +2538,31 @@ public class CimsService {
 
     @Transactional
     public Map<String, Object> cancelPolicy(String policyId, String reason, String userId) {
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new IllegalArgumentException("Cancellation reason is mandatory.");
+        }
         InsurancePolicy existing = insurancePolicyRepository.findById(policyId)
                 .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
                 .orElseThrow(() -> new IllegalArgumentException("Policy not found: " + policyId));
 
+        if ("Cancelled".equalsIgnoreCase(existing.getStatus())) {
+            throw new IllegalStateException("Policy is already cancelled.");
+        }
+
         existing.setCancellationReason(reason);
         existing.setStatus("Cancellation Pending");
+
+        String cancelNote = String.format(Locale.ROOT,
+                "{\"event\":\"CANCELLATION_REQUESTED\",\"reason\":\"%s\",\"makerId\":\"%s\",\"timestamp\":\"%s\"}",
+                safe(reason),
+                safe(userId),
+                LocalDateTime.now().toString()
+        );
+        appendHistory(existing, cancelNote);
         insurancePolicyRepository.save(existing);
+
+        logAudit(userId, "CRO", "POLICY_CANCELLATION", "Insurance Policy", existing.getId(), "Status", "Active", "Cancellation Pending",
+                "Policy cancellation requested: " + reason);
 
         WorkflowActionResultDto wfResult = workflowExecutionService.submitToWorkflow(
                 "Insurance Policy", existing.getId(), "POLICY_CANCELLATION", userId,
@@ -2382,16 +2577,31 @@ public class CimsService {
 
     @Transactional
     public Map<String, Object> closePolicy(String policyId, String reason, String userId) {
-        if (reason == null || reason.isBlank()) {
+        if (reason == null || reason.trim().isEmpty()) {
             throw new IllegalArgumentException("Closure reason is mandatory.");
         }
         InsurancePolicy existing = insurancePolicyRepository.findById(policyId)
                 .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
                 .orElseThrow(() -> new IllegalArgumentException("Policy not found: " + policyId));
 
+        if ("Closed".equalsIgnoreCase(existing.getStatus())) {
+            throw new IllegalStateException("Policy is already closed.");
+        }
+
         existing.setClosureReason(reason);
         existing.setStatus("Closure Pending");
+
+        String closeNote = String.format(Locale.ROOT,
+                "{\"event\":\"CLOSURE_REQUESTED\",\"reason\":\"%s\",\"makerId\":\"%s\",\"timestamp\":\"%s\"}",
+                safe(reason),
+                safe(userId),
+                LocalDateTime.now().toString()
+        );
+        appendHistory(existing, closeNote);
         insurancePolicyRepository.save(existing);
+
+        logAudit(userId, "CRO", "POLICY_CLOSURE", "Insurance Policy", existing.getId(), "Status", "Active", "Closure Pending",
+                "Policy closure requested: " + reason);
 
         WorkflowActionResultDto wfResult = workflowExecutionService.submitToWorkflow(
                 "Insurance Policy", existing.getId(), "POLICY_CLOSURE", userId,
@@ -2406,15 +2616,31 @@ public class CimsService {
 
     @Transactional
     public Map<String, Object> reopenPolicy(String policyId, String reason, String userId) {
-        if (reason == null || reason.isBlank()) {
+        if (reason == null || reason.trim().isEmpty()) {
             throw new IllegalArgumentException("Reopening reason is mandatory.");
         }
         InsurancePolicy existing = insurancePolicyRepository.findById(policyId)
                 .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
                 .orElseThrow(() -> new IllegalArgumentException("Policy not found: " + policyId));
 
+        if (!"Closed".equalsIgnoreCase(existing.getStatus()) && !"Reopen Pending".equalsIgnoreCase(existing.getStatus())) {
+            throw new IllegalStateException("Only closed policies can be reopened. Current status: " + existing.getStatus());
+        }
+
+        existing.setReopeningReason(reason);
         existing.setStatus("Reopen Pending");
+
+        String reopenNote = String.format(Locale.ROOT,
+                "{\"event\":\"REOPEN_REQUESTED\",\"reason\":\"%s\",\"makerId\":\"%s\",\"timestamp\":\"%s\"}",
+                safe(reason),
+                safe(userId),
+                LocalDateTime.now().toString()
+        );
+        appendHistory(existing, reopenNote);
         insurancePolicyRepository.save(existing);
+
+        logAudit(userId, "CRO", "POLICY_REOPEN", "Insurance Policy", existing.getId(), "Status", "Closed", "Reopen Pending",
+                "Policy reopening requested: " + reason);
 
         WorkflowActionResultDto wfResult = workflowExecutionService.submitToWorkflow(
                 "Insurance Policy", existing.getId(), "POLICY_REOPEN", userId,
@@ -2424,6 +2650,67 @@ public class CimsService {
         result.put("success", true);
         result.put("workflowTaskId", wfResult.getWorkflowTaskId());
         result.put("message", "Policy reopening request submitted for checker authorization.");
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getPolicyHistory(String policyId) {
+        InsurancePolicy policy = insurancePolicyRepository.findById(policyId)
+                .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
+                .orElseThrow(() -> new IllegalArgumentException("Policy not found: " + policyId));
+
+        List<Map<String, Object>> timeline = new ArrayList<>();
+        if (policy.getHistoryJson() != null && !policy.getHistoryJson().isBlank()) {
+            try {
+                List<Map<String, Object>> parsed = objectMapper.readValue(
+                        policy.getHistoryJson(),
+                        new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {}
+                );
+                timeline.addAll(parsed);
+            } catch (Exception e) {
+                timeline.add(Map.of("event", "RAW_HISTORY", "raw", policy.getHistoryJson()));
+            }
+        }
+
+        List<PolicyEndorsement> endorsements = policyEndorsementRepository.findByPolicyId(policy.getId());
+
+        Optional<InsurancePolicy> renewedFrom = policy.getRenewedFromPolicyId() != null
+                ? insurancePolicyRepository.findById(policy.getRenewedFromPolicyId()) : Optional.empty();
+        Optional<InsurancePolicy> replaces = policy.getReplacesPolicyId() != null
+                ? insurancePolicyRepository.findById(policy.getReplacesPolicyId()) : Optional.empty();
+        List<InsurancePolicy> renewedInto = insurancePolicyRepository.findAll().stream()
+                .filter(p -> policy.getId().equals(p.getRenewedFromPolicyId()))
+                .toList();
+        List<InsurancePolicy> replacedBy = insurancePolicyRepository.findAll().stream()
+                .filter(p -> policy.getId().equals(p.getReplacesPolicyId()))
+                .toList();
+
+        List<WorkflowTask> workflowTasks = workflowTaskRepository.findAll().stream()
+                .filter(t -> ("Insurance Policy".equalsIgnoreCase(t.getEntityType()) || "Policy".equalsIgnoreCase(t.getEntityType())) &&
+                        (policy.getId().equalsIgnoreCase(t.getEntityId()) || (policy.getPolicyNumber() != null && policy.getPolicyNumber().equalsIgnoreCase(t.getEntityId()))))
+                .toList();
+
+        List<String> taskIds = workflowTasks.stream().map(WorkflowTask::getId).toList();
+        List<ApprovalHistory> approvalHistory = approvalHistoryRepository.findAll().stream()
+                .filter(h -> taskIds.contains(h.getWorkflowTaskId()))
+                .toList();
+
+        List<AuditLog> auditLogs = auditLogRepository.findAll().stream()
+                .filter(a -> "Insurance Policy".equalsIgnoreCase(a.getEntityType()) &&
+                        (policy.getId().equalsIgnoreCase(a.getEntityId()) || (policy.getPolicyNumber() != null && policy.getPolicyNumber().equalsIgnoreCase(a.getEntityId()))))
+                .toList();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("policy", policy);
+        result.put("historyTimeline", timeline);
+        result.put("endorsements", endorsements);
+        result.put("renewedFrom", renewedFrom.orElse(null));
+        result.put("replaces", replaces.orElse(null));
+        result.put("renewedInto", renewedInto);
+        result.put("replacedBy", replacedBy);
+        result.put("workflowTasks", workflowTasks);
+        result.put("approvalHistory", approvalHistory);
+        result.put("auditLogs", auditLogs);
         return result;
     }
 }

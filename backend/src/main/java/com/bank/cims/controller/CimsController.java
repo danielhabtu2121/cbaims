@@ -43,6 +43,18 @@ public class CimsController {
         return ResponseEntity.ok(cimsService.getFullState());
     }
 
+    @GetMapping("/config/system-date")
+    public ResponseEntity<Map<String, String>> getSystemDate() {
+        return ResponseEntity.ok(Map.of("systemDate", cimsService.getSimulatedSystemDate()));
+    }
+
+    @PostMapping("/config/system-date")
+    public ResponseEntity<Map<String, String>> setSystemDate(@RequestBody(required = false) Map<String, String> payload) {
+        String d = payload != null ? payload.get("systemDate") : null;
+        cimsService.setSimulatedSystemDate(d);
+        return ResponseEntity.ok(Map.of("systemDate", cimsService.getSimulatedSystemDate()));
+    }
+
     // --- Business Segments ---
     @PostMapping("/segments/add")
     public ResponseEntity<Map<String, Object>> addSegment(
@@ -254,8 +266,9 @@ public class CimsController {
     public ResponseEntity<Map<String, Object>> amendPolicy(
             @RequestParam String policyId,
             @RequestBody InsurancePolicy policy,
+            @RequestParam(defaultValue = "Policy terms amended by maker") String reason,
             @RequestParam String userId) {
-        cimsService.amendPolicy(policyId, policy, userId);
+        cimsService.amendPolicy(policyId, policy, reason, userId);
         return ResponseEntity.ok(cimsService.getFullState());
     }
 
@@ -373,6 +386,47 @@ public class CimsController {
         }
     }
 
+    @GetMapping("/policies/{id}/history")
+    public ResponseEntity<Map<String, Object>> getPolicyHistory(@PathVariable String id) {
+        try {
+            return ResponseEntity.ok(cimsService.getPolicyHistory(id));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/policies/{id}/amend")
+    public ResponseEntity<Map<String, Object>> amendPolicyPath(
+            @PathVariable String id,
+            @RequestBody InsurancePolicy policy,
+            @RequestParam String reason,
+            @RequestParam(defaultValue = "CRO_USER") String userId) {
+        try {
+            return ResponseEntity.ok(cimsService.amendPolicy(id, policy, reason, userId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/policies/{id}/renew")
+    public ResponseEntity<Map<String, Object>> renewPolicyPath(
+            @PathVariable String id,
+            @RequestBody(required = false) InsurancePolicy renewalPolicy,
+            @RequestParam(required = false) Double newAmount,
+            @RequestParam(required = false) Double newPremium,
+            @RequestParam(required = false) String newExpiryDate,
+            @RequestParam(defaultValue = "CRO_USER") String userId) {
+        try {
+            InsurancePolicy policyToRenew = renewalPolicy != null ? renewalPolicy : new InsurancePolicy();
+            if (newAmount != null && newAmount > 0) policyToRenew.setInsuredAmount(newAmount);
+            if (newPremium != null && newPremium > 0) policyToRenew.setPremium(newPremium);
+            if (newExpiryDate != null && !newExpiryDate.isBlank()) policyToRenew.setExpiryDate(newExpiryDate);
+            return ResponseEntity.ok(cimsService.renewPolicy(id, policyToRenew, userId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
     @PostMapping("/policies/{id}/endorse")
     public ResponseEntity<Map<String, Object>> endorsePolicy(
             @PathVariable String id,
@@ -392,7 +446,7 @@ public class CimsController {
     public ResponseEntity<Map<String, Object>> replacePolicy(
             @PathVariable String id,
             @RequestBody InsurancePolicy replacement,
-            @RequestParam(defaultValue = "Policy replacement") String reason,
+            @RequestParam String reason,
             @RequestParam(defaultValue = "CRO_USER") String userId) {
         try {
             return ResponseEntity.ok(cimsService.replacePolicy(id, replacement, reason, userId));
@@ -404,7 +458,7 @@ public class CimsController {
     @PostMapping("/policies/{id}/cancel")
     public ResponseEntity<Map<String, Object>> cancelPolicy(
             @PathVariable String id,
-            @RequestParam(defaultValue = "Borrower requested cancellation") String reason,
+            @RequestParam String reason,
             @RequestParam(defaultValue = "CRO_USER") String userId) {
         try {
             return ResponseEntity.ok(cimsService.cancelPolicy(id, reason, userId));
@@ -416,7 +470,7 @@ public class CimsController {
     @PostMapping("/policies/{id}/close")
     public ResponseEntity<Map<String, Object>> closePolicy(
             @PathVariable String id,
-            @RequestParam(defaultValue = "Matured without claim") String reason,
+            @RequestParam String reason,
             @RequestParam(defaultValue = "CRO_USER") String userId) {
         try {
             return ResponseEntity.ok(cimsService.closePolicy(id, reason, userId));
@@ -428,7 +482,7 @@ public class CimsController {
     @PostMapping("/policies/{id}/reopen")
     public ResponseEntity<Map<String, Object>> reopenPolicy(
             @PathVariable String id,
-            @RequestParam(defaultValue = "Reopened for active facility coverage") String reason,
+            @RequestParam String reason,
             @RequestParam(defaultValue = "CRO_USER") String userId) {
         try {
             return ResponseEntity.ok(cimsService.reopenPolicy(id, reason, userId));

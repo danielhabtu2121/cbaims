@@ -39,9 +39,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     <div
       style={{
         minHeight: '100vh',
-        backgroundColor: 'var(--parchment)',
-        backgroundImage: 'linear-gradient(var(--hairline) 1px, transparent 1px)',
-        backgroundSize: '100% 32px',
+        backgroundColor: 'var(--canvas)',
+        backgroundImage: 'radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0)',
+        backgroundSize: '24px 24px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -74,8 +74,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             style={{
               width: '48px',
               height: '48px',
-              borderRadius: '10px',
-              backgroundColor: '#B8863B',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #8B6BFF 0%, #6D4FE0 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -84,11 +84,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           >
             <Shield style={{ width: '28px', height: '28px', color: '#FFFFFF' }} />
           </div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 700, margin: 0, letterSpacing: '0.3px' }}>
-            CDIMS Enterprise
+          <h1 style={{ fontFamily: 'var(--font-body)', fontSize: '22px', fontWeight: 700, margin: 0, letterSpacing: '0.3px' }}>
+            CBAIMS Enterprise
           </h1>
-          <p style={{ fontSize: '11px', color: '#AEC0D2', margin: '5px 0 0 0', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            Collateral Document &amp; Insurance Management · Maker-Checker Controlled
+          <p style={{ fontSize: '11px', color: '#B9D3EB', margin: '5px 0 0 0', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Collateral &amp; Insurance Management · Maker-Checker Controlled
           </p>
         </div>
 
@@ -150,7 +150,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     e.preventDefault();
                     alert('Please contact the IT Helpdesk or your System Administrator to reset credentials.');
                   }}
-                  style={{ fontSize: '11px', color: '#B8863B', textDecoration: 'none', fontWeight: 600 }}
+                  style={{ fontSize: '11px', color: '#7C5CFC', textDecoration: 'none', fontWeight: 600 }}
                 >
                   Forgot Password?
                 </a>
@@ -203,7 +203,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 marginTop: '8px',
               }}
             >
-              {loading ? 'Authenticating...' : 'Sign In to CDIMS'}
+              {loading ? 'Authenticating...' : 'Sign In to CBAIMS'}
             </button>
           </form>
 

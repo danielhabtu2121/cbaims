@@ -1,2 +1,4 @@
+com\bank\cims\PolicyLifecycleIntegrationTest.class
 com\bank\cims\DashboardAuthorizationIntegrationTest.class
 com\bank\cims\CimsBusinessLogicIntegrationTest.class
+com\bank\cims\HierarchicalDashboardIntegrationTest.class

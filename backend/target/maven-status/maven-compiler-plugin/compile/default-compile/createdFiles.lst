@@ -11,6 +11,7 @@ com\bank\cims\repository\HolidayCalendarRepository.class
 com\bank\cims\controller\AdminConfigController.class
 com\bank\cims\service\ConfigurationService.class
 com\bank\cims\model\Delegation.class
+com\bank\cims\service\EffectiveInsuranceService.class
 com\bank\cims\CimsBackendApplication.class
 com\bank\cims\service\RoleHierarchyService.class
 com\bank\cims\repository\ExceptionRequestRepository.class
@@ -32,6 +33,8 @@ com\bank\cims\controller\DashboardController.class
 com\bank\cims\service\ValidationService.class
 com\bank\cims\service\CbsSyncService.class
 com\bank\cims\model\ReminderSchedule.class
+com\bank\cims\dto\DashboardAuthorizationScope.class
+com\bank\cims\dto\PaginatedPortfolioResponseDto.class
 com\bank\cims\repository\CimsExceptionRepository.class
 com\bank\cims\controller\CbsSyncController.class
 com\bank\cims\model\SystemParameter.class
@@ -62,7 +65,9 @@ com\bank\cims\dto\WorkflowActionResultDto.class
 com\bank\cims\model\HolidayCalendar.class
 com\bank\cims\repository\CbsCustomerRepository.class
 com\bank\cims\model\InsurancePolicy.class
+com\bank\cims\service\EffectiveInsuranceService$CollateralProtectionResult.class
 com\bank\cims\repository\MandatoryDocumentRuleRepository.class
+com\bank\cims\dto\KpiExplanationDto.class
 com\bank\cims\model\NotificationTemplate.class
 com\bank\cims\repository\WorkflowTaskRepository.class
 com\bank\cims\repository\AuditLogRepository.class
@@ -94,8 +99,10 @@ com\bank\cims\repository\DistrictHierarchyRepository.class
 com\bank\cims\repository\PolicyEndorsementRepository.class
 com\bank\cims\repository\SystemParameterRepository.class
 com\bank\cims\model\OwnershipTransfer.class
+com\bank\cims\service\CimsService$1.class
 com\bank\cims\service\ExposureCalculationService.class
 com\bank\cims\model\Notification.class
+com\bank\cims\model\DashboardSnapshot.class
 com\bank\cims\service\FlowableWorkflowService.class
 com\bank\cims\controller\WorkflowController.class
 com\bank\cims\dto\DashboardPortfolioRowDto.class
@@ -115,5 +122,6 @@ com\bank\cims\service\ReminderConfigurationService.class
 com\bank\cims\model\LoanCollateralLink.class
 com\bank\cims\service\cbs\CbsAdapter.class
 com\bank\cims\service\DashboardService$ResolvedScope.class
+com\bank\cims\repository\DashboardSnapshotRepository.class
 com\bank\cims\controller\CimsController.class
 com\bank\cims\repository\UserRepository.class

@@ -1,4 +1,4 @@
-// CIMS Full TypeScript Data Definitions
+// CBAIMS Full TypeScript Data Definitions
 
 export type RoleCode =
   | 'EXEC'
@@ -296,6 +296,8 @@ export interface InsurancePolicy {
   renewedFromPolicyId?: string;
   cancellationReason?: string;
   closureReason?: string;
+  reopeningReason?: string;
+  endorsementCount?: number;
   version: number;
   historyJson?: string;
   makerId?: string;
@@ -657,6 +659,12 @@ export interface ScopeBannerData {
   lockedBranch: boolean;
   serverDate: string;
   lastRefresh: string;
+  asOfDate?: string;
+  cbsSyncStatus?: string;
+  cbsLastSyncedAt?: string;
+  authorizedBranchesCount?: number;
+  scopedBranchesCount?: number;
+  scopeBoundaryDescription?: string;
 }
 
 export interface DashboardSummary {
@@ -673,11 +681,21 @@ export interface DashboardSummary {
   openExceptionsCount: number;
   pendingApprovalsCount: number;
   activeCollateralsCount: number;
+  totalCollateralsCount?: number;
   totalCustomersCount: number;
   totalFacilitiesCount: number;
   totalBranchesCount: number;
+  authorizedBranchesCount?: number;
+  scopedBranchesCount?: number;
   missingDocumentsCount: number;
   pendingDocumentVerificationsCount: number;
+  mandatoryDocumentsCompleteCount?: number;
+  missingMandatoryDocumentsCount?: number;
+  expiredDocumentsCount?: number;
+  expiringDocumentsCount?: number;
+  uninsuredCollateralsCount?: number;
+  underinsuredCollateralsCount?: number;
+  adequatelyInsuredCollateralsCount?: number;
   returnedTasksCount: number;
   overrideCount: number;
   insurerConcentrationMaxPct: number;
@@ -727,6 +745,7 @@ export interface DashboardPortfolioRow {
   insuredAmount: number;
   insuranceGap: number;
   coveragePct: number;
+  adequacyStatus?: string;
   policyId?: string;
   policyNumber?: string;
   insurerName?: string;
@@ -737,6 +756,70 @@ export interface DashboardPortfolioRow {
   workflowStatus: string;
   exceptionStatus: string;
   priority: string;
+}
+
+export interface KpiExplanation {
+  kpiKey: string;
+  kpiTitle: string;
+  formula: string;
+  definition: string;
+  scope: string;
+  asOfDate: string;
+  subUnitContributions: Array<{
+    name: string;
+    exposure: number;
+    insuranceRequired: number;
+    activeInsurance: number;
+    gap: number;
+    coveragePct: number;
+    collateralCount: number;
+  }>;
+  topRiskContributors: Array<{
+    id: string;
+    code: string;
+    name: string;
+    entityType: string;
+    branch: string;
+    segment: string;
+    borrowerName: string;
+    amount: number;
+    gap: number;
+    issue: string;
+    actionLabel: string;
+    routeTarget: string;
+  }>;
+  recommendedActions: string[];
+}
+
+export interface DashboardSnapshot {
+  id: string;
+  snapshotDate: string;
+  asOfDate: string;
+  capturedAt: string;
+  scopeLevel: string;
+  scopeId: string;
+  totalExposure: number;
+  collateralValue: number;
+  netSecurityValue: number;
+  requiredInsurance: number;
+  activeInsurance: number;
+  insuranceGap: number;
+  coveragePercentage: number;
+  uninsuredCollateralsCount: number;
+  underinsuredCollateralsCount: number;
+  expiredPoliciesCount: number;
+  openExceptionsCount: number;
+  totalFacilitiesCount: number;
+  totalCustomersCount: number;
+  totalCollateralsCount: number;
+}
+
+export interface PaginatedPortfolioResponse {
+  content: DashboardPortfolioRow[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
 }
 
 export interface DashboardWorkQueueItem {
