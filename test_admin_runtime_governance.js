@@ -2,7 +2,8 @@ const http = require('http');
 
 function request(method, path, body = null) {
   return new Promise((resolve, reject) => {
-    const url = new URL('http://localhost:8080' + path);
+    const port = process.env.PORT || '8082';
+    const url = new URL(`http://localhost:${port}` + path);
     const options = {
       hostname: url.hostname,
       port: url.port,
@@ -113,7 +114,7 @@ async function runTests() {
   // TEST 4: Execute Dynamic Expiry Reminders Engine
   try {
     console.log('\n4. Testing POST /api/admin/reminders/run...');
-    const res = await request('POST', '/api/admin/reminders/run');
+    const res = await request('POST', '/api/admin/reminders/run?userId=SYSADMIN');
     if (res.status === 200 && res.data.success) {
       console.log('   [PASS] Reminders engine executed successfully: ' + res.data.message);
       passed++;

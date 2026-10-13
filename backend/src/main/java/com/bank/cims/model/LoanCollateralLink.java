@@ -79,6 +79,15 @@ public class LoanCollateralLink {
     @Column(name = "linkage_type")
     private String linkageType = "Primary";
 
+    @Column(name = "customer_id")
+    private String customerId;
+
+    @Column(name = "relationship_status")
+    private String relationshipStatus = "Active";
+
+    @Column(name = "release_status")
+    private String releaseStatus = "Eligible";
+
     @Column(name = "utilization_pct")
     private double utilizationPct = 0;
 
@@ -102,6 +111,32 @@ public class LoanCollateralLink {
 
     @Column(name = "mod_no")
     private int modNo = 1;
+
+    private String source = "CBS_SIM";
+
+    @Column(name = "source_record_id")
+    private String sourceRecordId;
+
+    @Column(name = "cbs_sync_status")
+    private String cbsSyncStatus = "Synced";
+
+    @Column(name = "cbs_synced_at")
+    private String cbsSyncedAt;
+
+    @Column(name = "cbs_facility_ref")
+    private String cbsFacilityRef;
+
+    @Column(name = "cbs_loan_account")
+    private String cbsLoanAccount;
+
+    @Column(name = "cbs_collateral_ref")
+    private String cbsCollateralRef;
+
+    @Column(name = "facility_coverage_pct")
+    private double facilityCoveragePct = 0;
+
+    @Column(name = "collateral_allocation_pct")
+    private double collateralAllocationPct = 0;
 
     public LoanCollateralLink() {}
 
@@ -167,6 +202,7 @@ public class LoanCollateralLink {
     }
     public String getLinkageType() { return linkageType; }
     public void setLinkageType(String linkageType) { this.linkageType = linkageType; }
+
     public double getUtilizationPct() { return utilizationPct; }
     public void setUtilizationPct(double utilizationPct) { this.utilizationPct = utilizationPct; }
     public String getMakerId() { return makerId; }
@@ -183,4 +219,39 @@ public class LoanCollateralLink {
     public void setAuthStat(String authStat) { this.authStat = authStat; }
     public int getModNo() { return modNo; }
     public void setModNo(int modNo) { this.modNo = modNo; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
+    public String getSourceRecordId() { return sourceRecordId; }
+    public void setSourceRecordId(String sourceRecordId) { this.sourceRecordId = sourceRecordId; }
+    public String getCbsSyncStatus() { return cbsSyncStatus; }
+    public void setCbsSyncStatus(String cbsSyncStatus) { this.cbsSyncStatus = cbsSyncStatus; }
+    public String getCbsSyncedAt() { return cbsSyncedAt; }
+    public void setCbsSyncedAt(String cbsSyncedAt) { this.cbsSyncedAt = cbsSyncedAt; }
+    public String getCustomerId() { return customerId; }
+    public void setCustomerId(String customerId) { this.customerId = customerId; }
+    public String getRelationshipStatus() { return relationshipStatus != null ? relationshipStatus : "Active"; }
+    public void setRelationshipStatus(String relationshipStatus) { this.relationshipStatus = relationshipStatus; }
+    public String getReleaseStatus() { return releaseStatus != null ? releaseStatus : "Eligible"; }
+    public void setReleaseStatus(String releaseStatus) { this.releaseStatus = releaseStatus; }
+    public double getLinkedPercentage() { return linkedPercent; }
+    public void setLinkedPercentage(double linkedPercentage) { 
+        this.linkedPercent = linkedPercentage; 
+        this.collateralAllocationPct = linkedPercentage;
+    }
+    public double getUtilizationPercentage() { return utilizationPct; }
+    public void setUtilizationPercentage(double utilizationPercentage) { this.utilizationPct = utilizationPercentage; }
+
+    public String getCbsFacilityRef() { return cbsFacilityRef; }
+    public void setCbsFacilityRef(String cbsFacilityRef) { this.cbsFacilityRef = cbsFacilityRef; }
+    public String getCbsLoanAccount() { return cbsLoanAccount; }
+    public void setCbsLoanAccount(String cbsLoanAccount) { this.cbsLoanAccount = cbsLoanAccount; }
+    public String getCbsCollateralRef() { return cbsCollateralRef; }
+    public void setCbsCollateralRef(String cbsCollateralRef) { this.cbsCollateralRef = cbsCollateralRef; }
+    public double getFacilityCoveragePct() { return facilityCoveragePct; }
+    public void setFacilityCoveragePct(double facilityCoveragePct) { this.facilityCoveragePct = facilityCoveragePct; }
+    public double getCollateralAllocationPct() { return collateralAllocationPct > 0 ? collateralAllocationPct : linkedPercent; }
+    public void setCollateralAllocationPct(double collateralAllocationPct) { 
+        this.collateralAllocationPct = collateralAllocationPct; 
+        this.linkedPercent = collateralAllocationPct;
+    }
 }

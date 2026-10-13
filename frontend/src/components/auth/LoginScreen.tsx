@@ -64,7 +64,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         {/* Brand Header */}
         <div
           style={{
-            backgroundColor: '#0E284E',
+            backgroundColor: '#00205B',
             padding: '28px 24px',
             textAlign: 'center',
             color: '#FFFFFF',
@@ -72,23 +72,37 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         >
           <div
             style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #8B6BFF 0%, #6D4FE0 100%)',
+              width: '88px',
+              height: '88px',
+              borderRadius: '16px',
+              backgroundColor: '#FFFFFF',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 12px auto',
+              margin: '0 auto 16px auto',
+              padding: '6px',
+              overflow: 'hidden',
             }}
           >
-            <Shield style={{ width: '28px', height: '28px', color: '#FFFFFF' }} />
+            <img
+              src="/dashen-logo.png"
+              alt="Dashen Bank Logo"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+              }}
+            />
           </div>
-          <h1 style={{ fontFamily: 'var(--font-body)', fontSize: '22px', fontWeight: 700, margin: 0, letterSpacing: '0.3px' }}>
-            CBAIMS Enterprise
+          <h1 style={{ fontFamily: 'var(--font-body)', fontSize: '20px', fontWeight: 800, margin: 0, letterSpacing: '0.4px' }}>
+            ዳሸን ባንክ · DASHEN BANK
           </h1>
-          <p style={{ fontSize: '11px', color: '#B9D3EB', margin: '5px 0 0 0', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            Collateral &amp; Insurance Management · Maker-Checker Controlled
+          <p style={{ fontSize: '11px', color: '#F7A800', fontWeight: 700, margin: '6px 0 0 0', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Collateral &amp; Bank Asset Insurance Management (CBAIMS)
+          </p>
+          <p style={{ fontSize: '10px', color: '#B9D3EB', margin: '4px 0 0 0' }}>
+            Always One Step Ahead · Enterprise Maker-Checker Controlled
           </p>
         </div>
 

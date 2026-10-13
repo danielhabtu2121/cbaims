@@ -211,6 +211,8 @@ export const UniversalPortfolioTable: React.FC<UniversalPortfolioTableProps> = (
 
               {showExtendedCols && (
                 <>
+                  <th style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700 }}>Allocated Exposure</th>
+                  <th style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700 }}>Allocated Security</th>
                   <th style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700 }}>Haircut %</th>
                   <th style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700 }}>Net Security</th>
                 </>
@@ -252,7 +254,7 @@ export const UniversalPortfolioTable: React.FC<UniversalPortfolioTableProps> = (
           <tbody>
             {paginatedRows.length === 0 ? (
               <tr>
-                <td colSpan={showExtendedCols ? 13 : 9} style={{ padding: '36px', textAlign: 'center', color: '#64748B' }}>
+                <td colSpan={showExtendedCols ? 15 : 9} style={{ padding: '36px', textAlign: 'center', color: '#64748B' }}>
                   <Shield style={{ width: '32px', height: '32px', color: '#CBD5E1', margin: '0 auto 8px auto' }} />
                   <div style={{ fontWeight: 600, fontSize: '13px' }}>No matching collateral records found in authorized scope.</div>
                   <div style={{ fontSize: '11px', marginTop: '4px' }}>Try clearing filters or switching business segments.</div>
@@ -300,9 +302,15 @@ export const UniversalPortfolioTable: React.FC<UniversalPortfolioTableProps> = (
                       {formatCurrency(r.marketValue)}
                     </td>
 
-                    {/* Extended Haircut / Net Security */}
+                    {/* Extended Allocation & Net Security Details */}
                     {showExtendedCols && (
                       <>
+                        <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 600, color: '#0E284E' }}>
+                          {formatCurrency(r.allocatedExposure ?? r.outstandingExposure)}
+                        </td>
+                        <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 600, color: '#0E284E' }}>
+                          {formatCurrency(r.allocatedSecurity)}
+                        </td>
                         <td style={{ padding: '12px 10px', textAlign: 'right', color: '#64748B' }}>
                           {r.haircut}%
                         </td>

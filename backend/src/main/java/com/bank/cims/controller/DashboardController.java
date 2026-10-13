@@ -284,6 +284,25 @@ public class DashboardController {
                 .body(csv);
     }
 
+    @GetMapping("/search")
+    public ResponseEntity<EnterpriseSearchResponseDto> search(
+            @RequestParam String q,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String segment,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String branch) {
+        return ResponseEntity.ok(dashboardService.performEnterpriseGlobalSearch(q, userId, segment, district, branch));
+    }
+
+    @GetMapping("/risk-concentration")
+    public ResponseEntity<EnterpriseRiskConcentrationDto> getRiskConcentration(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String segment,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String branch) {
+        return ResponseEntity.ok(dashboardService.getEnterpriseRiskConcentration(userId, segment, district, branch));
+    }
+
     // =========================================================================
     // PROGRESSIVE HIERARCHICAL DRILL-DOWN ENDPOINTS
     // =========================================================================

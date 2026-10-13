@@ -13,6 +13,8 @@ public class DashboardSummaryDto {
     private BigDecimal totalValidActiveInsurance;
     private BigDecimal totalInsuranceGap;
     private double insuranceCoveragePct;
+    private double insuranceComplianceRate;
+    private long insuranceRequiredCollateralsCount;
     private long expiredPoliciesCount;
     private long policiesExpiringWithin30Days;
     private long openExceptionsCount;
@@ -21,8 +23,11 @@ public class DashboardSummaryDto {
 
     // Insurance status breakdowns
     private long uninsuredCollateralsCount;
+    private BigDecimal uninsuredCollateralsMarketValue = BigDecimal.ZERO;
     private long underinsuredCollateralsCount;
+    private BigDecimal underinsuredCollateralsGap = BigDecimal.ZERO;
     private long adequatelyInsuredCollateralsCount;
+    private long policiesDueWithin7DaysCount;
 
     // Documentation health metrics (replacing verification workflow)
     private long mandatoryDocumentsCompleteCount;
@@ -38,9 +43,15 @@ public class DashboardSummaryDto {
     private long scopedBranchesCount;
 
     // Workflow / Operations
+    private long renewalsInProgressCount;
     private long returnedTasksCount;
     private long overrideCount;
     private double insurerConcentrationMaxPct;
+    private double actualTopInsurerExposurePct;
+    private String actualTopInsurerName = "";
+    private double configuredInsurerConcentrationLimitPct;
+    private BigDecimal totalAllocatedSecuredExposure = BigDecimal.ZERO;
+    private double minimumCoverageAdequacyPct = 100.0;
     private String systemDate;
     private String lastRefreshTimestamp;
 
@@ -51,6 +62,11 @@ public class DashboardSummaryDto {
     private long missingDocumentsCount = 0;
 
     public DashboardSummaryDto() {}
+
+    public BigDecimal getTotalAllocatedSecuredExposure() { return totalAllocatedSecuredExposure; }
+    public void setTotalAllocatedSecuredExposure(BigDecimal totalAllocatedSecuredExposure) { this.totalAllocatedSecuredExposure = totalAllocatedSecuredExposure; }
+    public double getMinimumCoverageAdequacyPct() { return minimumCoverageAdequacyPct; }
+    public void setMinimumCoverageAdequacyPct(double minimumCoverageAdequacyPct) { this.minimumCoverageAdequacyPct = minimumCoverageAdequacyPct; }
 
     public ScopeBannerDto getScopeBanner() { return scopeBanner; }
     public void setScopeBanner(ScopeBannerDto scopeBanner) { this.scopeBanner = scopeBanner; }
@@ -68,6 +84,10 @@ public class DashboardSummaryDto {
     public void setTotalInsuranceGap(BigDecimal totalInsuranceGap) { this.totalInsuranceGap = totalInsuranceGap; }
     public double getInsuranceCoveragePct() { return insuranceCoveragePct; }
     public void setInsuranceCoveragePct(double insuranceCoveragePct) { this.insuranceCoveragePct = insuranceCoveragePct; }
+    public double getInsuranceComplianceRate() { return insuranceComplianceRate; }
+    public void setInsuranceComplianceRate(double insuranceComplianceRate) { this.insuranceComplianceRate = insuranceComplianceRate; }
+    public long getInsuranceRequiredCollateralsCount() { return insuranceRequiredCollateralsCount; }
+    public void setInsuranceRequiredCollateralsCount(long insuranceRequiredCollateralsCount) { this.insuranceRequiredCollateralsCount = insuranceRequiredCollateralsCount; }
     public long getExpiredPoliciesCount() { return expiredPoliciesCount; }
     public void setExpiredPoliciesCount(long expiredPoliciesCount) { this.expiredPoliciesCount = expiredPoliciesCount; }
     public long getPoliciesExpiringWithin30Days() { return policiesExpiringWithin30Days; }
@@ -112,6 +132,20 @@ public class DashboardSummaryDto {
     public void setSystemDate(String systemDate) { this.systemDate = systemDate; }
     public String getLastRefreshTimestamp() { return lastRefreshTimestamp; }
     public void setLastRefreshTimestamp(String lastRefreshTimestamp) { this.lastRefreshTimestamp = lastRefreshTimestamp; }
+    public long getPoliciesDueWithin7DaysCount() { return policiesDueWithin7DaysCount; }
+    public void setPoliciesDueWithin7DaysCount(long policiesDueWithin7DaysCount) { this.policiesDueWithin7DaysCount = policiesDueWithin7DaysCount; }
+    public BigDecimal getUninsuredCollateralsMarketValue() { return uninsuredCollateralsMarketValue; }
+    public void setUninsuredCollateralsMarketValue(BigDecimal uninsuredCollateralsMarketValue) { this.uninsuredCollateralsMarketValue = uninsuredCollateralsMarketValue; }
+    public BigDecimal getUnderinsuredCollateralsGap() { return underinsuredCollateralsGap; }
+    public void setUnderinsuredCollateralsGap(BigDecimal underinsuredCollateralsGap) { this.underinsuredCollateralsGap = underinsuredCollateralsGap; }
+    public long getRenewalsInProgressCount() { return renewalsInProgressCount; }
+    public void setRenewalsInProgressCount(long renewalsInProgressCount) { this.renewalsInProgressCount = renewalsInProgressCount; }
+    public double getActualTopInsurerExposurePct() { return actualTopInsurerExposurePct; }
+    public void setActualTopInsurerExposurePct(double actualTopInsurerExposurePct) { this.actualTopInsurerExposurePct = actualTopInsurerExposurePct; }
+    public String getActualTopInsurerName() { return actualTopInsurerName; }
+    public void setActualTopInsurerName(String actualTopInsurerName) { this.actualTopInsurerName = actualTopInsurerName; }
+    public double getConfiguredInsurerConcentrationLimitPct() { return configuredInsurerConcentrationLimitPct; }
+    public void setConfiguredInsurerConcentrationLimitPct(double configuredInsurerConcentrationLimitPct) { this.configuredInsurerConcentrationLimitPct = configuredInsurerConcentrationLimitPct; }
     public long getPendingDocumentVerificationsCount() { return pendingDocumentVerificationsCount; }
     public void setPendingDocumentVerificationsCount(long pendingDocumentVerificationsCount) { this.pendingDocumentVerificationsCount = pendingDocumentVerificationsCount; }
     public long getMissingDocumentsCount() { return missingDocumentsCount; }

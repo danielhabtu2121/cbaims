@@ -142,14 +142,14 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
             </div>
           </div>
 
-          {/* KPI 7: Insurance Coverage % */}
+          {/* KPI 7: Insurance Compliance Rate */}
           <div style={kpiCardStyle}>
-            <div style={kpiLabelStyle}>Insurance Coverage %</div>
-            <div style={{ fontSize: '22px', fontWeight: 800, color: summary.insuranceCoveragePct >= 100 ? '#15803D' : '#D97706', marginTop: '6px' }}>
-              {summary.insuranceCoveragePct}%
+            <div style={kpiLabelStyle}>Insurance Compliance Rate</div>
+            <div style={{ fontSize: '22px', fontWeight: 800, color: (summary.insuranceComplianceRate ?? summary.insuranceCoveragePct) >= 100 ? '#15803D' : '#D97706', marginTop: '6px' }}>
+              {(summary.insuranceComplianceRate ?? summary.insuranceCoveragePct)}%
             </div>
             <div style={{ fontSize: '11px', color: '#64748B', marginTop: '4px' }}>
-              Benchmark: 100% adequate
+              (Adequate ÷ Required Records) × 100
             </div>
           </div>
 
@@ -238,7 +238,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip formatter={(val: any, name: any) => [`${Number(val).toLocaleString()} Collaterals`, name || 'Status']} />
                 <Legend verticalAlign="bottom" height={36} />
               </PieChart>
             </ResponsiveContainer>
@@ -260,7 +260,10 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="segment" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(val: any) => formatCurrency(Number(val))} />
+                <Tooltip
+                  formatter={(val: any, name: any) => [formatCurrency(Number(val)), name]}
+                  labelFormatter={(label) => `Segment: ${label}`}
+                />
                 <Legend verticalAlign="bottom" height={36} />
                 <Bar dataKey="collateralValue" name="Collateral Value" fill="#0E284E" />
                 <Bar dataKey="insuredCoverage" name="Insured Cover" fill="#15803D" />
@@ -292,7 +295,10 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 10 }} />
                 <YAxis dataKey="district" type="category" tick={{ fontSize: 10 }} />
-                <Tooltip />
+                <Tooltip
+                  formatter={(val: any) => [`${Number(val).toFixed(1)}%`, 'Compliance Rate']}
+                  labelFormatter={(label) => `District: ${label}`}
+                />
                 <Legend verticalAlign="bottom" height={36} />
                 <Bar dataKey="compliancePct" name="Compliance %" fill="#2563EB" />
               </BarChart>
@@ -315,7 +321,10 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="bucket" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip />
+                <Tooltip
+                  formatter={(val: any) => [`${Number(val).toLocaleString()} Policies`, 'Policy Volume']}
+                  labelFormatter={(label) => `Aging Bucket: ${label}`}
+                />
                 <Bar dataKey="count" name="Policies Count">
                   {(charts.expiryPipeline || []).map((entry, idx) => (
                     <Cell key={`bar-${idx}`} fill={entry.color || '#0E284E'} />
@@ -344,7 +353,10 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="category" tick={{ fontSize: 9 }} />
                 <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip />
+                <Tooltip
+                  formatter={(val: any) => [`${Number(val).toLocaleString()} Assets`, 'Pledged Assets']}
+                  labelFormatter={(label) => `Category: ${label}`}
+                />
                 <Bar dataKey="count" name="Count" fill="#0E284E" />
               </BarChart>
             </ResponsiveContainer>
@@ -366,7 +378,10 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="status" tick={{ fontSize: 9 }} />
                 <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip />
+                <Tooltip
+                  formatter={(val: any) => [`${Number(val).toLocaleString()} Tasks`, 'Task Count']}
+                  labelFormatter={(label) => `Workflow Status: ${label}`}
+                />
                 <Bar dataKey="count" name="Tasks" fill="#2C6295" />
               </BarChart>
             </ResponsiveContainer>
@@ -397,7 +412,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
                     <Cell key={`doc-${idx}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip formatter={(val: any, name: any) => [`${Number(val).toLocaleString()} Documents`, name || 'Status']} />
                 <Legend verticalAlign="bottom" height={28} />
               </PieChart>
             </ResponsiveContainer>

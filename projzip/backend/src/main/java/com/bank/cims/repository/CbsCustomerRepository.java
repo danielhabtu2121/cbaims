@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface CbsCustomerRepository extends JpaRepository<CbsCustomer, String> {
     Optional<CbsCustomer> findByCif(String cif);
+    Optional<CbsCustomer> findByCifIgnoreCase(String cif);
 }

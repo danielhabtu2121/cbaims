@@ -9,6 +9,7 @@ interface EnterpriseScopeHeaderProps {
   lastRefresh?: string;
   cbsSyncStatus?: string;
   cbsLastSyncedAt?: string;
+  cbsFreshnessMessage?: string;
   authorizedBranchesCount?: number;
   scopedBranchesCount?: number;
   totalBranchesCount?: number;
@@ -23,8 +24,9 @@ export const EnterpriseScopeHeader: React.FC<EnterpriseScopeHeaderProps> = ({
   authorizedRole,
   asOfDate,
   lastRefresh,
-  cbsSyncStatus = 'Synced',
+  cbsSyncStatus,
   cbsLastSyncedAt,
+  cbsFreshnessMessage,
   authorizedBranchesCount,
   scopedBranchesCount,
   totalBranchesCount,
@@ -32,7 +34,7 @@ export const EnterpriseScopeHeader: React.FC<EnterpriseScopeHeaderProps> = ({
   onRefresh,
   isLoading = false,
 }) => {
-  const isCbsSynced = cbsSyncStatus?.toLowerCase() === 'synced';
+  const hasSuccessfulCbsSync = !!cbsLastSyncedAt && cbsSyncStatus?.toLowerCase() !== 'not available' && cbsSyncStatus?.toLowerCase() !== 'failed';
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 text-slate-800">
@@ -62,39 +64,44 @@ export const EnterpriseScopeHeader: React.FC<EnterpriseScopeHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: 3-Timestamp strip, CBS Freshness, and Refresh Action */}
+        {/* Right: 3-Timestamp strip, CBS Freshness, and Refresh Action (§6: Current Scope, As-Of, Last Refreshed, CBS Data Freshness) */}
         <div className="flex items-center gap-3 flex-wrap self-start md:self-auto text-xs">
-          {/* CBS Data Freshness Indicator */}
+          {/* CBS Data Freshness Indicator (§6: NEVER fabricate CBS freshness) */}
           <div
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold transition-all ${
-              isCbsSynced
+              hasSuccessfulCbsSync
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 : 'bg-amber-50 text-amber-800 border-amber-200'
             }`}
-            title={`CBS Feed Sync Status: ${cbsSyncStatus} ${cbsLastSyncedAt ? `(Last synced: ${cbsLastSyncedAt})` : ''}`}
+            title={cbsFreshnessMessage || (hasSuccessfulCbsSync ? `CBS Last Successful Sync: ${cbsLastSyncedAt}` : 'No successful CBS synchronization recorded')}
           >
             <Database className="w-3.5 h-3.5" />
-            <span className={`w-1.5 h-1.5 rounded-full ${isCbsSynced ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${hasSuccessfulCbsSync ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
             <span>
-              {isCbsSynced ? 'CBS Current' : 'CBS Sync Pending'}
+              {hasSuccessfulCbsSync ? (
+                <>
+                  <span className="text-[10px] font-medium text-emerald-700">CBS Last Sync: </span>
+                  {cbsLastSyncedAt}
+                </>
+              ) : (
+                <>
+                  <span className="text-[10px] font-medium text-amber-700">CBS Freshness: </span>
+                  {cbsFreshnessMessage || 'Not synchronized'}
+                </>
+              )}
             </span>
-            {cbsLastSyncedAt && (
-              <span className="text-[10px] opacity-75 hidden sm:inline">
-                ({cbsLastSyncedAt.split('T')[0] || cbsLastSyncedAt})
-              </span>
-            )}
           </div>
 
           {/* As of Date */}
           <div className="flex items-center gap-1 text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
             <Calendar className="w-3.5 h-3.5 text-slate-400" />
-            <span>As of: <strong className="text-slate-800">{asOfDate || new Date().toISOString().split('T')[0]}</strong></span>
+            <span>As Of: <strong className="text-slate-800">{asOfDate || new Date().toISOString().split('T')[0]}</strong></span>
           </div>
 
           {/* Last Refreshed */}
           <div className="flex items-center gap-1 text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
             <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span>Refreshed: <strong className="text-slate-800">{lastRefresh || new Date().toLocaleTimeString()}</strong></span>
+            <span>Last Refreshed: <strong className="text-slate-800">{lastRefresh || new Date().toLocaleTimeString()}</strong></span>
           </div>
 
           {/* Manual Refresh Trigger */}

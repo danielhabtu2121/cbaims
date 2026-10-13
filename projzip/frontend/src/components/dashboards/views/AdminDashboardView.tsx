@@ -66,7 +66,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             <span style={{ fontSize: '11px', color: '#B9D3EB' }}>Live Engine &amp; Configuration State</span>
           </div>
           <h1 style={{ fontSize: '20px', fontWeight: 800, margin: 0, letterSpacing: '0.3px' }}>
-            CDIMS Platform Operations &amp; Configuration Hub
+            CBAIMS Platform Operations &amp; Configuration Hub
           </h1>
         </div>
 
@@ -138,7 +138,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             <CheckCircle style={{ width: '16px', height: '16px', color: '#16A34A' }} />
           </div>
           <div style={{ fontSize: '18px', fontWeight: 800, color: '#0E284E', marginTop: '4px' }}>
-            Flowable BPMN 2.0
+            Engine 2.0
           </div>
           <div style={{ fontSize: '11px', color: '#64748B' }}>{summary.pendingApprovalsCount} tasks in queue</div>
         </div>

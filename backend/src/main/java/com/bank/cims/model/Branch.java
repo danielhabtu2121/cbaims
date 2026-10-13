@@ -20,6 +20,9 @@ public class Branch {
     @Column(name = "parent_district_id")
     private String parentDistrictId;
     
+    @Column(name = "area_office")
+    private String areaOffice;
+
     @Column(name = "segment_ids", columnDefinition = "TEXT")
     private String segmentIds;
     
@@ -38,6 +41,8 @@ public class Branch {
     public void setType(String type) { this.type = type; }
     public String getParentDistrictId() { return parentDistrictId; }
     public void setParentDistrictId(String parentDistrictId) { this.parentDistrictId = parentDistrictId; }
+    public String getAreaOffice() { return areaOffice; }
+    public void setAreaOffice(String areaOffice) { this.areaOffice = areaOffice; }
     public String getSegmentIds() { return segmentIds; }
     public void setSegmentIds(String segmentIds) { this.segmentIds = segmentIds; }
     public boolean isActive() { return active; }

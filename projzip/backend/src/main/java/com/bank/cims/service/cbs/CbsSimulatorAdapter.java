@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 
 @Component("cbsSimulatorAdapter")
 public class CbsSimulatorAdapter implements CbsAdapter {
@@ -28,57 +29,71 @@ public class CbsSimulatorAdapter implements CbsAdapter {
     }
 
     @Override
-    public CbsCustomer fetchCustomerByCif(String cif) {
-        return cbsCustomerRepository.findByCif(cif).orElse(null);
+    public Optional<CbsCustomer> fetchCustomerByCif(String cif) {
+        if (cif == null || cif.isBlank()) return Optional.empty();
+        return cbsCustomerRepository.findByCifIgnoreCase(cif.trim())
+                .or(() -> cbsCustomerRepository.findByCif(cif.trim()))
+                .or(() -> cbsCustomerRepository.findById(cif.trim()));
+    }
+
+    @Override
+    public List<CbsFacility> fetchFacilities() {
+        return cbsFacilityRepository.findAll();
     }
 
     @Override
     public List<CbsFacility> fetchFacilitiesByCustomerCif(String customerCif) {
-        return cbsFacilityRepository.findByCustomerCif(customerCif);
+        if (customerCif == null || customerCif.isBlank()) return List.of();
+        return cbsFacilityRepository.findByCustomerCif(customerCif.trim());
+    }
+
+    @Override
+    public Optional<CbsFacility> fetchFacilityByLoanReference(String loanReference) {
+        if (loanReference == null || loanReference.isBlank()) return Optional.empty();
+        return cbsFacilityRepository.findByLoanRefNo(loanReference.trim())
+                .or(() -> cbsFacilityRepository.findByLineCode(loanReference.trim()))
+                .or(() -> cbsFacilityRepository.findById(loanReference.trim()));
+    }
+
+    @Override
+    public Optional<CbsFacility> fetchFacilityByLineCode(String lineCode) {
+        if (lineCode == null || lineCode.isBlank()) return Optional.empty();
+        return cbsFacilityRepository.findByLineCode(lineCode.trim())
+                .or(() -> cbsFacilityRepository.findByLoanRefNo(lineCode.trim()))
+                .or(() -> cbsFacilityRepository.findById(lineCode.trim()));
+    }
+
+    @Override
+    public List<CbsCollateral> fetchCollaterals() {
+        return cbsCollateralRepository.findAll();
     }
 
     @Override
     public List<CbsCollateral> fetchCollateralsByCustomerCif(String customerCif) {
-        return cbsCollateralRepository.findByCustomerCif(customerCif);
+        if (customerCif == null || customerCif.isBlank()) return List.of();
+        return cbsCollateralRepository.findByCustomerCif(customerCif.trim());
+    }
+
+    @Override
+    public Optional<CbsCollateral> fetchCollateralByCode(String collateralCode) {
+        if (collateralCode == null || collateralCode.isBlank()) return Optional.empty();
+        return cbsCollateralRepository.findByCollateralCode(collateralCode.trim())
+                .or(() -> cbsCollateralRepository.findById(collateralCode.trim()));
     }
 
     @Override
     public List<CbsAccCollLinkDtls> fetchAccountCollateralLinks(String accountNumber) {
-        return cbsAccCollLinkDtlsRepository.findByAccountNumber(accountNumber);
+        if (accountNumber == null || accountNumber.isBlank()) return List.of();
+        return cbsAccCollLinkDtlsRepository.findByAccountNumber(accountNumber.trim());
     }
 
     @Override
-    public CbsCustomer saveCustomer(CbsCustomer customer) {
-        return cbsCustomerRepository.save(customer);
+    public List<CbsAccCollLinkDtls> fetchAllAccountCollateralLinks() {
+        return cbsAccCollLinkDtlsRepository.findAll();
     }
 
     @Override
-    public CbsFacility saveFacility(CbsFacility facility) {
-        return cbsFacilityRepository.save(facility);
-    }
-
-    @Override
-    public CbsCollateral saveCollateral(CbsCollateral collateral) {
-        return cbsCollateralRepository.save(collateral);
-    }
-
-    @Override
-    public CbsAccCollLinkDtls saveLink(CbsAccCollLinkDtls link) {
-        return cbsAccCollLinkDtlsRepository.save(link);
-    }
-
-    @Override
-    public boolean syncCustomerToCims(String customerCif, String userId) {
-        return true;
-    }
-
-    @Override
-    public boolean syncFacilityToCims(String lineCodeOrLoanRef, String userId) {
-        return true;
-    }
-
-    @Override
-    public boolean syncCollateralToCims(String collateralCode, String userId) {
-        return true;
+    public CbsConnectionStatus checkConnectionStatus() {
+        return new CbsConnectionStatus("SIMULATOR", "AVAILABLE", "CBS Simulator is active and connected to cbs_sim schema.");
     }
 }

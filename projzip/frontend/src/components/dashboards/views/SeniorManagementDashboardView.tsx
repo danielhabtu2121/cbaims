@@ -167,11 +167,11 @@ export const SeniorManagementDashboardView: React.FC<SeniorManagementDashboardVi
         </div>
 
         <div style={kpiCardStyle}>
-          <div style={kpiLabelStyle}>Insurance Coverage %</div>
-          <div style={{ fontSize: '22px', fontWeight: 800, color: summary.insuranceCoveragePct >= 100 ? '#15803D' : '#D97706', marginTop: '4px' }}>
-            {summary.insuranceCoveragePct}%
+          <div style={kpiLabelStyle}>Insurance Compliance Rate</div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: (summary.insuranceComplianceRate ?? summary.insuranceCoveragePct) >= 100 ? '#15803D' : '#D97706', marginTop: '4px' }}>
+            {(summary.insuranceComplianceRate ?? summary.insuranceCoveragePct)}%
           </div>
-          <div style={{ fontSize: '11px', color: '#64748B' }}>Target benchmark 100%</div>
+          <div style={{ fontSize: '11px', color: '#64748B' }}>(Adequate ÷ Required) × 100</div>
         </div>
 
         <div style={{ ...kpiCardStyle, borderLeft: '4px solid #DC2626' }}>

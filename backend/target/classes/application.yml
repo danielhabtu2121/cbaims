@@ -1,5 +1,5 @@
 server:
-  port: 8082
+  port: 8001
 
 spring:
   main:
@@ -22,6 +22,18 @@ spring:
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration
+
+cims:
+  cbs:
+    mode: SIMULATOR
+    sync-mode: MANUAL
+    scheduled-interval-ms: 3600000
+    real:
+      enabled: false
+      base-url: ""
+      connect-timeout-ms: 5000
+      read-timeout-ms: 10000
+      authentication-type: "NONE"
 
 logging:
   level:

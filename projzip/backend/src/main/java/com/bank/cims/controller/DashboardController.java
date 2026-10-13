@@ -179,16 +179,18 @@ public class DashboardController {
 
     @GetMapping("/history")
     public ResponseEntity<Map<String, Object>> getHistory(
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false, defaultValue = "BANK") String scopeLevel,
             @RequestParam(required = false, defaultValue = "ALL") String scopeId) {
-        return ResponseEntity.ok(dashboardService.getHistoricalSnapshots(scopeLevel, scopeId));
+        return ResponseEntity.ok(dashboardService.getHistoricalSnapshots(scopeLevel, scopeId, userId));
     }
 
     @GetMapping("/snapshots")
     public ResponseEntity<Map<String, Object>> getSnapshots(
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false, defaultValue = "BANK") String scopeLevel,
             @RequestParam(required = false, defaultValue = "ALL") String scopeId) {
-        return ResponseEntity.ok(dashboardService.getHistoricalSnapshots(scopeLevel, scopeId));
+        return ResponseEntity.ok(dashboardService.getHistoricalSnapshots(scopeLevel, scopeId, userId));
     }
 
     @PostMapping("/snapshots/capture")
@@ -280,6 +282,25 @@ public class DashboardController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"CDIMS_Portfolio_Export.csv\"")
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .body(csv);
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<EnterpriseSearchResponseDto> search(
+            @RequestParam String q,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String segment,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String branch) {
+        return ResponseEntity.ok(dashboardService.performEnterpriseGlobalSearch(q, userId, segment, district, branch));
+    }
+
+    @GetMapping("/risk-concentration")
+    public ResponseEntity<EnterpriseRiskConcentrationDto> getRiskConcentration(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String segment,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String branch) {
+        return ResponseEntity.ok(dashboardService.getEnterpriseRiskConcentration(userId, segment, district, branch));
     }
 
     // =========================================================================

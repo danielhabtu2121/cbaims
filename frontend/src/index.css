@@ -161,13 +161,24 @@ h4 {
 .btn-ghost {
   background: transparent;
   border: 1px solid transparent;
-  color: rgba(255, 255, 255, 0.85);
+  color: inherit;
   font-weight: 600;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-ghost:not([class*="text-"]) {
+  color: var(--blue-700);
 }
 
 .btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.10);
+  background: var(--blue-50);
+}
+
+/* For dark surfaces where btn-ghost is used with text-white */
+.btn-ghost.text-white:hover,
+[class*="bg-[#102E4A]"] .btn-ghost:hover,
+[class*="bg-[#00205B]"] .btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .btn-accent {
@@ -280,4 +291,102 @@ table tbody tr:hover {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #A9B7C6;
+}
+
+/* ---------- Document In-Browser Preview Styles ---------- */
+.docx-render-target {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  width: 100% !important;
+}
+
+.docx-wrapper > section.docx {
+  background: #ffffff !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22) !important;
+  margin-bottom: 1.5rem !important;
+  color: #1a1a1a !important;
+  border-radius: 4px;
+  max-width: 100% !important;
+}
+
+.mammoth-doc-content {
+  background: #ffffff;
+  color: #1e293b;
+  padding: 2.5rem 3rem;
+  max-width: 850px;
+  width: 100%;
+  margin: 0 auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  line-height: 1.7;
+  font-size: 13.5px;
+}
+
+.mammoth-doc-content h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 0.35rem;
+}
+
+.mammoth-doc-content h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.mammoth-doc-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #334155;
+  margin-top: 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.mammoth-doc-content p {
+  margin-bottom: 0.75rem;
+}
+
+.mammoth-doc-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 12px;
+}
+
+.mammoth-doc-content table th,
+.mammoth-doc-content table td {
+  border: 1px solid #cbd5e1;
+  padding: 7px 12px;
+  text-align: left;
+}
+
+.mammoth-doc-content table th {
+  background-color: #f1f5f9;
+  font-weight: 700;
+}
+
+.mammoth-doc-content img {
+  max-width: 100%;
+  height: auto;
+  margin: 1.25rem auto;
+  display: block;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }

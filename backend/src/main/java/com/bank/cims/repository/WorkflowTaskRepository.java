@@ -14,4 +14,5 @@ public interface WorkflowTaskRepository extends JpaRepository<WorkflowTask, Stri
     List<WorkflowTask> findByMakerIdIgnoreCase(String makerId);
     List<WorkflowTask> findByMakerId(String makerId);
     List<WorkflowTask> findByEntityTypeAndEntityId(String entityType, String entityId);
+    List<WorkflowTask> findByEntityId(String entityId);
 }

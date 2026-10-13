@@ -20,7 +20,12 @@ public class GlobalExceptionHandler {
     }
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String,Object>> conflict(IllegalStateException e){return build(HttpStatus.CONFLICT,e.getMessage());}
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String,Object>> generic(Exception e){return build(HttpStatus.INTERNAL_SERVER_ERROR,"The operation could not be completed. Please review the server log for details.");}
+    public ResponseEntity<Map<String,Object>> generic(Exception e){
+        log.error("Unhandled exception caught by GlobalExceptionHandler: ", e);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR,"The operation could not be completed: " + e.getMessage());
+    }
     private ResponseEntity<Map<String,Object>> build(HttpStatus status,String message){Map<String,Object> m=new LinkedHashMap<>();m.put("timestamp", LocalDateTime.now().toString());m.put("status",status.value());m.put("error",message==null?status.getReasonPhrase():message);return ResponseEntity.status(status).body(m);}
 }

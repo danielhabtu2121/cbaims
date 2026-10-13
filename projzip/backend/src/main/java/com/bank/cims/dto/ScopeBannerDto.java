@@ -21,8 +21,9 @@ public class ScopeBannerDto {
     private String lastRefresh;
 
     // CBS freshness
-    private String cbsSyncStatus = "Current";
+    private String cbsSyncStatus = "Not Available";
     private String cbsLastSyncedAt;
+    private String cbsFreshnessMessage = "No successful CBS synchronization recorded";
 
     // Scope counts & boundary explanation
     private long authorizedBranchesCount;
@@ -67,6 +68,8 @@ public class ScopeBannerDto {
     public void setCbsSyncStatus(String cbsSyncStatus) { this.cbsSyncStatus = cbsSyncStatus; }
     public String getCbsLastSyncedAt() { return cbsLastSyncedAt; }
     public void setCbsLastSyncedAt(String cbsLastSyncedAt) { this.cbsLastSyncedAt = cbsLastSyncedAt; }
+    public String getCbsFreshnessMessage() { return cbsFreshnessMessage; }
+    public void setCbsFreshnessMessage(String cbsFreshnessMessage) { this.cbsFreshnessMessage = cbsFreshnessMessage; }
     public long getAuthorizedBranchesCount() { return authorizedBranchesCount; }
     public void setAuthorizedBranchesCount(long authorizedBranchesCount) { this.authorizedBranchesCount = authorizedBranchesCount; }
     public long getScopedBranchesCount() { return scopedBranchesCount; }

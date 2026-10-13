@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -62,6 +63,19 @@ public class WorkflowExecutionService {
     @Autowired
     private PolicyEndorsementRepository policyEndorsementRepository;
 
+    @Autowired
+    private ApprovalHierarchyConfigRepository approvalHierarchyConfigRepository;
+
+    @Autowired
+    private BusinessCalendarService businessCalendarService;
+
+    @Autowired
+    private PolicyHistoryRepository policyHistoryRepository;
+
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private NotificationService notificationService;
+
     @Transactional
     public WorkflowActionResultDto submitToWorkflow(String entityType, String entityId, String actionType, String makerId, String remarks, String payloadJson) {
         String now = LocalDateTime.now().toString();
@@ -97,6 +111,16 @@ public class WorkflowExecutionService {
         task.setCurrentStep("Checker Review");
         task.setRemarks(remarks != null ? remarks : "Submitted for approval");
         task.setPayloadDiffJson(payloadJson);
+
+        ApprovalHierarchyConfig cfg = findHierarchyConfig(actionType, entityType);
+        if (cfg != null && cfg.getSlaHours() > 0) {
+            int workingDays = Math.max(1, (int) Math.ceil(cfg.getSlaHours() / 8.0));
+            LocalDate dueDay = businessCalendarService.addWorkingDays(LocalDate.now(), workingDays);
+            task.setSlaDueAt(dueDay.atTime(17, 0).toString());
+        } else {
+            task.setSlaDueAt(LocalDateTime.now().plusHours(24).toString());
+        }
+
         task = workflowTaskRepository.save(task);
 
         // Update entity maker fields
@@ -138,7 +162,44 @@ public class WorkflowExecutionService {
         String entityId = task.getEntityId();
         String finalEntityStatus = "Active";
 
-        // Perform entity mutation
+        // Multi-level approval hierarchy check (§ SysAdmin Approval Workflows)
+        ApprovalHierarchyConfig cfg = findHierarchyConfig(task.getActionType(), entityType);
+        boolean requiresLevel2 = cfg != null && cfg.getApprovalLevels() == 2 && !"Level 2 Review".equalsIgnoreCase(task.getCurrentStep())
+                && !"POLICY_CANCELLATION".equalsIgnoreCase(task.getActionType());
+
+        if (requiresLevel2) {
+            String nextRole = cfg.getLevel2Role() != null && !cfg.getLevel2Role().isBlank() ? cfg.getLevel2Role() : "HODEPT";
+            task.setCurrentStep("Level 2 Review");
+            task.setCandidateRole(nextRole);
+            task.setStatus("Pending");
+            task.setRemarks(comments != null ? comments : "Level 1 Approved by " + checkerId + "; forwarded to " + nextRole);
+            workflowTaskRepository.save(task);
+
+            ApprovalHistory history = new ApprovalHistory();
+            history.setId("hist-" + UUID.randomUUID().toString().substring(0, 8));
+            history.setWorkflowTaskId(task.getId());
+            history.setActorId(checkerId);
+            history.setActorRole(checkerRole != null ? checkerRole : "BRMGR");
+            history.setStepName("Level 1 Review");
+            history.setDecision("Approved");
+            history.setComments(comments != null ? comments : "Level 1 Approved; forwarded to Level 2 (" + nextRole + ")");
+            history.setDecidedAt(now);
+            approvalHistoryRepository.save(history);
+
+            createAuditLog(checkerId, checkerRole, "WORKFLOW_APPROVE_LEVEL1", entityType, entityId, "currentStep", "Checker Review", "Level 2 Review",
+                    "Level 1 approval by " + checkerId + "; forwarded to " + nextRole + ". Comments: " + comments);
+
+            WorkflowActionResultDto res = new WorkflowActionResultDto(true, "Level 1 approval granted. Escalated to " + nextRole + " for secondary authorization.");
+            res.setWorkflowTaskId(taskId);
+            res.setEntityType(entityType);
+            res.setEntityId(entityId);
+            res.setAction("APPROVE_LEVEL1");
+            res.setEntityStatus("Pending Level 2");
+            res.setWorkflowStatus("Pending");
+            return res;
+        }
+
+        // Perform entity mutation (Level 1 for single-level, or Level 2 final sign-off)
         if ("Collateral".equalsIgnoreCase(entityType)) {
             Collateral col = findCollateral(entityId);
             if (col != null) {
@@ -193,6 +254,7 @@ public class WorkflowExecutionService {
             InsurancePolicy pol = findInsurancePolicy(entityId);
             if (pol != null) {
                 if ("POLICY_RENEWAL".equalsIgnoreCase(task.getActionType())) {
+                    validationService.validatePolicyForActivation(pol);
                     pol.setAuthStat("A");
                     pol.setRecordStat("O");
                     pol.setCheckerId(checkerId);
@@ -203,6 +265,7 @@ public class WorkflowExecutionService {
                             safe(checkerId), safe(comments), now);
                     appendPolicyHistory(pol, appNote);
                     insurancePolicyRepository.save(pol);
+                    recordStructuredPolicyHistory(pol.getId(), "RENEWAL_APPROVED", "Pending Approval", "Active", pol.getVersion(), checkerId, comments, task.getId(), null);
 
                     if (pol.getRenewedFromPolicyId() != null) {
                         InsurancePolicy old = findInsurancePolicy(pol.getRenewedFromPolicyId());
@@ -213,10 +276,12 @@ public class WorkflowExecutionService {
                                     safe(pol.getId()), safe(pol.getPolicyNumber()), safe(checkerId), now);
                             appendPolicyHistory(old, oldNote);
                             insurancePolicyRepository.save(old);
+                            recordStructuredPolicyHistory(old.getId(), "RENEWED", "Active", "Renewed", old.getVersion(), checkerId, "Renewed into " + pol.getPolicyNumber(), task.getId(), null);
                         }
                     }
                     finalEntityStatus = "Active";
                 } else if ("POLICY_REPLACEMENT".equalsIgnoreCase(task.getActionType())) {
+                    validationService.validatePolicyForActivation(pol);
                     pol.setAuthStat("A");
                     pol.setRecordStat("O");
                     pol.setCheckerId(checkerId);
@@ -227,6 +292,7 @@ public class WorkflowExecutionService {
                             safe(checkerId), safe(comments), now);
                     appendPolicyHistory(pol, appNote);
                     insurancePolicyRepository.save(pol);
+                    recordStructuredPolicyHistory(pol.getId(), "REPLACEMENT_APPROVED", "Pending Approval", "Active", pol.getVersion(), checkerId, comments, task.getId(), null);
 
                     if (pol.getReplacesPolicyId() != null) {
                         InsurancePolicy old = findInsurancePolicy(pol.getReplacesPolicyId());
@@ -237,6 +303,7 @@ public class WorkflowExecutionService {
                                     safe(pol.getId()), safe(pol.getPolicyNumber()), safe(checkerId), now);
                             appendPolicyHistory(old, oldNote);
                             insurancePolicyRepository.save(old);
+                            recordStructuredPolicyHistory(old.getId(), "REPLACED", "Active", "Replaced", old.getVersion(), checkerId, "Replaced by " + pol.getPolicyNumber(), task.getId(), null);
                         }
                     }
                     finalEntityStatus = "Active";
@@ -251,6 +318,7 @@ public class WorkflowExecutionService {
                             safe(pol.getCancellationReason()), safe(checkerId), safe(comments), now);
                     appendPolicyHistory(pol, appNote);
                     insurancePolicyRepository.save(pol);
+                    recordStructuredPolicyHistory(pol.getId(), "CANCELLATION_APPROVED", "Cancellation Pending", "Cancelled", pol.getVersion(), checkerId, pol.getCancellationReason(), task.getId(), null);
                     finalEntityStatus = "Cancelled";
                 } else if ("POLICY_CLOSURE".equalsIgnoreCase(task.getActionType())) {
                     pol.setAuthStat("A");
@@ -263,9 +331,10 @@ public class WorkflowExecutionService {
                             safe(pol.getClosureReason()), safe(checkerId), safe(comments), now);
                     appendPolicyHistory(pol, appNote);
                     insurancePolicyRepository.save(pol);
+                    recordStructuredPolicyHistory(pol.getId(), "CLOSURE_APPROVED", "Closure Pending", "Closed", pol.getVersion(), checkerId, pol.getClosureReason(), task.getId(), null);
                     finalEntityStatus = "Closed";
                 } else if ("POLICY_REOPEN".equalsIgnoreCase(task.getActionType())) {
-                    validationService.validatePolicy(pol);
+                    validationService.validatePolicyForActivation(pol);
                     pol.setAuthStat("A");
                     pol.setRecordStat("O");
                     pol.setCheckerId(checkerId);
@@ -276,6 +345,7 @@ public class WorkflowExecutionService {
                             safe(pol.getReopeningReason()), safe(checkerId), safe(comments), now);
                     appendPolicyHistory(pol, appNote);
                     insurancePolicyRepository.save(pol);
+                    recordStructuredPolicyHistory(pol.getId(), "REOPEN_APPROVED", "Reopen Pending", "Active", pol.getVersion(), checkerId, pol.getReopeningReason(), task.getId(), null);
                     finalEntityStatus = "Active";
                 } else if ("POLICY_ENDORSEMENT".equalsIgnoreCase(task.getActionType())) {
                     pol.setAuthStat("A");
@@ -298,8 +368,10 @@ public class WorkflowExecutionService {
                             safe(checkerId), safe(comments), now);
                     appendPolicyHistory(pol, appNote);
                     insurancePolicyRepository.save(pol);
+                    recordStructuredPolicyHistory(pol.getId(), "ENDORSEMENT_APPROVED", pol.getStatus(), "Active", pol.getVersion(), checkerId, comments, task.getId(), null);
                     finalEntityStatus = "Active";
                 } else if ("POLICY_AMENDMENT".equalsIgnoreCase(task.getActionType())) {
+                    validationService.validatePolicyForActivation(pol);
                     pol.setAuthStat("A");
                     pol.setRecordStat("O");
                     pol.setCheckerId(checkerId);
@@ -310,8 +382,10 @@ public class WorkflowExecutionService {
                             pol.getVersion(), safe(checkerId), safe(comments), now);
                     appendPolicyHistory(pol, appNote);
                     insurancePolicyRepository.save(pol);
+                    recordStructuredPolicyHistory(pol.getId(), "AMENDMENT_APPROVED", "Amendment Pending", "Active", pol.getVersion(), checkerId, pol.getAmendmentReason() != null ? pol.getAmendmentReason() : comments, task.getId(), null);
                     finalEntityStatus = "Active";
                 } else {
+                    validationService.validatePolicyForActivation(pol);
                     pol.setAuthStat("A");
                     pol.setRecordStat("O");
                     pol.setCheckerId(checkerId);
@@ -322,6 +396,7 @@ public class WorkflowExecutionService {
                             safe(checkerId), safe(comments), now);
                     appendPolicyHistory(pol, appNote);
                     insurancePolicyRepository.save(pol);
+                    recordStructuredPolicyHistory(pol.getId(), "REGISTRATION_APPROVED", "Pending Approval", "Active", pol.getVersion(), checkerId, comments, task.getId(), null);
                     finalEntityStatus = "Active";
                 }
 
@@ -352,14 +427,64 @@ public class WorkflowExecutionService {
                 ownershipDocumentRepository.save(doc);
                 finalEntityStatus = "Verified";
             }
-        } else if ("Exception".equalsIgnoreCase(entityType) || "Exception Request".equalsIgnoreCase(entityType)) {
+        } else if ("Exception".equalsIgnoreCase(entityType) || "Exception Request".equalsIgnoreCase(entityType) || "CimsException".equalsIgnoreCase(entityType)) {
             CimsException exc = cimsExceptionRepository.findById(entityId).orElse(null);
             if (exc != null) {
                 exc.setStatus("Resolved");
                 exc.setResolvedBy(checkerId);
                 exc.setResolvedAt(now);
+                exc.setResolutionNotes("[AUTHORIZED OVERRIDE - Approved by " + checkerId + " (" + (checkerRole != null ? checkerRole : "Approver") + ")]: " +
+                        (comments != null && !comments.isBlank() ? comments : "Exception request approved by management"));
                 cimsExceptionRepository.save(exc);
                 finalEntityStatus = "Resolved";
+
+                // Step 8: Exception Approved -> Validation failure overridden -> Transaction resumes -> Normal workflow continues!
+                if ("Insurance Policy".equalsIgnoreCase(exc.getEntityType()) || "Policy".equalsIgnoreCase(exc.getEntityType())) {
+                    InsurancePolicy pol = findInsurancePolicy(exc.getEntityId());
+                    if (pol != null) {
+                        pol.setStatus("Pending Approval");
+                        pol.setAuthStat("U");
+                        pol.setRecordStat("U");
+                        String appNote = String.format(Locale.ROOT,
+                                "{\"event\":\"EXCEPTION_APPROVED_TRANSACTION_RESUMED\",\"exceptionId\":\"%s\",\"checkerId\":\"%s\",\"comments\":\"%s\",\"timestamp\":\"%s\"}",
+                                safe(exc.getId()), safe(checkerId), safe(comments), now);
+                        appendPolicyHistory(pol, appNote);
+                        insurancePolicyRepository.save(pol);
+
+                        // Submit to normal workflow for standard checker approval
+                        submitToWorkflow("Insurance Policy", pol.getId(), "POLICY_REGISTRATION",
+                                task.getMakerId(), "Policy registration resumed following exception approval: " + comments, null);
+                    }
+                } else if ("Collateral".equalsIgnoreCase(exc.getEntityType()) || "Collateral Asset".equalsIgnoreCase(exc.getEntityType())) {
+                    Collateral col = collateralRepository.findById(exc.getEntityId())
+                            .or(() -> collateralRepository.findByCode(exc.getEntityId()))
+                            .orElse(null);
+                    if (col != null) {
+                        col.setStatus("Pending Approval");
+                        col.setAuthStat("U");
+                        col.setRecordStat("U");
+                        collateralRepository.save(col);
+
+                        // Submit to normal workflow for standard checker authorization
+                        submitToWorkflow("Collateral", col.getId(), "COLLATERAL_REGISTRATION",
+                                task.getMakerId(), "Collateral registration resumed following exception approval: " + comments, null);
+                    }
+                }
+            }
+        } else if ("LoanCollateralLink".equalsIgnoreCase(entityType) || "Collateral Link".equalsIgnoreCase(entityType)
+                || "Collateral-to-Loan Link".equalsIgnoreCase(entityType) || "COLLATERAL_LINK".equalsIgnoreCase(entityType)
+                || "Link".equalsIgnoreCase(entityType) || "Relationship".equalsIgnoreCase(entityType)) {
+            LoanCollateralLink link = loanCollateralLinkRepository.findById(entityId).orElse(null);
+            if (link != null) {
+                link.setStatus("Active");
+                link.setRelationshipStatus("Active");
+                link.setAuthStat("A");
+                link.setRecordStat("O");
+                link.setCheckerId(checkerId);
+                link.setCheckerDtStamp(now);
+                loanCollateralLinkRepository.save(link);
+                finalEntityStatus = "Active";
+                exposureCalculationService.calculateExposureAndAdequacy(link.getCollateralId());
             }
         }
 
@@ -384,6 +509,25 @@ public class WorkflowExecutionService {
         // Audit Log
         createAuditLog(checkerId, checkerRole, "WORKFLOW_APPROVE", entityType, entityId, "status", "Pending", finalEntityStatus,
                 "Approved task " + taskId + " with comments: " + comments);
+
+        // Outbound Notification to Maker
+        if (notificationService != null && task.getMakerId() != null) {
+            try {
+                notificationService.sendNotification(
+                        "Email",
+                        "WORKFLOW_DECISION_APPROVED",
+                        task.getMakerId() + "@cims-bank.et",
+                        task.getMakerId(),
+                        "Dual-Control Authorized: " + task.getActionType() + " (" + entityId + ")",
+                        "Dear " + task.getMakerId() + ",\n\nYour transaction has been APPROVED by Checker " + checkerId + " (" + checkerRole + ").\n" +
+                        "• Entity: " + entityType + " (" + entityId + ")\n" +
+                        "• Decision: Approved\n" +
+                        "• Remarks: " + (comments != null ? comments : "Approved"),
+                        entityType,
+                        entityId
+                );
+            } catch (Exception ignored) {}
+        }
 
         WorkflowActionResultDto res = new WorkflowActionResultDto(true, "Transaction approved successfully.");
         res.setWorkflowTaskId(taskId);
@@ -410,7 +554,6 @@ public class WorkflowExecutionService {
         String entityType = task.getEntityType();
         String entityId = task.getEntityId();
 
-        // Revert entity to Draft / Needs Correction state
         if ("Collateral".equalsIgnoreCase(entityType)) {
             Collateral col = findCollateral(entityId);
             if (col != null) {
@@ -418,14 +561,66 @@ public class WorkflowExecutionService {
                 col.setRecordStat("U");
                 col.setStatus("Draft");
                 collateralRepository.save(col);
+
+                List<LoanCollateralLink> links = loanCollateralLinkRepository.findByCollateralId(col.getId());
+                for (LoanCollateralLink link : links) {
+                    if ("Pending Approval".equalsIgnoreCase(link.getStatus())) {
+                        link.setStatus("Draft");
+                        link.setAuthStat("U");
+                        link.setRecordStat("U");
+                        loanCollateralLinkRepository.save(link);
+                    }
+                }
             }
         } else if ("Insurance Policy".equalsIgnoreCase(entityType) || "Insurance".equalsIgnoreCase(entityType) || "Policy".equalsIgnoreCase(entityType)) {
             InsurancePolicy pol = findInsurancePolicy(entityId);
             if (pol != null) {
+                String prevStatus = pol.getStatus();
                 pol.setAuthStat("U");
                 pol.setRecordStat("U");
                 pol.setStatus("Draft");
                 insurancePolicyRepository.save(pol);
+                recordStructuredPolicyHistory(pol.getId(), "POLICY_RETURNED", prevStatus, "Draft", pol.getVersion(), checkerId, comments, task.getId(), null);
+            }
+        } else if ("Exception".equalsIgnoreCase(entityType) || "Exception Request".equalsIgnoreCase(entityType) || "CimsException".equalsIgnoreCase(entityType)) {
+            CimsException exc = cimsExceptionRepository.findById(entityId).orElse(null);
+            if (exc != null) {
+                exc.setStatus("Returned");
+                exc.setResolutionNotes("Returned for correction by " + checkerId + ": " + comments);
+                cimsExceptionRepository.save(exc);
+                if ("Insurance Policy".equalsIgnoreCase(exc.getEntityType()) || "Policy".equalsIgnoreCase(exc.getEntityType())) {
+                    InsurancePolicy pol = findInsurancePolicy(exc.getEntityId());
+                    if (pol != null) {
+                        pol.setStatus("Draft");
+                        pol.setAuthStat("U");
+                        pol.setRecordStat("U");
+                        appendPolicyHistory(pol, String.format(Locale.ROOT,
+                                "{\"event\":\"EXCEPTION_RETURNED_FOR_CORRECTION\",\"exceptionId\":\"%s\",\"checkerId\":\"%s\",\"comments\":\"%s\",\"timestamp\":\"%s\"}",
+                                safe(exc.getId()), safe(checkerId), safe(comments), now));
+                        insurancePolicyRepository.save(pol);
+                    }
+                } else if ("Collateral".equalsIgnoreCase(exc.getEntityType()) || "Collateral Asset".equalsIgnoreCase(exc.getEntityType())) {
+                    Collateral col = collateralRepository.findById(exc.getEntityId())
+                            .or(() -> collateralRepository.findByCode(exc.getEntityId()))
+                            .orElse(null);
+                    if (col != null) {
+                        col.setStatus("Draft");
+                        col.setAuthStat("U");
+                        col.setRecordStat("U");
+                        collateralRepository.save(col);
+                    }
+                }
+            }
+        } else if ("LoanCollateralLink".equalsIgnoreCase(entityType) || "Collateral Link".equalsIgnoreCase(entityType)
+                || "Collateral-to-Loan Link".equalsIgnoreCase(entityType) || "COLLATERAL_LINK".equalsIgnoreCase(entityType)
+                || "Link".equalsIgnoreCase(entityType) || "Relationship".equalsIgnoreCase(entityType)) {
+            LoanCollateralLink link = loanCollateralLinkRepository.findById(entityId).orElse(null);
+            if (link != null) {
+                link.setStatus("Draft");
+                link.setRelationshipStatus("Draft");
+                link.setAuthStat("U");
+                link.setRecordStat("U");
+                loanCollateralLinkRepository.save(link);
             }
         }
 
@@ -446,6 +641,25 @@ public class WorkflowExecutionService {
 
         createAuditLog(checkerId, checkerRole, "WORKFLOW_RETURN", entityType, entityId, "status", "Pending", "Draft",
                 "Returned to maker for corrections: " + comments);
+
+        // Outbound Notification to Maker
+        if (notificationService != null && task.getMakerId() != null) {
+            try {
+                notificationService.sendNotification(
+                        "Email",
+                        "WORKFLOW_DECISION_RETURNED",
+                        task.getMakerId() + "@cims-bank.et",
+                        task.getMakerId(),
+                        "Action Required: " + task.getActionType() + " (" + entityId + ") Returned for Correction",
+                        "Dear " + task.getMakerId() + ",\n\nYour transaction was RETURNED for correction by Checker " + checkerId + " (" + checkerRole + ").\n" +
+                        "• Entity: " + entityType + " (" + entityId + ")\n" +
+                        "• Return Reason: " + comments + "\n\n" +
+                        "Please update the record and resubmit for authorization.",
+                        entityType,
+                        entityId
+                );
+            } catch (Exception ignored) {}
+        }
 
         WorkflowActionResultDto res = new WorkflowActionResultDto(true, "Transaction returned to maker for correction.");
         res.setWorkflowTaskId(taskId);
@@ -472,7 +686,6 @@ public class WorkflowExecutionService {
         String entityType = task.getEntityType();
         String entityId = task.getEntityId();
 
-        // Mark entity permanently Rejected
         if ("Collateral".equalsIgnoreCase(entityType)) {
             Collateral col = findCollateral(entityId);
             if (col != null) {
@@ -480,10 +693,23 @@ public class WorkflowExecutionService {
                 col.setRecordStat("R");
                 col.setStatus("Rejected");
                 collateralRepository.save(col);
+
+                List<LoanCollateralLink> links = loanCollateralLinkRepository.findByCollateralId(col.getId());
+                for (LoanCollateralLink link : links) {
+                    if ("Pending Approval".equalsIgnoreCase(link.getStatus())) {
+                        link.setStatus("Rejected");
+                        link.setAuthStat("R");
+                        link.setRecordStat("R");
+                        link.setCheckerId(checkerId);
+                        link.setCheckerDtStamp(now);
+                        loanCollateralLinkRepository.save(link);
+                    }
+                }
             }
         } else if ("Insurance Policy".equalsIgnoreCase(entityType) || "Insurance".equalsIgnoreCase(entityType) || "Policy".equalsIgnoreCase(entityType)) {
             InsurancePolicy pol = findInsurancePolicy(entityId);
             if (pol != null) {
+                String prevStatus = pol.getStatus();
                 if ("POLICY_CANCELLATION".equalsIgnoreCase(task.getActionType()) || "Cancellation Pending".equalsIgnoreCase(pol.getStatus())) {
                     pol.setStatus("Active");
                     pol.setCancellationReason(null);
@@ -506,6 +732,51 @@ public class WorkflowExecutionService {
                         safe(task.getActionType()), safe(checkerId), safe(comments), now);
                 appendPolicyHistory(pol, rejNote);
                 insurancePolicyRepository.save(pol);
+                recordStructuredPolicyHistory(pol.getId(), "POLICY_REJECTED", prevStatus, pol.getStatus(), pol.getVersion(), checkerId, comments, task.getId(), null);
+            }
+        } else if ("Exception".equalsIgnoreCase(entityType) || "Exception Request".equalsIgnoreCase(entityType) || "CimsException".equalsIgnoreCase(entityType)) {
+            CimsException exc = cimsExceptionRepository.findById(entityId).orElse(null);
+            if (exc != null) {
+                exc.setStatus("Rejected");
+                exc.setResolvedBy(checkerId);
+                exc.setResolvedAt(now);
+                exc.setResolutionNotes("Exception rejected by management: " + comments);
+                cimsExceptionRepository.save(exc);
+                if ("Insurance Policy".equalsIgnoreCase(exc.getEntityType()) || "Policy".equalsIgnoreCase(exc.getEntityType())) {
+                    InsurancePolicy pol = findInsurancePolicy(exc.getEntityId());
+                    if (pol != null) {
+                        pol.setStatus("Draft");
+                        pol.setAuthStat("U");
+                        pol.setRecordStat("U");
+                        appendPolicyHistory(pol, String.format(Locale.ROOT,
+                                "{\"event\":\"EXCEPTION_REJECTED_RETURNED_TO_MAKER\",\"exceptionId\":\"%s\",\"checkerId\":\"%s\",\"comments\":\"%s\",\"timestamp\":\"%s\"}",
+                                safe(exc.getId()), safe(checkerId), safe(comments), now));
+                        insurancePolicyRepository.save(pol);
+                    }
+                } else if ("Collateral".equalsIgnoreCase(exc.getEntityType()) || "Collateral Asset".equalsIgnoreCase(exc.getEntityType())) {
+                    Collateral col = collateralRepository.findById(exc.getEntityId())
+                            .or(() -> collateralRepository.findByCode(exc.getEntityId()))
+                            .orElse(null);
+                    if (col != null) {
+                        col.setStatus("Draft");
+                        col.setAuthStat("U");
+                        col.setRecordStat("U");
+                        collateralRepository.save(col);
+                    }
+                }
+            }
+        } else if ("LoanCollateralLink".equalsIgnoreCase(entityType) || "Collateral Link".equalsIgnoreCase(entityType)
+                || "Collateral-to-Loan Link".equalsIgnoreCase(entityType) || "COLLATERAL_LINK".equalsIgnoreCase(entityType)
+                || "Link".equalsIgnoreCase(entityType) || "Relationship".equalsIgnoreCase(entityType)) {
+            LoanCollateralLink link = loanCollateralLinkRepository.findById(entityId).orElse(null);
+            if (link != null) {
+                link.setStatus("Rejected");
+                link.setRelationshipStatus("Rejected");
+                link.setAuthStat("R");
+                link.setRecordStat("R");
+                link.setCheckerId(checkerId);
+                link.setCheckerDtStamp(now);
+                loanCollateralLinkRepository.save(link);
             }
         }
 
@@ -527,6 +798,25 @@ public class WorkflowExecutionService {
 
         createAuditLog(checkerId, checkerRole, "WORKFLOW_REJECT", entityType, entityId, "status", "Pending", "Rejected",
                 "Permanently rejected transaction: " + comments);
+
+        // Outbound Notification to Maker
+        if (notificationService != null && task.getMakerId() != null) {
+            try {
+                notificationService.sendNotification(
+                        "Email",
+                        "WORKFLOW_DECISION_REJECTED",
+                        task.getMakerId() + "@cims-bank.et",
+                        task.getMakerId(),
+                        "Dual-Control Rejection Notice: " + task.getActionType() + " (" + entityId + ")",
+                        "Dear " + task.getMakerId() + ",\n\nYour transaction was REJECTED by Checker " + checkerId + " (" + checkerRole + ").\n" +
+                        "• Entity: " + entityType + " (" + entityId + ")\n" +
+                        "• Action: " + task.getActionType() + "\n" +
+                        "• Rejection Reason: " + comments,
+                        entityType,
+                        entityId
+                );
+            } catch (Exception ignored) {}
+        }
 
         WorkflowActionResultDto res = new WorkflowActionResultDto(true, "Transaction rejected permanently.");
         res.setWorkflowTaskId(taskId);
@@ -613,5 +903,36 @@ public class WorkflowExecutionService {
         } else {
             policy.setHistoryJson("[" + jsonEntry + "]");
         }
+    }
+
+    private ApprovalHierarchyConfig findHierarchyConfig(String actionType, String entityType) {
+        if (approvalHierarchyConfigRepository == null) return null;
+        String act = actionType != null ? actionType.toLowerCase(Locale.ROOT).replace("_", " ").replace("proc ", "").trim() : "";
+        for (ApprovalHierarchyConfig cfg : approvalHierarchyConfigRepository.findAll()) {
+            if (!cfg.isActive()) continue;
+            String tt = cfg.getTransactionType() != null ? cfg.getTransactionType().toLowerCase(Locale.ROOT).replace("_", " ").replace("proc ", "").trim() : "";
+            if (!tt.isEmpty() && (act.contains(tt) || tt.contains(act) || (entityType != null && entityType.toLowerCase(Locale.ROOT).contains(tt)))) {
+                return cfg;
+            }
+        }
+        return null;
+    }
+
+    private void recordStructuredPolicyHistory(String policyId, String eventType, String prevStatus, String newStatus,
+                                               Integer version, String actorId, String reason, String workflowTaskId, String snapshotJson) {
+        if (policyHistoryRepository == null || policyId == null) return;
+        PolicyHistory hist = new PolicyHistory();
+        hist.setId("polhist-" + UUID.randomUUID().toString().substring(0, 8));
+        hist.setPolicyId(policyId);
+        hist.setEventType(eventType);
+        hist.setPreviousStatus(prevStatus);
+        hist.setNewStatus(newStatus);
+        hist.setVersion(version != null ? version : 1);
+        hist.setUserId(actorId != null ? actorId : "SYSTEM");
+        hist.setTimestamp(LocalDateTime.now().toString());
+        hist.setReason(reason);
+        hist.setWorkflowTaskId(workflowTaskId);
+        hist.setSnapshotJson(snapshotJson);
+        policyHistoryRepository.save(hist);
     }
 }

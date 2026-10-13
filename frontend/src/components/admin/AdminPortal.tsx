@@ -23,6 +23,9 @@ import {
   Lock,
   Unlock,
   FileCheck,
+  AlertCircle,
+  Info,
+  Sparkles,
 } from 'lucide-react';
 import {
   BusinessSegment,
@@ -69,6 +72,7 @@ interface AdminPortalProps {
   onSaveTaxonomy: (tax: Partial<CollateralTaxonomy>) => Promise<void>;
   onSaveMandatoryDocRule: (rule: Partial<MandatoryDocumentRule>) => Promise<void>;
   onSaveHoliday: (holiday: Partial<HolidayCalendar>) => Promise<void>;
+  onDeleteHoliday?: (id: string) => Promise<void>;
 }
 
 const ALL_ROLES = [
@@ -104,6 +108,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onSaveTaxonomy,
   onSaveMandatoryDocRule,
   onSaveHoliday,
+  onDeleteHoliday,
 }) => {
   const [activeTab, setActiveTab] = useState<
     | 'overview'
@@ -134,28 +139,49 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [templatePreview, setTemplatePreview] = useState('');
   const [usageMap, setUsageMap] = useState<Record<string,string>>({});
   const [dependencyHealth, setDependencyHealth] = useState<any>(null);
+  const [districts, setDistricts] = useState<any[]>([]);
   const [runningEscalations, setRunningEscalations] = useState(false);
   const [scanningExceptions, setScanningExceptions] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [modalSaving, setModalSaving] = useState(false);
+  const [paramSearch, setParamSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
 
   const loadRuntimeData = React.useCallback(async () => {
     setRuntimeLoading(true);
     try {
-      const [runtime, templateRows, usage, dependencies] = await Promise.all([
+      const [runtime, templateRows, usage, dependencies, districtRows] = await Promise.all([
         cimsApi.getAdminRuntimeConfiguration(),
         cimsApi.getNotificationTemplates(),
         cimsApi.getConfigurationUsage(),
         cimsApi.getDependencyHealth(),
+        cimsApi.getDistricts().catch(() => []),
       ]);
       setRuntimeData(runtime);
       setTemplates(templateRows || []);
       setUsageMap(usage || {});
       setDependencyHealth(dependencies || null);
+      if (districtRows && districtRows.length > 0) setDistricts(districtRows);
     } catch (error: any) {
       showToast(error?.message || 'Unable to load runtime configuration.');
     } finally {
       setRuntimeLoading(false);
     }
   }, []);
+
+  const executeModalSave = async (saveFn: () => Promise<void>, successToast: string, closeModalFn: () => void) => {
+    setModalError(null);
+    setModalSaving(true);
+    try {
+      await saveFn();
+      closeModalFn();
+      showToast(successToast);
+    } catch (err: any) {
+      setModalError(err?.message || 'Operation failed. Please verify the submitted data.');
+    } finally {
+      setModalSaving(false);
+    }
+  };
 
   React.useEffect(() => {
     loadRuntimeData();
@@ -695,14 +721,190 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <tbody className="divide-y divide-[#E2E8F0]">{templates.map(t => <tr key={t.id} className="hover:bg-[#EFF5FB]"><td className="p-3 font-semibold">{t.name}</td><td className="p-3">{t.type || t.channel}</td><td className="p-3">{t.triggerDaysBefore || 0} working days</td><td className="p-3"><StatusChip label={t.active === false ? 'Inactive' : 'Active'} /></td><td className="p-3 text-right"><button onClick={() => setTemplateDraft(t)} className="text-[#1F4E7A] font-semibold hover:underline">Edit</button></td></tr>)}</tbody></table>
           </div>
           {templateDraft && (
-            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"><div className="bg-white rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4">
-              <div className="flex justify-between"><div><h3 className="font-bold text-[#102E4A]">{templateDraft.id ? 'Edit' : 'Create'} Notification Template</h3><p className="text-xs text-[#5B6472]">Unsupported placeholders are rejected by the backend.</p></div><button onClick={() => setTemplateDraft(null)}><X className="w-5 h-5" /></button></div>
-              <div className="grid grid-cols-2 gap-3 text-xs"><input className="input-field" placeholder="Template name" value={templateDraft.name} onChange={e => setTemplateDraft({...templateDraft, name:e.target.value})}/><select className="input-field" value={templateDraft.type || 'Email'} onChange={e => setTemplateDraft({...templateDraft, type:e.target.value, channel:e.target.value as any})}><option>Email</option><option>SMS</option></select><input className="input-field" type="number" min="0" placeholder="Trigger working days" value={templateDraft.triggerDaysBefore ?? 0} onChange={e => setTemplateDraft({...templateDraft, triggerDaysBefore:Number(e.target.value)})}/><input className="input-field" placeholder="Subject" value={templateDraft.subject || ''} onChange={e => setTemplateDraft({...templateDraft, subject:e.target.value})}/></div>
-              <textarea className="input-field w-full" rows={8} placeholder="Body" value={templateDraft.body} onChange={e => setTemplateDraft({...templateDraft, body:e.target.value})}/>
-              <div className="flex items-center justify-between"><label className="text-xs flex items-center gap-2"><input type="checkbox" checked={templateDraft.active !== false} onChange={e => setTemplateDraft({...templateDraft, active:e.target.checked})}/> Active</label><button onClick={async()=>{try{const r=await cimsApi.previewNotificationTemplate(templateDraft.body,{CustomerName:'Sample Customer',PolicyNumber:'POL-SAMPLE',CollateralID:'COL-SAMPLE',ExpiryDate:'2026-12-31',DaysRemaining:30,Amount:100000});setTemplatePreview(r.preview);}catch(e:any){showToast(e.message)}}} className="btn-secondary text-xs">Preview</button></div>
-              {templatePreview && <div className="p-3 rounded bg-slate-50 border text-xs whitespace-pre-wrap max-h-40 overflow-auto">{templatePreview}</div>}
-              <div className="flex justify-end gap-2 pt-2 border-t"><button onClick={()=>setTemplateDraft(null)} className="btn-secondary text-xs">Cancel</button><button onClick={async()=>{try{await cimsApi.saveNotificationTemplate(templateDraft,currentUser.userId);setTemplateDraft(null);setTemplatePreview('');await loadRuntimeData();showToast('Notification template saved and activated according to its status.')}catch(e:any){showToast(e.message)}}} className="btn-primary text-xs">Save Template</button></div>
-            </div></div>
+            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4">
+                <div className="flex justify-between">
+                  <div>
+                    <h3 className="font-bold text-[#102E4A]">{templateDraft.id ? 'Edit' : 'Create'} Notification Template</h3>
+                    <p className="text-xs text-[#5B6472]">Production templates are strictly validated and dispatched by the automated notification engine.</p>
+                  </div>
+                  <button onClick={() => { setTemplateDraft(null); setModalError(null); }}><X className="w-5 h-5 text-[#5B6472] hover:text-[#102E4A]" /></button>
+                </div>
+
+                {modalError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-800 animate-fadeIn">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />
+                    <span>{modalError}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Template Name *</label>
+                    <input className="input-field w-full" placeholder="e.g. Policy Expiry 30-Day Reminder" value={templateDraft.name} onChange={e => setTemplateDraft({...templateDraft, name:e.target.value})}/>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Event Type *</label>
+                    <select
+                      className="input-field w-full font-semibold text-[#102E4A]"
+                      value={templateDraft.eventType || 'Expiry Reminder'}
+                      onChange={e => setTemplateDraft({...templateDraft, eventType: e.target.value})}
+                    >
+                      <option value="Expiry Reminder">Expiry Reminder</option>
+                      <option value="Expired Policy">Expired Policy</option>
+                      <option value="Renewal Requirement">Renewal Requirement</option>
+                      <option value="Approval Request">Approval Request</option>
+                      <option value="Rejected Policy">Rejected Policy</option>
+                      <option value="Missing Documentation">Missing Documentation</option>
+                      <option value="Compliance Exception">Compliance Exception</option>
+                      <option value="Policy Cancellation">Policy Cancellation</option>
+                      <option value="Policy Endorsement">Policy Endorsement</option>
+                      <option value="System Alert">System Alert</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Channel *</label>
+                    <select className="input-field w-full" value={templateDraft.channel || templateDraft.type || 'Email'} onChange={e => setTemplateDraft({...templateDraft, type:e.target.value, channel:e.target.value as any})}>
+                      <option value="Email">Email</option>
+                      <option value="SMS">SMS</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Trigger (Working Days Before Expiry)</label>
+                    <input className="input-field w-full" type="number" min="0" placeholder="e.g. 30" value={templateDraft.triggerDaysBefore ?? 0} onChange={e => setTemplateDraft({...templateDraft, triggerDaysBefore:Number(e.target.value)})}/>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">
+                      Email Subject {(templateDraft.channel || templateDraft.type) === 'Email' ? <span className="text-red-600">* (Mandatory for Email)</span> : <span className="text-slate-400 font-normal">(Optional for SMS)</span>}
+                    </label>
+                    <input
+                      className="input-field w-full"
+                      placeholder="e.g. Action Required: Insurance Expiry for {PolicyNumber}"
+                      value={templateDraft.subject || ''}
+                      onChange={e => setTemplateDraft({...templateDraft, subject:e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[11px] font-semibold text-[#5B6472]">Message Body * (Click placeholder token to insert)</label>
+                    <span className="text-[10px] text-[#5B6472]">Standardized tokens supported by backend dispatcher</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mb-2 p-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg">
+                    {[
+                      '{CustomerName}',
+                      '{LoanAccountNumber}',
+                      '{CollateralID}',
+                      '{PolicyNumber}',
+                      '{ExpiryDate}',
+                      '{RMName}',
+                      '{RMPhone}',
+                      '{DaysOverdue}',
+                      '{InsurerName}',
+                      '{Amount}',
+                      '{MakerID}',
+                      '{Branch}',
+                      '{DaysRemaining}'
+                    ].map(ph => (
+                      <button
+                        key={ph}
+                        type="button"
+                        onClick={() => setTemplateDraft({ ...templateDraft, body: (templateDraft.body || '') + ph })}
+                        className="px-2 py-0.5 text-[11px] font-mono bg-white border border-[#CBD5E1] rounded hover:border-[#1F4E7A] hover:bg-[#EFF5FB] text-[#1F4E7A] transition-colors"
+                        title={`Insert ${ph}`}
+                      >
+                        + {ph}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea 
+                    className="input-field w-full font-mono text-xs" 
+                    rows={6} 
+                    placeholder="Dear {CustomerName},\n\nPlease be advised that policy {PolicyNumber} covering collateral {CollateralID} (Loan Ref: {LoanAccountNumber}) will expire in {DaysRemaining} days on {ExpiryDate}. Please contact your Relationship Manager {RMName} ({RMPhone})..." 
+                    value={templateDraft.body} 
+                    onChange={e => setTemplateDraft({...templateDraft, body:e.target.value})}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <label className="text-xs flex items-center gap-2 cursor-pointer font-medium text-[#102E4A]">
+                    <input type="checkbox" checked={templateDraft.active !== false} onChange={e => setTemplateDraft({...templateDraft, active:e.target.checked})}/> 
+                    Template Active (Participates in automated schedule dispatch)
+                  </label>
+                  <button 
+                    type="button"
+                    onClick={async () => {
+                      setModalError(null);
+                      try {
+                        const r = await cimsApi.previewNotificationTemplate(templateDraft.body, {
+                          CustomerName: 'Commercial Borrower Corp',
+                          LoanAccountNumber: 'LN-2026-9901',
+                          PolicyNumber: 'POL-2026-8819',
+                          CollateralID: 'COL-MORT-402',
+                          ExpiryDate: '2026-10-31',
+                          RMName: 'Alemayehu Tadesse',
+                          RMPhone: '+251 91 123 4567',
+                          DaysOverdue: 0,
+                          DaysRemaining: 30,
+                          InsurerName: 'Ethiopian Insurance Corporation',
+                          Amount: 12500000,
+                          MakerID: 'LOAN_OFFICER_1',
+                          Branch: 'Main Corporate Branch'
+                        });
+                        setTemplatePreview(r.preview);
+                      } catch (e: any) {
+                        setModalError(e.message || 'Failed to generate preview with the given placeholders.');
+                      }
+                    }} 
+                    className="btn-secondary text-xs"
+                  >
+                    Preview Template
+                  </button>
+                </div>
+
+                {templatePreview && (
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs whitespace-pre-wrap max-h-36 overflow-auto font-mono text-[#334155]">
+                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Generated Output Preview</div>
+                    {templatePreview}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-[#E2E8F0]">
+                  <button onClick={() => { setTemplateDraft(null); setModalError(null); }} className="btn-secondary text-xs">Cancel</button>
+                  <button 
+                    onClick={() => {
+                      if (!templateDraft.name || !templateDraft.name.trim()) {
+                        setModalError('Template name is required.');
+                        return;
+                      }
+                      const channel = templateDraft.channel || templateDraft.type || 'Email';
+                      if (channel === 'Email' && (!templateDraft.subject || !templateDraft.subject.trim())) {
+                        setModalError('Email subject is mandatory for Email channel templates.');
+                        return;
+                      }
+                      if (!templateDraft.body || !templateDraft.body.trim()) {
+                        setModalError('Template body is required.');
+                        return;
+                      }
+                      executeModalSave(
+                        async () => {
+                          await cimsApi.saveNotificationTemplate(templateDraft, currentUser.userId);
+                          setTemplatePreview('');
+                          await loadRuntimeData();
+                        },
+                        'Notification template saved and validated against runtime schema!',
+                        () => setTemplateDraft(null)
+                      );
+                    }} 
+                    disabled={modalSaving}
+                    className="btn-primary text-xs"
+                  >
+                    {modalSaving ? 'Validating & Saving...' : 'Save Template'}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -776,30 +978,51 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* --- Tab 2: Users --- */}
       {activeTab === 'users' && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-[#E2E8F0]">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-white p-4 rounded-lg border border-[#E2E8F0]">
             <div>
               <h3 className="text-sm font-bold text-[#101828]">User Accounts & Roles</h3>
               <p className="text-xs text-[#5B6472]">Manage staff accounts, role mappings, branch domiciliaries, and security locks</p>
             </div>
-            <button
-              onClick={() => {
-                setEditingUser({
-                  username: '',
-                  name: '',
-                  fullName: '',
-                  email: '',
-                  role: 'CRO',
-                  branch: 'Bole Special Branch',
-                  segment: 'Corporate Banking',
-                  active: true,
-                });
-                setShowUserModal(true);
-              }}
-              className="btn-primary py-1.5 px-3 text-xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              + Create New User
-            </button>
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="relative flex-1 md:w-64">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#5B6472]" />
+                <input
+                  type="text"
+                  placeholder="Search users..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="pl-9 pr-8 py-1.5 text-xs bg-[#EFF5FB] border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-1 focus:ring-[#3E7AB0] w-full text-[#101828]"
+                />
+                {userSearch && (
+                  <button
+                    onClick={() => setUserSearch('')}
+                    className="absolute right-2.5 top-2.5 text-[#5B6472] hover:text-[#101828]"
+                    title="Clear user search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setEditingUser({
+                    username: '',
+                    name: '',
+                    fullName: '',
+                    email: '',
+                    role: 'CRO',
+                    branch: 'Bole Special Branch',
+                    segment: 'Corporate Banking',
+                    active: true,
+                  });
+                  setShowUserModal(true);
+                }}
+                className="btn-primary py-1.5 px-3 text-xs whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                + Create New User
+              </button>
+            </div>
           </div>
 
           <div className="cims-card overflow-hidden">
@@ -816,7 +1039,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
-                {allUsers.map((u) => (
+                {allUsers
+                  .filter((u) => {
+                    if (!userSearch.trim()) return true;
+                    const terms = userSearch.toLowerCase().split(/\s+/).filter(Boolean);
+                    const userText = [u.username, u.name, u.fullName, u.role, u.branch, u.segment, u.email]
+                      .filter(Boolean)
+                      .join(' ')
+                      .toLowerCase();
+                    return terms.every((t) => userText.includes(t));
+                  })
+                  .map((u) => (
                   <tr key={u.id || u.userId} className="hover:bg-[#EFF5FB]">
                     <td className="p-3 font-semibold text-[#102E4A]">{u.username}</td>
                     <td className="p-3">{u.name || u.fullName}</td>
@@ -1034,9 +1267,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="space-y-4">
           <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-[#E2E8F0]">
             <div>
-              <h3 className="text-sm font-bold text-[#101828]">Approval Hierarchy & Flowable BPMN Mapping (§14.4)</h3>
+              <h3 className="text-sm font-bold text-[#101828]">Approval Hierarchy Mapping (§14.4)</h3>
               <p className="text-xs text-[#5B6472]">Dual control levels (1 or 2 stages), candidate roles, bulk approval rules, and SLA hours</p>
             </div>
+            <button
+              onClick={() => {
+                setModalError(null);
+                setEditingApproval({
+                  transactionType: '',
+                  approvalLevels: 1,
+                  level1Role: 'BRMGR',
+                  level2Role: '',
+                  bulkApproveAllowed: false,
+                  slaHours: 24,
+                  active: true,
+                });
+                setShowApprovalModal(true);
+              }}
+              className="btn-primary py-1.5 px-3 text-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              + Add Workflow Configuration
+            </button>
           </div>
 
           <div className="cims-card overflow-hidden">
@@ -1044,10 +1296,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
                 <tr>
                   <th className="p-3">Transaction Type</th>
+                  <th className="p-3">Hierarchy / Scope</th>
+                  <th className="p-3">Maker Role</th>
                   <th className="p-3">Approval Levels</th>
-                  <th className="p-3">Level 1 Role</th>
-                  <th className="p-3">Level 2 Role</th>
-                  <th className="p-3 text-center">Bulk Approve</th>
+                  <th className="p-3">Level 1 Checker</th>
+                  <th className="p-3">Level 2 Escalation</th>
+                  <th className="p-3 text-center">Bulk</th>
                   <th className="p-3 text-right">SLA Hours</th>
                   <th className="p-3">Status</th>
                   <th className="p-3 text-right">Action</th>
@@ -1056,7 +1310,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <tbody className="divide-y divide-[#E2E8F0]">
                 {approvalConfigs.map((cfg) => (
                   <tr key={cfg.id} className="hover:bg-[#EFF5FB]">
-                    <td className="p-3 font-semibold text-[#102E4A]">{cfg.transactionType}</td>
+                    <td className="p-3 font-semibold text-[#102E4A]">
+                      <div>{cfg.transactionType}</div>
+                      {cfg.exceptionType && cfg.exceptionType !== 'All' && (
+                        <div className="text-[10px] text-amber-700 font-medium">{cfg.exceptionType}</div>
+                      )}
+                    </td>
+                    <td className="p-3">
+                      <span className="font-semibold text-[#1F4E7A]">{cfg.hierarchyLevel || 'Branch'}</span>
+                      {(cfg.branchCode || cfg.districtName || cfg.hoDepartment) && (
+                        <div className="text-[10px] text-[#5B6472]">{cfg.branchCode || cfg.districtName || cfg.hoDepartment}</div>
+                      )}
+                    </td>
+                    <td className="p-3 font-mono">{cfg.makerRole || 'Any'}</td>
                     <td className="p-3">{cfg.approvalLevels} Stage(s)</td>
                     <td className="p-3 font-bold text-[#1F4E7A]">{cfg.level1Role}</td>
                     <td className="p-3">{cfg.level2Role || '—'}</td>
@@ -1066,6 +1332,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <td className="p-3 text-right">
                       <button
                         onClick={() => {
+                          setModalError(null);
                           setEditingApproval(cfg);
                           setShowApprovalModal(true);
                         }}
@@ -1090,15 +1357,38 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <h3 className="text-sm font-bold text-[#101828]">Policy Expiry Pre-Alert Reminder Schedules (US-09.2)</h3>
               <p className="text-xs text-[#5B6472]">Configured working-day offsets below trigger the reminder engine; changes are applied to runtime scheduling immediately after save.</p>
             </div>
+            <button
+              onClick={() => {
+                setModalError(null);
+                setEditingReminder({
+                  daysBeforeExpiry: 15,
+                  channelsJson: '["Email","SMS"]',
+                  recipientRolesJson: '["CRO","BRO","BRMGR"]',
+                  active: true,
+                  audience: 'Staff',
+                  triggerBasis: 'Before Expiry',
+                  dayType: 'Working Day',
+                  recurrence: 'One-time',
+                  continueUntil: 'Renewed',
+                });
+                setShowReminderModal(true);
+              }}
+              className="btn-primary py-1.5 px-3 text-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              + Add Reminder Schedule
+            </button>
           </div>
 
           <div className="cims-card overflow-hidden">
             <table className="w-full text-left text-xs">
               <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
                 <tr>
-                  <th className="p-3">Offset (Days Before Expiry)</th>
-                  <th className="p-3">Delivery Channels</th>
-                  <th className="p-3">Recipient Roles</th>
+                  <th className="p-3">Audience</th>
+                  <th className="p-3">Offset & Trigger Basis</th>
+                  <th className="p-3">Recurrence / Limit</th>
+                  <th className="p-3">Channels</th>
+                  <th className="p-3">Recipients</th>
                   <th className="p-3">Status</th>
                   <th className="p-3 text-right">Action</th>
                 </tr>
@@ -1106,9 +1396,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <tbody className="divide-y divide-[#E2E8F0]">
                 {reminderSchedules.map((r) => (
                   <tr key={r.id} className="hover:bg-[#EFF5FB]">
-                    <td className="p-3 font-bold text-[#102E4A] tabular-nums">T - {r.daysBeforeExpiry} Days</td>
-                    <td className="p-3">{r.channelsJson}</td>
-                    <td className="p-3 font-mono">{r.recipientRolesJson}</td>
+                    <td className="p-3">
+                      <span className={`px-2 py-0.5 rounded font-semibold text-[11px] ${r.audience === 'Customer' ? 'bg-amber-100 text-amber-900' : 'bg-blue-100 text-blue-900'}`}>
+                        {r.audience || 'Staff'}
+                      </span>
+                    </td>
+                    <td className="p-3 font-bold text-[#102E4A] tabular-nums">
+                      {r.triggerBasis === 'After Expiry' ? `T + ${r.daysBeforeExpiry}` : `T - ${r.daysBeforeExpiry}`} Days ({r.dayType || 'Working Day'})
+                    </td>
+                    <td className="p-3">
+                      <div>{r.recurrence || 'One-time'}</div>
+                      <div className="text-[10px] text-[#5B6472]">Until: {r.continueUntil || 'Renewed'}</div>
+                    </td>
+                    <td className="p-3 font-medium">{r.channelsJson}</td>
+                    <td className="p-3 font-mono text-[11px]">{r.audience === 'Customer' ? 'Customer Contact' : r.recipientRolesJson}</td>
                     <td className="p-3"><StatusChip label={r.active ? 'Active' : 'Paused'} /></td>
                     <td className="p-3 text-right">
                       <button
@@ -1201,6 +1502,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <h3 className="text-sm font-bold text-[#101828]">Collateral Asset Taxonomy & Mandatory Insurance Rules</h3>
               <p className="text-xs text-[#5B6472]">Asset classification categories and mandated insurance coverage types</p>
             </div>
+            <button
+              onClick={() => {
+                setModalError(null);
+                setEditingTaxonomy({
+                  category: 'Immovable Properties',
+                  subCategory: '',
+                  insuranceMandatory: true,
+                  mandatoryCoverageType: 'Fire & Lightning',
+                });
+                setShowTaxonomyModal(true);
+              }}
+              className="btn-primary py-1.5 px-3 text-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              + Add Taxonomy Rule
+            </button>
           </div>
 
           <div className="cims-card overflow-hidden">
@@ -1226,6 +1543,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <td className="p-3 text-right">
                       <button
                         onClick={() => {
+                          setModalError(null);
                           setEditingTaxonomy(tax);
                           setShowTaxonomyModal(true);
                         }}
@@ -1252,6 +1570,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
             <button
               onClick={() => {
+                setModalError(null);
                 setEditingDocRule({ collateralCategory: 'Immovable Properties', documentType: '', mandatory: true });
                 setShowDocRuleModal(true);
               }}
@@ -1267,8 +1586,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
                 <tr>
                   <th className="p-3">Collateral Category</th>
+                  <th className="p-3">Asset Sub-Type</th>
                   <th className="p-3">Required Document Type</th>
-                  <th className="p-3">Requirement Level</th>
+                  <th className="p-3">Ownership Scope</th>
+                  <th className="p-3">Applicability</th>
+                  <th className="p-3">Requirement</th>
+                  <th className="p-3">Status</th>
                   <th className="p-3 text-right">Action</th>
                 </tr>
               </thead>
@@ -1276,13 +1599,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 {mandatoryDocRules.map((rule) => (
                   <tr key={rule.id} className="hover:bg-[#EFF5FB]">
                     <td className="p-3 font-bold text-[#102E4A]">{rule.collateralCategory}</td>
+                    <td className="p-3 font-medium text-[#1F4E7A]">{rule.collateralType || 'All Sub-Types'}</td>
                     <td className="p-3 font-semibold">{rule.documentType}</td>
+                    <td className="p-3">{rule.ownershipCondition || 'Any'}</td>
+                    <td className="p-3">{rule.applicabilityCondition || 'Standard'}</td>
                     <td className="p-3">
                       <StatusChip label={rule.mandatory ? 'Mandatory' : 'Recommended'} />
+                    </td>
+                    <td className="p-3">
+                      <StatusChip label={rule.active !== false ? 'Active' : 'Disabled'} />
                     </td>
                     <td className="p-3 text-right">
                       <button
                         onClick={() => {
+                          setModalError(null);
                           setEditingDocRule(rule);
                           setShowDocRuleModal(true);
                         }}
@@ -1302,10 +1632,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* --- Tab 10: System Parameters --- */}
       {activeTab === 'parameters' && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-[#E2E8F0]">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-lg border border-[#E2E8F0] gap-4">
             <div>
               <h3 className="text-sm font-bold text-[#101828]">System Global Configuration Parameters</h3>
               <p className="text-xs text-[#5B6472]">Values are validated by the backend and immediately loaded into the runtime configuration service.</p>
+            </div>
+            <div className="relative w-full sm:w-72">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#5B6472]" />
+              <input
+                type="text"
+                placeholder="Search parameter by key or usage..."
+                value={paramSearch}
+                onChange={(e) => setParamSearch(e.target.value)}
+                className="input-field pl-8 text-xs w-full"
+              />
             </div>
           </div>
 
@@ -1321,25 +1661,32 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
-                {systemParameters.map((param) => (
-                  <tr key={param.paramKey} className="hover:bg-[#EFF5FB]">
-                    <td className="p-3 font-mono font-bold text-[#102E4A]">{param.paramKey}</td>
-                    <td className="p-3 font-semibold text-emerald-800">{param.paramValue}</td>
-                    <td className="p-3"><StatusChip label={['min_coverage_adequacy_pct','max_insurer_concentration_pct','policy_expiry_grace_period_days','dual_control_strict_mode','default_currency','cbs_sync_mode','cbs_sync_interval_minutes'].includes(param.paramKey) ? 'Runtime' : 'Configured'} /></td>
-                    <td className="p-3 text-[#5B6472]">{param.description}</td>
-                    <td className="p-3 text-right">
-                      <button
-                        onClick={() => {
-                          setEditingParam(param);
-                          setShowParamModal(true);
-                        }}
-                        className="text-[#1F4E7A] hover:underline font-semibold"
-                      >
-                        Edit Value
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {systemParameters
+                  .filter((p) => {
+                    if (!paramSearch.trim()) return true;
+                    const q = paramSearch.toLowerCase();
+                    return p.paramKey.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q);
+                  })
+                  .map((param) => (
+                    <tr key={param.paramKey} className="hover:bg-[#EFF5FB]">
+                      <td className="p-3 font-mono font-bold text-[#102E4A]">{param.paramKey}</td>
+                      <td className="p-3 font-semibold text-emerald-800">{param.paramValue}</td>
+                      <td className="p-3"><StatusChip label={['min_coverage_adequacy_pct','max_insurer_concentration_pct','policy_expiry_grace_period_days','dual_control_strict_mode','default_currency','cbs_sync_mode','cbs_sync_interval_minutes'].includes(param.paramKey) ? 'Runtime' : 'Configured'} /></td>
+                      <td className="p-3 text-[#5B6472]">{param.description}</td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => {
+                            setModalError(null);
+                            setEditingParam(param);
+                            setShowParamModal(true);
+                          }}
+                          className="text-[#1F4E7A] hover:underline font-semibold"
+                        >
+                          Edit Value
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
@@ -1356,6 +1703,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
             <button
               onClick={() => {
+                setModalError(null);
                 setEditingHoliday({ holidayDate: '2026-09-11', description: 'Enkutatash (Ethiopian New Year)' });
                 setShowHolidayModal(true);
               }}
@@ -1372,7 +1720,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <tr>
                   <th className="p-3">Holiday Date</th>
                   <th className="p-3">Holiday Name / Description</th>
-                  <th className="p-3 text-right">Action</th>
+                  <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
@@ -1380,9 +1728,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <tr key={h.id} className="hover:bg-[#EFF5FB]">
                     <td className="p-3 font-mono font-bold text-[#102E4A]">{h.holidayDate}</td>
                     <td className="p-3 font-semibold">{h.description}</td>
-                    <td className="p-3 text-right">
+                    <td className="p-3 text-right space-x-3">
                       <button
                         onClick={() => {
+                          setModalError(null);
                           setEditingHoliday(h);
                           setShowHolidayModal(true);
                         }}
@@ -1390,6 +1739,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       >
                         Edit
                       </button>
+                      {onDeleteHoliday && (
+                        <button
+                          onClick={async () => {
+                            if (window.confirm(`Are you sure you want to delete bank holiday "${h.description}" (${h.holidayDate})?`)) {
+                              try {
+                                await onDeleteHoliday(h.id);
+                                showToast(`Bank holiday "${h.description}" deleted successfully.`);
+                              } catch (e: any) {
+                                showToast(e?.message || 'Failed to delete holiday.');
+                              }
+                            }
+                          }}
+                          className="text-red-600 hover:underline font-semibold"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1400,7 +1766,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* MODALS FOR ADMIN CRUD OPERATIONS */}
+      {/* MODALS FOR ADMIN CRUD OPERATIONS (PRODUCTION-GRADE GOVERNANCE) */}
       {/* ========================================================================= */}
 
       {/* Segment Modal */}
@@ -1410,14 +1776,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <h3 className="text-base font-bold text-[#102E4A]">
               {editingSegment.id ? 'Edit Business Segment' : 'Add New Business Segment'}
             </h3>
+            {modalError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{modalError}</span>
+              </div>
+            )}
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Segment Name</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Segment Name *</label>
                 <input
                   type="text"
                   value={editingSegment.name || ''}
                   onChange={(e) => setEditingSegment({ ...editingSegment, name: e.target.value })}
-                  placeholder="e.g. Agricultural Banking"
+                  placeholder="e.g. Agricultural Banking, Retail Banking"
                   className="input-field w-full"
                 />
               </div>
@@ -1426,7 +1798,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <textarea
                   value={editingSegment.description || ''}
                   onChange={(e) => setEditingSegment({ ...editingSegment, description: e.target.value })}
-                  placeholder="Scope and asset governance criteria"
+                  placeholder="Scope, collateral policy, and credit facility governance criteria"
                   rows={3}
                   className="input-field w-full"
                 />
@@ -1445,18 +1817,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowSegmentModal(false)} className="btn-secondary text-xs">
+              <button onClick={() => setShowSegmentModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await onSaveSegment(editingSegment);
-                  setShowSegmentModal(false);
-                  showToast('Business segment saved successfully!');
+                onClick={() => {
+                  if (!editingSegment.name || !editingSegment.name.trim()) {
+                    setModalError('Business segment name is mandatory.');
+                    return;
+                  }
+                  executeModalSave(() => onSaveSegment(editingSegment), 'Business segment saved successfully!', () => setShowSegmentModal(false));
                 }}
+                disabled={modalSaving}
                 className="btn-primary text-xs"
               >
-                Save Segment
+                {modalSaving ? 'Saving...' : 'Save Segment'}
               </button>
             </div>
           </div>
@@ -1468,33 +1843,41 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-6 max-w-lg w-full shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-[#102E4A]">
-              {editingUser.id ? `Edit User — ${editingUser.username}` : 'Create Staff User'}
+              {editingUser.id ? `Edit User — ${editingUser.username}` : 'Create Staff User Account'}
             </h3>
+            {modalError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{modalError}</span>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Username</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Username *</label>
                 <input
                   type="text"
                   value={editingUser.username || ''}
                   onChange={(e) => setEditingUser({ ...editingUser, username: e.target.value })}
-                  className="input-field w-full"
+                  placeholder="e.g. brmgr_bole, cro_agro"
+                  className="input-field w-full font-mono font-semibold"
                 />
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Full Name</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Full Name *</label>
                 <input
                   type="text"
                   value={editingUser.name || editingUser.fullName || ''}
                   onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value, fullName: e.target.value })}
+                  placeholder="e.g. Abebe Bikila"
                   className="input-field w-full"
                 />
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Role Code</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Role Persona *</label>
                 <select
                   value={editingUser.role || 'CRO'}
                   onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
-                  className="input-field w-full font-bold"
+                  className="input-field w-full font-bold text-[#1F4E7A]"
                 >
                   {ALL_ROLES.map((r) => (
                     <option key={r} value={r}>{r}</option>
@@ -1502,18 +1885,29 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </select>
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Email</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Phone Number</label>
                 <input
-                  type="email"
-                  value={editingUser.email || ''}
-                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                  type="text"
+                  value={editingUser.phone || ''}
+                  onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
+                  placeholder="e.g. +251 91 123 4567"
                   className="input-field w-full"
                 />
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Domicile Branch</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Email Address</label>
+                <input
+                  type="email"
+                  value={editingUser.email || ''}
+                  onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                  placeholder="e.g. user@bank.et"
+                  className="input-field w-full"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Domicile Operating Branch</label>
                 <select
-                  value={editingUser.branch || 'Bole Special Branch'}
+                  value={editingUser.branch || (branches[0]?.name || 'Main Branch')}
                   onChange={(e) => setEditingUser({ ...editingUser, branch: e.target.value })}
                   className="input-field w-full"
                 >
@@ -1523,10 +1917,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </select>
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Primary Segment</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Primary Business Segment</label>
                 <select
-                  value={editingUser.segment || 'Corporate Banking'}
-                  onChange={(e) => setEditingUser({ ...editingUser, segment: e.target.value })}
+                  value={editingUser.segment || (segments[0]?.name || 'Corporate Banking')}
+                  onChange={(e) => {
+                    const newSeg = e.target.value;
+                    const prevList: string[] = Array.isArray(editingUser.segmentIds) ? editingUser.segmentIds : [];
+                    const nextList = prevList.includes(newSeg) ? prevList : [...prevList, newSeg];
+                    setEditingUser({ ...editingUser, segment: newSeg, segmentIds: nextList });
+                  }}
                   className="input-field w-full"
                 >
                   {segments.map((s) => (
@@ -1538,13 +1937,38 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <label className="font-semibold text-[#5B6472] block mb-1">Password</label>
                 <input
                   type="password"
-                  placeholder="Leave blank to use password123"
+                  placeholder="Leave blank to keep password123"
                   value={editingUser.password || ''}
                   onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })}
                   className="input-field w-full"
                 />
               </div>
-              <div className="flex items-center gap-2 pt-2">
+              <div className="col-span-2">
+                <label className="font-semibold text-[#5B6472] block mb-1">Authorized Business Segment(s) (Multi-Select)</label>
+                <div className="flex flex-wrap gap-2 p-2 border border-[#E2E8F0] rounded bg-slate-50">
+                  {segments.map((s) => {
+                    const currentSegs: string[] = Array.isArray(editingUser.segmentIds) ? editingUser.segmentIds : [editingUser.segment || 'Corporate Banking'];
+                    const checked = currentSegs.includes(s.name);
+                    return (
+                      <label key={s.id} className="flex items-center gap-1.5 text-xs text-[#102E4A] cursor-pointer bg-white px-2 py-1 rounded border border-[#CBD5E1]">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...currentSegs, s.name]
+                              : currentSegs.filter(x => x !== s.name);
+                            setEditingUser({ ...editingUser, segmentIds: next });
+                          }}
+                          className="rounded text-[#1F4E7A]"
+                        />
+                        <span className="font-medium">{s.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="col-span-2 flex items-center gap-2 pt-2">
                 <input
                   type="checkbox"
                   id="userActiveCheck"
@@ -1553,23 +1977,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   className="w-4 h-4 rounded text-[#102E4A] focus:ring-[#3E7AB0] cursor-pointer"
                 />
                 <label htmlFor="userActiveCheck" className="font-semibold text-[#101828] cursor-pointer">
-                  Active Account (Enabled)
+                  Active Account (Login Allowed)
                 </label>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowUserModal(false)} className="btn-secondary text-xs">
+              <button onClick={() => setShowUserModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await onSaveUser(editingUser);
-                  setShowUserModal(false);
-                  showToast('User account saved successfully!');
+                onClick={() => {
+                  if (!editingUser.username || !editingUser.username.trim()) {
+                    setModalError('Username is mandatory.');
+                    return;
+                  }
+                  executeModalSave(() => onSaveUser(editingUser), 'User account saved successfully!', () => setShowUserModal(false));
                 }}
+                disabled={modalSaving}
                 className="btn-primary text-xs"
               >
-                Save User
+                {modalSaving ? 'Saving...' : 'Save User'}
               </button>
             </div>
           </div>
@@ -1581,56 +2008,131 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-[#102E4A]">
-              {editingBranch.id ? 'Edit Branch' : 'Add Operating Branch'}
+              {editingBranch.id ? 'Edit Operating Branch' : 'Add New Operating Branch'}
             </h3>
+            {modalError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{modalError}</span>
+              </div>
+            )}
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Branch Code</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Branch Code *</label>
                 <input
                   type="text"
                   value={editingBranch.code || ''}
-                  onChange={(e) => setEditingBranch({ ...editingBranch, code: e.target.value })}
+                  onChange={(e) => setEditingBranch({ ...editingBranch, code: e.target.value.toUpperCase() })}
                   placeholder="e.g. BRN-010"
-                  className="input-field w-full"
+                  className="input-field w-full font-mono font-semibold"
                 />
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Branch Name</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Branch Name *</label>
                 <input
                   type="text"
                   value={editingBranch.name || ''}
                   onChange={(e) => setEditingBranch({ ...editingBranch, name: e.target.value })}
+                  placeholder="e.g. Kazanchis Branch"
                   className="input-field w-full"
                 />
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Parent District</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Parent District Directorate</label>
                 <select
-                  value={editingBranch.parentDistrictId || 'Head Office'}
+                  value={editingBranch.parentDistrictId || (districts[0]?.districtName || 'Head Office')}
                   onChange={(e) => setEditingBranch({ ...editingBranch, parentDistrictId: e.target.value })}
                   className="input-field w-full"
                 >
-                  <option value="Head Office">Head Office</option>
-                  <option value="brn-dist-east">Addis Ababa East District</option>
-                  <option value="brn-dist-west">Addis Ababa West District</option>
-                  <option value="brn-dist-north">Northern District</option>
-                  <option value="brn-dist-south">Southern District</option>
+                  <option value="Head Office">Head Office Directorate</option>
+                  {Array.from(new Set(districts.map((d: any) => d.districtName))).map((dName) => {
+                    const match = districts.find((d: any) => d.districtName === dName);
+                    return (
+                      <option key={dName} value={dName}>
+                        {dName} {match?.areaOffice ? `(${match.areaOffice})` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
+              </div>
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Area Office (Optional)</label>
+                <input
+                  type="text"
+                  value={editingBranch.areaOffice || ''}
+                  onChange={(e) => setEditingBranch({ ...editingBranch, areaOffice: e.target.value })}
+                  placeholder="e.g. Bole Sub-City Area Office"
+                  className="input-field w-full"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Branch Tier / Type</label>
+                <select
+                  value={editingBranch.type || 'Branch'}
+                  onChange={(e) => setEditingBranch({ ...editingBranch, type: e.target.value as any })}
+                  className="input-field w-full"
+                >
+                  <option value="Branch">Standard Operating Branch</option>
+                  <option value="CorporateCenter">Corporate Banking Center</option>
+                  <option value="DistrictOffice">District Office Directorate</option>
+                  <option value="HeadOffice">Head Office Executive Division</option>
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Supported Business Segments</label>
+                <div className="flex flex-wrap gap-1.5 p-2 border border-[#E2E8F0] rounded bg-slate-50">
+                  {segments.map((seg) => {
+                    const activeSegs: string[] = (() => {
+                      try {
+                        if (!editingBranch.segmentIds) return [];
+                        if (editingBranch.segmentIds.startsWith('[')) return JSON.parse(editingBranch.segmentIds);
+                        return editingBranch.segmentIds.split(',').map(s => s.trim());
+                      } catch { return []; }
+                    })();
+                    const isSelected = activeSegs.includes(seg.id) || activeSegs.includes(seg.name);
+                    return (
+                      <button
+                        key={seg.id}
+                        type="button"
+                        onClick={() => {
+                          const next = isSelected
+                            ? activeSegs.filter(s => s !== seg.id && s !== seg.name)
+                            : [...activeSegs, seg.id];
+                          setEditingBranch({ ...editingBranch, segmentIds: JSON.stringify(next) });
+                        }}
+                        className={`px-2 py-1 rounded text-xs font-semibold border transition-all ${
+                          isSelected
+                            ? 'bg-[#102E4A] text-white border-[#102E4A] shadow-xs'
+                            : 'bg-white text-[#5B6472] border-[#E2E8F0] hover:bg-slate-100'
+                        }`}
+                      >
+                        {isSelected ? '✓ ' : '+ '}{seg.name}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowBranchModal(false)} className="btn-secondary text-xs">
+              <button onClick={() => setShowBranchModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await onSaveBranch(editingBranch);
-                  setShowBranchModal(false);
-                  showToast('Branch saved successfully!');
+                onClick={() => {
+                  if (!editingBranch.code || !editingBranch.code.trim()) {
+                    setModalError('Branch code is mandatory.');
+                    return;
+                  }
+                  if (!editingBranch.name || !editingBranch.name.trim()) {
+                    setModalError('Branch name is mandatory.');
+                    return;
+                  }
+                  executeModalSave(() => onSaveBranch(editingBranch), 'Operating branch saved successfully!', () => setShowBranchModal(false));
                 }}
+                disabled={modalSaving}
                 className="btn-primary text-xs"
               >
-                Save Branch
+                {modalSaving ? 'Saving...' : 'Save Branch'}
               </button>
             </div>
           </div>
@@ -1642,55 +2144,170 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-[#102E4A]">
-              Configure Workflow: {editingApproval.transactionType}
+              {editingApproval.id ? `Configure Workflow: ${editingApproval.transactionType}` : 'Add New Approval Workflow Configuration'}
             </h3>
+            {modalError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{modalError}</span>
+              </div>
+            )}
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Approval Levels</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Transaction / Action Type *</label>
+                <select
+                  value={editingApproval.transactionType || 'Register Collateral'}
+                  onChange={(e) => setEditingApproval({ ...editingApproval, transactionType: e.target.value })}
+                  className="input-field w-full font-bold text-[#102E4A]"
+                  disabled={Boolean(editingApproval.id)}
+                >
+                  <option value="Register Collateral">Register Collateral</option>
+                  <option value="Release Collateral">Release Collateral</option>
+                  <option value="Register Policy">Register Policy</option>
+                  <option value="Policy Endorsement">Policy Endorsement</option>
+                  <option value="Policy Cancellation / Closure">Policy Cancellation / Closure</option>
+                  <option value="Valuation Update">Valuation Update</option>
+                  <option value="Exception Resolution">Exception Resolution</option>
+                </select>
+                <p className="text-[10px] text-[#5B6472] mt-0.5">Matched dynamically against task actions (Document verification uses document status)</p>
+              </div>
+              {editingApproval.transactionType === 'Exception Resolution' && (
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Exception Type (Action Scope)</label>
+                  <select
+                    value={editingApproval.exceptionType || 'All'}
+                    onChange={(e) => setEditingApproval({ ...editingApproval, exceptionType: e.target.value })}
+                    className="input-field w-full font-medium"
+                  >
+                    <option value="All">All Exception Types</option>
+                    <option value="Overdue Valuation">Overdue Valuation</option>
+                    <option value="Expired Insurance Policy">Expired Insurance Policy</option>
+                    <option value="Missing Mandatory Document">Missing Mandatory Document</option>
+                    <option value="Insufficient Insurance Coverage">Insufficient Insurance Coverage</option>
+                    <option value="Under-Valued Collateral">Under-Valued Collateral</option>
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Applicable Hierarchy Level</label>
+                <select
+                  value={editingApproval.hierarchyLevel || 'Branch'}
+                  onChange={(e) => setEditingApproval({ ...editingApproval, hierarchyLevel: e.target.value })}
+                  className="input-field w-full font-semibold"
+                >
+                  <option value="Global">Global (All Organizational Units)</option>
+                  <option value="Branch">Branch Level</option>
+                  <option value="District">District Directorate Level</option>
+                  <option value="HeadOffice">Head Office Executive Level</option>
+                </select>
+              </div>
+              {editingApproval.hierarchyLevel === 'Branch' && (
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Specific Branch Scope</label>
+                  <select
+                    value={editingApproval.branchCode || ''}
+                    onChange={(e) => setEditingApproval({ ...editingApproval, branchCode: e.target.value })}
+                    className="input-field w-full"
+                  >
+                    <option value="">All Branches</option>
+                    {branches.map(b => (
+                      <option key={b.code} value={b.code}>{b.code} - {b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {editingApproval.hierarchyLevel === 'District' && (
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Specific District Scope</label>
+                  <select
+                    value={editingApproval.districtName || ''}
+                    onChange={(e) => setEditingApproval({ ...editingApproval, districtName: e.target.value })}
+                    className="input-field w-full"
+                  >
+                    <option value="">All Districts</option>
+                    {Array.from(new Set(districts.map((d: any) => d.districtName))).map((dName) => (
+                      <option key={dName} value={dName}>{dName}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {editingApproval.hierarchyLevel === 'HeadOffice' && (
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Head Office Department</label>
+                  <select
+                    value={editingApproval.hoDepartment || 'Credit Administration'}
+                    onChange={(e) => setEditingApproval({ ...editingApproval, hoDepartment: e.target.value })}
+                    className="input-field w-full"
+                  >
+                    <option value="Credit Administration">Credit Administration Department</option>
+                    <option value="Risk Management">Risk Management Directorate</option>
+                    <option value="Legal & Recovery">Legal & Recovery Directorate</option>
+                    <option value="Operations">Operations Division</option>
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Maker Initiator Role</label>
+                <select
+                  value={editingApproval.makerRole || 'Any'}
+                  onChange={(e) => setEditingApproval({ ...editingApproval, makerRole: e.target.value })}
+                  className="input-field w-full font-medium"
+                >
+                  <option value="Any">Any Maker Role</option>
+                  {ALL_ROLES.filter(r => !['SYSADMIN', 'AUDITOR', 'RDONLY'].includes(r)).map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Dual-Control Stages</label>
                 <select
                   value={editingApproval.approvalLevels || 1}
                   onChange={(e) => setEditingApproval({ ...editingApproval, approvalLevels: Number(e.target.value) })}
                   className="input-field w-full"
                 >
-                  <option value={1}>1 Stage (Level 1 Checker)</option>
-                  <option value={2}>2 Stages (Level 1 Checker + Level 2 Department Head)</option>
+                  <option value={1}>1 Stage (Level 1 Primary Checker)</option>
+                  <option value={2}>2 Stages (Level 1 Checker + Level 2 Directorate Escalation)</option>
                 </select>
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Level 1 Candidate Role</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Level 1 Candidate Checker Role *</label>
                 <select
                   value={editingApproval.level1Role || 'BRMGR'}
                   onChange={(e) => setEditingApproval({ ...editingApproval, level1Role: e.target.value })}
-                  className="input-field w-full font-bold"
+                  className="input-field w-full font-bold text-[#1F4E7A]"
                 >
-                  {ALL_ROLES.map((r) => (
+                  {ALL_ROLES.filter(r => r !== 'SYSADMIN' && r !== 'RDONLY' && r !== 'AUDITOR').map((r) => (
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
               </div>
+              {Number(editingApproval.approvalLevels) === 2 && (
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Level 2 Escalation Checker Role *</label>
+                  <select
+                    value={editingApproval.level2Role || 'HODEPT'}
+                    onChange={(e) => setEditingApproval({ ...editingApproval, level2Role: e.target.value })}
+                    className="input-field w-full font-bold text-amber-900"
+                  >
+                    {ALL_ROLES.filter(r => ['HODEPT', 'DISTDIR', 'SRMGMT', 'EXEC', 'RISK', 'COMPLIANCE'].includes(r)).map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Level 2 Candidate Role (if 2 stages)</label>
-                <select
-                  value={editingApproval.level2Role || 'HODEPT'}
-                  onChange={(e) => setEditingApproval({ ...editingApproval, level2Role: e.target.value })}
-                  className="input-field w-full font-bold"
-                >
-                  <option value="">None</option>
-                  {ALL_ROLES.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">SLA Target (Hours)</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">SLA Target Resolution (Hours) *</label>
                 <input
                   type="number"
+                  min="1"
+                  max="720"
                   value={editingApproval.slaHours || 24}
                   onChange={(e) => setEditingApproval({ ...editingApproval, slaHours: Number(e.target.value) })}
                   className="input-field w-full"
                 />
               </div>
-              <div className="flex items-center gap-2 pt-2">
+              <div className="flex items-center gap-2 pt-1">
                 <input
                   type="checkbox"
                   id="bulkApprove"
@@ -1698,22 +2315,39 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   onChange={(e) => setEditingApproval({ ...editingApproval, bulkApproveAllowed: e.target.checked })}
                   className="w-4 h-4 text-[#102E4A] rounded border-[#E2E8F0]"
                 />
-                <label htmlFor="bulkApprove" className="font-semibold text-[#101828]">Allow 1-Click Bulk Approval</label>
+                <label htmlFor="bulkApprove" className="font-semibold text-[#101828]">Allow 1-Click Dual-Control Bulk Approval</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="activeConfig"
+                  checked={editingApproval.active !== false}
+                  onChange={(e) => setEditingApproval({ ...editingApproval, active: e.target.checked })}
+                  className="w-4 h-4 text-[#102E4A] rounded border-[#E2E8F0]"
+                />
+                <label htmlFor="activeConfig" className="font-semibold text-[#101828]">Active Workflow Routing Rule</label>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowApprovalModal(false)} className="btn-secondary text-xs">
+              <button onClick={() => setShowApprovalModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await onSaveApprovalConfig(editingApproval);
-                  setShowApprovalModal(false);
-                  showToast('Approval workflow configuration updated!');
+                onClick={() => {
+                  if (!editingApproval.transactionType || !editingApproval.transactionType.trim()) {
+                    setModalError('Transaction type is mandatory.');
+                    return;
+                  }
+                  if (!editingApproval.slaHours || editingApproval.slaHours <= 0) {
+                    setModalError('Approval SLA hours must be greater than zero.');
+                    return;
+                  }
+                  executeModalSave(() => onSaveApprovalConfig(editingApproval), 'Approval workflow configuration updated!', () => setShowApprovalModal(false));
                 }}
+                disabled={modalSaving}
                 className="btn-primary text-xs"
               >
-                Save Configuration
+                {modalSaving ? 'Saving...' : 'Save Configuration'}
               </button>
             </div>
           </div>
@@ -1725,51 +2359,172 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-[#102E4A]">
-              Configure Expiry Reminder (T - {editingReminder.daysBeforeExpiry} Days)
+              {editingReminder.id ? `Configure Expiry Reminder (T - ${editingReminder.daysBeforeExpiry} Days)` : 'Add New Expiry Reminder Schedule'}
             </h3>
+            {modalError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{modalError}</span>
+              </div>
+            )}
             <div className="space-y-3 text-xs">
-              <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Notification Channels (JSON Array)</label>
-                <input
-                  type="text"
-                  value={editingReminder.channelsJson || '["Email","SMS"]'}
-                  onChange={(e) => setEditingReminder({ ...editingReminder, channelsJson: e.target.value })}
-                  className="input-field w-full font-mono"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Target Audience *</label>
+                  <select
+                    value={editingReminder.audience || 'Staff'}
+                    onChange={(e) => setEditingReminder({ ...editingReminder, audience: e.target.value as any })}
+                    className="input-field w-full font-semibold"
+                  >
+                    <option value="Staff">Staff (Bank Officers)</option>
+                    <option value="Customer">Customer (Borrower / Pledgor)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Trigger Basis *</label>
+                  <select
+                    value={editingReminder.triggerBasis || 'Before Expiry'}
+                    onChange={(e) => setEditingReminder({ ...editingReminder, triggerBasis: e.target.value as any })}
+                    className="input-field w-full font-semibold"
+                  >
+                    <option value="Before Expiry">Before Expiry (Pre-Alert)</option>
+                    <option value="After Expiry">After Expiry (Grace/Breach Alert)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Offset Count *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="365"
+                    value={editingReminder.daysBeforeExpiry || ''}
+                    onChange={(e) => setEditingReminder({ ...editingReminder, daysBeforeExpiry: Number(e.target.value) })}
+                    className="input-field w-full font-bold text-[#102E4A]"
+                    disabled={Boolean(editingReminder.id)}
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Day Calculation Type *</label>
+                  <select
+                    value={editingReminder.dayType || 'Working Day'}
+                    onChange={(e) => setEditingReminder({ ...editingReminder, dayType: e.target.value as any })}
+                    className="input-field w-full"
+                  >
+                    <option value="Working Day">Working Day (NBE Bank Calendar)</option>
+                    <option value="Calendar Day">Calendar Day</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Recurrence *</label>
+                  <select
+                    value={editingReminder.recurrence || 'One-time'}
+                    onChange={(e) => setEditingReminder({ ...editingReminder, recurrence: e.target.value as any })}
+                    className="input-field w-full"
+                  >
+                    <option value="One-time">One-time Trigger</option>
+                    <option value="Every N Working Days">Every N Working Days</option>
+                    <option value="Every N Calendar Days">Every N Calendar Days</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Continue Until *</label>
+                  <select
+                    value={editingReminder.continueUntil || 'Renewed'}
+                    onChange={(e) => setEditingReminder({ ...editingReminder, continueUntil: e.target.value as any })}
+                    className="input-field w-full"
+                  >
+                    <option value="Renewed">Policy Renewed</option>
+                    <option value="Resolved">Exception Resolved</option>
+                    <option value="Manual Termination">Manual Termination</option>
+                  </select>
+                </div>
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Recipient Roles (JSON Array)</label>
-                <input
-                  type="text"
-                  value={editingReminder.recipientRolesJson || '["CRO","BRO","BRMGR"]'}
-                  onChange={(e) => setEditingReminder({ ...editingReminder, recipientRolesJson: e.target.value })}
-                  className="input-field w-full font-mono"
-                />
+                <label className="font-semibold text-[#5B6472] block mb-1">Notification Channels *</label>
+                <div className="flex gap-2">
+                  {['Email', 'SMS'].map((ch) => {
+                    const current: string[] = (() => {
+                      try { return JSON.parse(editingReminder.channelsJson || '[]'); } catch { return ['Email', 'SMS']; }
+                    })();
+                    const active = current.some(x => x.toLowerCase() === ch.toLowerCase());
+                    return (
+                      <button
+                        key={ch}
+                        type="button"
+                        onClick={() => {
+                          const next = active ? current.filter(x => x.toLowerCase() !== ch.toLowerCase()) : [...current, ch];
+                          setEditingReminder({ ...editingReminder, channelsJson: JSON.stringify(next) });
+                        }}
+                        className={`py-1.5 px-3 rounded text-xs font-semibold border transition-all ${active ? 'bg-[#102E4A] text-white border-[#102E4A] shadow-sm' : 'bg-white text-[#5B6472] border-[#E2E8F0]'}`}
+                      >
+                        {active ? '✓ ' : '+ '}{ch}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="flex items-center gap-2 pt-2">
+              {editingReminder.audience !== 'Customer' ? (
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Target Recipient Roles *</label>
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-auto p-1 border border-[#E2E8F0] rounded">
+                    {['CRO', 'BRO', 'SRM', 'BRM', 'BRMGR', 'COLLDOCOFF', 'MGRCOLLDOC', 'DISTDIR', 'HODEPT', 'COMPLIANCE', 'RISK', 'EXEC'].map((role) => {
+                      const current: string[] = (() => {
+                        try { return JSON.parse(editingReminder.recipientRolesJson || '[]'); } catch { return ['CRO', 'BRMGR']; }
+                      })();
+                      const active = current.includes(role);
+                      return (
+                        <button
+                          key={role}
+                          type="button"
+                          onClick={() => {
+                            const next = active ? current.filter(x => x !== role) : [...current, role];
+                            setEditingReminder({ ...editingReminder, recipientRolesJson: JSON.stringify(next) });
+                          }}
+                          className={`py-1 px-2.5 rounded text-xs font-semibold border transition-all ${active ? 'bg-[#1F4E7A] text-white border-[#1F4E7A] shadow-sm' : 'bg-slate-50 text-[#5B6472] border-[#E2E8F0]'}`}
+                        >
+                          {active ? '✓ ' : '+ '}{role}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 rounded text-xs">
+                  <p className="font-semibold">Customer Notification Routing</p>
+                  <p className="text-[11px] text-amber-800">Alerts will be automatically dispatched to the customer primary mobile number (SMS) and registered corporate email from the customer master profile.</p>
+                </div>
+              )}
+              <div className="flex items-center gap-2 pt-1">
                 <input
                   type="checkbox"
                   id="activeRem"
-                  checked={editingReminder.active || false}
+                  checked={editingReminder.active !== false}
                   onChange={(e) => setEditingReminder({ ...editingReminder, active: e.target.checked })}
                   className="w-4 h-4 text-[#102E4A] rounded border-[#E2E8F0]"
                 />
-                <label htmlFor="activeRem" className="font-semibold text-[#101828]">Enable Automated Alert Trigger</label>
+                <label htmlFor="activeRem" className="font-semibold text-[#101828]">Enable Automated Alert Dispatch Engine</label>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowReminderModal(false)} className="btn-secondary text-xs">
+              <button onClick={() => setShowReminderModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await onSaveReminderSchedule(editingReminder);
-                  setShowReminderModal(false);
-                  showToast('Reminder schedule updated!');
+                onClick={() => {
+                  if (!editingReminder.daysBeforeExpiry || editingReminder.daysBeforeExpiry <= 0) {
+                    setModalError('Working days before expiry must be greater than zero.');
+                    return;
+                  }
+                  executeModalSave(() => onSaveReminderSchedule(editingReminder), 'Reminder schedule updated successfully!', () => setShowReminderModal(false));
                 }}
+                disabled={modalSaving}
                 className="btn-primary text-xs"
               >
-                Save Schedule
+                {modalSaving ? 'Saving...' : 'Save Schedule'}
               </button>
             </div>
           </div>
@@ -1781,17 +2536,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-[#102E4A]">
-              {editingInsurer.id ? 'Edit Approved Insurer' : 'Add Approved Insurer'}
+              {editingInsurer.id ? 'Edit Approved Underwriter' : 'Add NBE Approved Insurer'}
             </h3>
+            {modalError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{modalError}</span>
+              </div>
+            )}
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Company Name</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Insurance Company Name *</label>
                 <input
                   type="text"
                   value={editingInsurer.name || ''}
                   onChange={(e) => setEditingInsurer({ ...editingInsurer, name: e.target.value })}
-                  placeholder="e.g. Lion Insurance Company S.C."
-                  className="input-field w-full"
+                  placeholder="e.g. Ethiopian Insurance Corporation, Nyala Insurance S.C."
+                  className="input-field w-full font-bold text-[#102E4A]"
                 />
               </div>
               <div className="flex items-center gap-2 pt-2">
@@ -1802,22 +2563,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   onChange={(e) => setEditingInsurer({ ...editingInsurer, active: e.target.checked })}
                   className="w-4 h-4 text-[#102E4A] rounded border-[#E2E8F0]"
                 />
-                <label htmlFor="activeIns" className="font-semibold text-[#101828]">NBE Approved Underwriter</label>
+                <label htmlFor="activeIns" className="font-semibold text-[#101828]">NBE Approved Underwriter (Active for Pledging)</label>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowInsurerModal(false)} className="btn-secondary text-xs">
+              <button onClick={() => setShowInsurerModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await onSaveInsurer(editingInsurer);
-                  setShowInsurerModal(false);
-                  showToast('Insurer saved successfully!');
+                onClick={() => {
+                  if (!editingInsurer.name || !editingInsurer.name.trim()) {
+                    setModalError('Insurer company name is mandatory.');
+                    return;
+                  }
+                  executeModalSave(() => onSaveInsurer(editingInsurer), 'Approved insurer saved successfully!', () => setShowInsurerModal(false));
                 }}
+                disabled={modalSaving}
                 className="btn-primary text-xs"
               >
-                Save Insurer
+                {modalSaving ? 'Saving...' : 'Save Insurer'}
               </button>
             </div>
           </div>
@@ -1828,59 +2592,93 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {showTaxonomyModal && editingTaxonomy && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-[#102E4A]">Edit Collateral Taxonomy Rule</h3>
+            <h3 className="text-base font-bold text-[#102E4A]">
+              {editingTaxonomy.id ? 'Edit Collateral Asset Taxonomy Rule' : 'Add New Collateral Taxonomy Rule'}
+            </h3>
+            {modalError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{modalError}</span>
+              </div>
+            )}
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Category</label>
-                <input
-                  type="text"
-                  value={editingTaxonomy.category || ''}
+                <label className="font-semibold text-[#5B6472] block mb-1">Asset Category *</label>
+                <select
+                  value={editingTaxonomy.category || 'Immovable Properties'}
                   onChange={(e) => setEditingTaxonomy({ ...editingTaxonomy, category: e.target.value })}
                   className="input-field w-full font-bold"
-                />
+                >
+                  <option value="Immovable Properties">Immovable Properties</option>
+                  <option value="Movable Properties">Movable Properties</option>
+                  <option value="Business Mortgages">Business Mortgages</option>
+                  <option value="Financial Assets">Financial Assets</option>
+                  <option value="Guarantees">Guarantees</option>
+                  <option value="Agricultural/Other">Agricultural/Other</option>
+                </select>
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Sub-Category</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Collateral Type / Sub-Type *</label>
                 <input
                   type="text"
                   value={editingTaxonomy.subCategory || ''}
-                  onChange={(e) => setEditingTaxonomy({ ...editingTaxonomy, subCategory: e.target.value })}
-                  className="input-field w-full"
+                  onChange={(e) => setEditingTaxonomy({ ...editingTaxonomy, subCategory: e.target.value, subType: e.target.value })}
+                  placeholder="e.g. Commercial Building, Heavy Commercial Truck, Marketable Shares"
+                  className="input-field w-full font-semibold"
                 />
+                <p className="text-[10px] text-[#5B6472] mt-0.5">Asset classification without hardcoding hair-cut formulas</p>
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Mandatory Coverage Type</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Mandatory Insurance Coverage Type</label>
                 <input
                   type="text"
                   value={editingTaxonomy.mandatoryCoverageType || ''}
                   onChange={(e) => setEditingTaxonomy({ ...editingTaxonomy, mandatoryCoverageType: e.target.value })}
-                  className="input-field w-full"
+                  placeholder="e.g. Fire & Lightning, Comprehensive Motor, All Risks"
+                  className="input-field w-full font-semibold text-[#1F4E7A]"
                 />
               </div>
-              <div className="flex items-center gap-2 pt-2">
+              <div className="flex items-center gap-2 pt-1">
                 <input
                   type="checkbox"
                   id="taxMandatory"
-                  checked={editingTaxonomy.insuranceMandatory || false}
+                  checked={editingTaxonomy.insuranceMandatory !== false}
                   onChange={(e) => setEditingTaxonomy({ ...editingTaxonomy, insuranceMandatory: e.target.checked })}
                   className="w-4 h-4 text-[#102E4A] rounded border-[#E2E8F0]"
                 />
-                <label htmlFor="taxMandatory" className="font-semibold text-[#101828]">Insurance is Strictly Mandatory</label>
+                <label htmlFor="taxMandatory" className="font-semibold text-[#101828]">Insurance Coverage is Strictly Mandatory for Pledging</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="taxActive"
+                  checked={editingTaxonomy.active !== false}
+                  onChange={(e) => setEditingTaxonomy({ ...editingTaxonomy, active: e.target.checked })}
+                  className="w-4 h-4 text-[#102E4A] rounded border-[#E2E8F0]"
+                />
+                <label htmlFor="taxActive" className="font-semibold text-[#101828]">Active Asset Classification for Collateral Intake</label>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowTaxonomyModal(false)} className="btn-secondary text-xs">
+              <button onClick={() => setShowTaxonomyModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await onSaveTaxonomy(editingTaxonomy);
-                  setShowTaxonomyModal(false);
-                  showToast('Taxonomy rule saved successfully!');
+                onClick={() => {
+                  if (!editingTaxonomy.category || !editingTaxonomy.category.trim()) {
+                    setModalError('Category is mandatory.');
+                    return;
+                  }
+                  if (!editingTaxonomy.subCategory || !editingTaxonomy.subCategory.trim()) {
+                    setModalError('Sub-category is mandatory.');
+                    return;
+                  }
+                  executeModalSave(() => onSaveTaxonomy(editingTaxonomy), 'Taxonomy rule saved successfully!', () => setShowTaxonomyModal(false));
                 }}
+                disabled={modalSaving}
                 className="btn-primary text-xs"
               >
-                Save Rule
+                {modalSaving ? 'Saving...' : 'Save Taxonomy'}
               </button>
             </div>
           </div>
@@ -1892,15 +2690,21 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-[#102E4A]">
-              {editingDocRule.id ? 'Edit Document Rule' : 'Add Document Rule'}
+              {editingDocRule.id ? 'Edit Mandatory Document Rule' : 'Add Mandatory Document Rule'}
             </h3>
+            {modalError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{modalError}</span>
+              </div>
+            )}
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Collateral Category</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Collateral Category *</label>
                 <select
                   value={editingDocRule.collateralCategory || 'Immovable Properties'}
                   onChange={(e) => setEditingDocRule({ ...editingDocRule, collateralCategory: e.target.value })}
-                  className="input-field w-full"
+                  className="input-field w-full font-bold"
                 >
                   <option value="Immovable Properties">Immovable Properties</option>
                   <option value="Movable Properties">Movable Properties</option>
@@ -1911,16 +2715,54 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </select>
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Required Document Type</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Collateral Sub-Type / Scope (Optional)</label>
+                <input
+                  type="text"
+                  value={editingDocRule.collateralType || ''}
+                  onChange={(e) => setEditingDocRule({ ...editingDocRule, collateralType: e.target.value })}
+                  placeholder="e.g. Building, Commercial Vehicle, Machinery (or leave blank for Any)"
+                  className="input-field w-full"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Required Document Type *</label>
                 <input
                   type="text"
                   value={editingDocRule.documentType || ''}
                   onChange={(e) => setEditingDocRule({ ...editingDocRule, documentType: e.target.value })}
-                  placeholder="e.g. Title Deed / Ownership Certificate"
-                  className="input-field w-full"
+                  placeholder="e.g. Title Deed / Ownership Certificate, Vehicle Logbook, Valuation Report"
+                  className="input-field w-full font-semibold"
                 />
               </div>
-              <div className="flex items-center gap-2 pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Ownership Condition</label>
+                  <select
+                    value={editingDocRule.ownershipCondition || 'Any'}
+                    onChange={(e) => setEditingDocRule({ ...editingDocRule, ownershipCondition: e.target.value })}
+                    className="input-field w-full font-medium"
+                  >
+                    <option value="Any">Any Ownership</option>
+                    <option value="Borrower-Owned">Borrower-Owned</option>
+                    <option value="Third-Party-Owned">Third-Party-Owned</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Applicability Condition</label>
+                  <select
+                    value={editingDocRule.applicabilityCondition || 'Standard'}
+                    onChange={(e) => setEditingDocRule({ ...editingDocRule, applicabilityCondition: e.target.value })}
+                    className="input-field w-full font-medium"
+                  >
+                    <option value="Standard">Standard Asset</option>
+                    <option value="Under Construction">Under Construction</option>
+                    <option value="Leased">Leased Asset</option>
+                    <option value="Imported">Imported / Transit Asset</option>
+                    <option value="All">All Conditions</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
                 <input
                   type="checkbox"
                   id="docMandatory"
@@ -1928,22 +2770,35 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   onChange={(e) => setEditingDocRule({ ...editingDocRule, mandatory: e.target.checked })}
                   className="w-4 h-4 text-[#102E4A] rounded border-[#E2E8F0]"
                 />
-                <label htmlFor="docMandatory" className="font-semibold text-[#101828]">Mandatory for Collateral Release & Verification</label>
+                <label htmlFor="docMandatory" className="font-semibold text-[#101828]">Mandatory Gatekeeper for Collateral Release & Verification</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="docRuleActive"
+                  checked={editingDocRule.active !== false}
+                  onChange={(e) => setEditingDocRule({ ...editingDocRule, active: e.target.checked })}
+                  className="w-4 h-4 text-[#102E4A] rounded border-[#E2E8F0]"
+                />
+                <label htmlFor="docRuleActive" className="font-semibold text-[#101828]">Active Compliance Validation Rule</label>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowDocRuleModal(false)} className="btn-secondary text-xs">
+              <button onClick={() => setShowDocRuleModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await onSaveMandatoryDocRule(editingDocRule);
-                  setShowDocRuleModal(false);
-                  showToast('Document rule saved successfully!');
+                onClick={() => {
+                  if (!editingDocRule.documentType || !editingDocRule.documentType.trim()) {
+                    setModalError('Required document type is mandatory.');
+                    return;
+                  }
+                  executeModalSave(() => onSaveMandatoryDocRule(editingDocRule), 'Mandatory document rule saved successfully!', () => setShowDocRuleModal(false));
                 }}
+                disabled={modalSaving}
                 className="btn-primary text-xs"
               >
-                Save Document Rule
+                {modalSaving ? 'Saving...' : 'Save Document Rule'}
               </button>
             </div>
           </div>
@@ -1953,43 +2808,126 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* Parameter Modal */}
       {showParamModal && editingParam && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl space-y-4">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-[#102E4A]">
-              Edit Parameter: {editingParam.paramKey}
+              Configure Parameter: <span className="font-mono text-[#1F4E7A]">{editingParam.paramKey}</span>
             </h3>
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Parameter Value</label>
-                <input
-                  type="text"
-                  value={editingParam.paramValue || ''}
-                  onChange={(e) => setEditingParam({ ...editingParam, paramValue: e.target.value })}
-                  className="input-field w-full font-bold text-[#102E4A]"
-                />
+            {modalError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{modalError}</span>
               </div>
-              <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Description</label>
-                <textarea
-                  value={editingParam.description || ''}
-                  onChange={(e) => setEditingParam({ ...editingParam, description: e.target.value })}
-                  rows={2}
-                  className="input-field w-full text-[#5B6472]"
-                />
-              </div>
-            </div>
+            )}
+            {(() => {
+              const paramKey = (editingParam.paramKey || '').toLowerCase();
+              const paramType = (editingParam.paramType || '').toLowerCase();
+              const isPct = paramType === 'percentage' || paramKey.includes('pct') || paramKey.includes('threshold') || paramKey.includes('rate');
+              const isBool = paramType === 'boolean' || paramKey.includes('enabled') || paramKey.includes('strict') || paramKey.includes('require') || ['true', 'false'].includes((editingParam.paramValue || '').toLowerCase());
+              const isDaysOrHours = paramType.includes('days') || paramType === 'duration' || paramType === 'numeric' || paramKey.includes('period') || paramKey.includes('frequency') || paramKey.includes('interval') || paramKey.includes('timelines') || paramKey.includes('days') || paramKey.includes('hours');
+
+              return (
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-semibold text-[#5B6472] block mb-1">
+                      Parameter Value * {isPct && <span className="text-blue-600 font-bold">(Percentage: 0 - 100%)</span>}
+                      {isDaysOrHours && <span className="text-amber-700 font-bold">({editingParam.paramType || 'Numeric/Days/Hours'})</span>}
+                      {isBool && <span className="text-emerald-700 font-bold">(Boolean: true / false)</span>}
+                    </label>
+                    {isBool ? (
+                      <select
+                        value={(editingParam.paramValue || 'true').toLowerCase()}
+                        onChange={(e) => setEditingParam({ ...editingParam, paramValue: e.target.value })}
+                        className="input-field w-full font-bold text-[#102E4A]"
+                      >
+                        <option value="true">true (Active / Enabled)</option>
+                        <option value="false">false (Inactive / Disabled)</option>
+                      </select>
+                    ) : isPct ? (
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={editingParam.paramValue || ''}
+                          onChange={(e) => setEditingParam({ ...editingParam, paramValue: e.target.value })}
+                          className="input-field w-full pr-8 font-bold text-[#102E4A]"
+                          placeholder="0.00"
+                        />
+                        <span className="absolute right-3 top-2 text-[#5B6472] font-bold">%</span>
+                      </div>
+                    ) : isDaysOrHours ? (
+                      <input
+                        type="text"
+                        value={editingParam.paramValue || ''}
+                        onChange={(e) => setEditingParam({ ...editingParam, paramValue: e.target.value })}
+                        placeholder="e.g. 30"
+                        className="input-field w-full font-bold text-[#102E4A]"
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={editingParam.paramValue || ''}
+                        onChange={(e) => setEditingParam({ ...editingParam, paramValue: e.target.value })}
+                        className="input-field w-full font-bold text-[#102E4A]"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="font-semibold text-[#5B6472] block mb-1">Description</label>
+                    <textarea
+                      value={editingParam.description || ''}
+                      onChange={(e) => setEditingParam({ ...editingParam, description: e.target.value })}
+                      rows={2}
+                      className="input-field w-full text-[#5B6472]"
+                    />
+                  </div>
+                  {editingParam.paramKey && usageMap[editingParam.paramKey] && (
+                    <div className="p-2.5 bg-sky-50 border border-sky-200 text-sky-900 rounded text-xs space-y-1">
+                      <div className="font-bold flex items-center gap-1 text-[#1F4E7A]">
+                        <Info className="w-3.5 h-3.5" />
+                        <span>Real Runtime System Impact</span>
+                      </div>
+                      <p className="text-[11px] text-sky-800 leading-relaxed">
+                        {usageMap[editingParam.paramKey]}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowParamModal(false)} className="btn-secondary text-xs">
+              <button onClick={() => setShowParamModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await onSaveParameter(editingParam);
-                  setShowParamModal(false);
-                  showToast('System parameter updated successfully!');
+                onClick={() => {
+                  if (!editingParam.paramValue || !editingParam.paramValue.trim()) {
+                    setModalError('Parameter value cannot be empty.');
+                    return;
+                  }
+                  const key = (editingParam.paramKey || '').toLowerCase();
+                  const pType = (editingParam.paramType || '').toLowerCase();
+                  if (pType === 'percentage' || key.includes('pct') || key.includes('threshold') || key.includes('rate')) {
+                    const val = Number(editingParam.paramValue);
+                    if (isNaN(val) || val < 0 || val > 100) {
+                      setModalError('Percentage parameter must be a valid number between 0% and 100%.');
+                      return;
+                    }
+                  }
+                  if (pType === 'numeric' || pType === 'duration' || (pType.includes('days') && !editingParam.paramValue.includes(','))) {
+                    const val = Number(editingParam.paramValue);
+                    if (isNaN(val) || val < 0) {
+                      setModalError('Numeric / duration parameter must be a non-negative number.');
+                      return;
+                    }
+                  }
+                  executeModalSave(() => onSaveParameter(editingParam), 'System parameter updated and cache refreshed immediately!', () => setShowParamModal(false));
                 }}
+                disabled={modalSaving}
                 className="btn-primary text-xs"
               >
-                Save Parameter
+                {modalSaving ? 'Saving...' : 'Save Parameter'}
               </button>
             </div>
           </div>
@@ -2001,42 +2939,55 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-[#102E4A]">
-              {editingHoliday.id ? 'Edit Bank Holiday' : 'Add Bank Holiday'}
+              {editingHoliday.id ? 'Edit Bank Holiday' : 'Add Bank Holiday to Business Calendar'}
             </h3>
+            {modalError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded flex items-start gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                <span>{modalError}</span>
+              </div>
+            )}
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Holiday Date (YYYY-MM-DD)</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Holiday Date (YYYY-MM-DD) *</label>
                 <input
                   type="date"
                   value={editingHoliday.holidayDate || ''}
                   onChange={(e) => setEditingHoliday({ ...editingHoliday, holidayDate: e.target.value })}
-                  className="input-field w-full"
+                  className="input-field w-full font-mono font-bold text-[#102E4A]"
                 />
               </div>
               <div>
-                <label className="font-semibold text-[#5B6472] block mb-1">Description</label>
+                <label className="font-semibold text-[#5B6472] block mb-1">Official Name / Description *</label>
                 <input
                   type="text"
                   value={editingHoliday.description || ''}
                   onChange={(e) => setEditingHoliday({ ...editingHoliday, description: e.target.value })}
-                  placeholder="e.g. Meskel (Finding of the True Cross)"
+                  placeholder="e.g. Meskel (Finding of the True Cross), Id Al Fitr"
                   className="input-field w-full"
                 />
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowHolidayModal(false)} className="btn-secondary text-xs">
+              <button onClick={() => setShowHolidayModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  await onSaveHoliday(editingHoliday);
-                  setShowHolidayModal(false);
-                  showToast('Bank holiday saved successfully!');
+                onClick={() => {
+                  if (!editingHoliday.holidayDate || !editingHoliday.holidayDate.trim()) {
+                    setModalError('Holiday date is mandatory.');
+                    return;
+                  }
+                  if (!editingHoliday.description || !editingHoliday.description.trim()) {
+                    setModalError('Holiday description is mandatory.');
+                    return;
+                  }
+                  executeModalSave(() => onSaveHoliday(editingHoliday), 'Bank holiday saved to business calendar!', () => setShowHolidayModal(false));
                 }}
+                disabled={modalSaving}
                 className="btn-primary text-xs"
               >
-                Save Holiday
+                {modalSaving ? 'Saving...' : 'Save Holiday'}
               </button>
             </div>
           </div>

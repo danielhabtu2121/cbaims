@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class CbsGateway {
@@ -22,7 +23,11 @@ public class CbsGateway {
     @Value("${cims.cbs.mode:SIMULATOR}")
     private String cbsMode;
 
-    private CbsAdapter getActiveAdapter() {
+    public String getMode() {
+        return cbsMode != null ? cbsMode.trim().toUpperCase() : "SIMULATOR";
+    }
+
+    public CbsAdapter getActiveAdapter() {
         if ("REAL".equalsIgnoreCase(cbsMode)) {
             return realAdapter;
         }
@@ -33,35 +38,47 @@ public class CbsGateway {
         return getActiveAdapter().fetchCustomers();
     }
 
-    public CbsCustomer fetchCustomerByCif(String cif) {
+    public Optional<CbsCustomer> fetchCustomerByCif(String cif) {
         return getActiveAdapter().fetchCustomerByCif(cif);
+    }
+
+    public List<CbsFacility> fetchFacilities() {
+        return getActiveAdapter().fetchFacilities();
     }
 
     public List<CbsFacility> fetchFacilitiesByCustomerCif(String customerCif) {
         return getActiveAdapter().fetchFacilitiesByCustomerCif(customerCif);
     }
 
+    public Optional<CbsFacility> fetchFacilityByLoanReference(String loanReference) {
+        return getActiveAdapter().fetchFacilityByLoanReference(loanReference);
+    }
+
+    public Optional<CbsFacility> fetchFacilityByLineCode(String lineCode) {
+        return getActiveAdapter().fetchFacilityByLineCode(lineCode);
+    }
+
+    public List<CbsCollateral> fetchCollaterals() {
+        return getActiveAdapter().fetchCollaterals();
+    }
+
     public List<CbsCollateral> fetchCollateralsByCustomerCif(String customerCif) {
         return getActiveAdapter().fetchCollateralsByCustomerCif(customerCif);
+    }
+
+    public Optional<CbsCollateral> fetchCollateralByCode(String collateralCode) {
+        return getActiveAdapter().fetchCollateralByCode(collateralCode);
     }
 
     public List<CbsAccCollLinkDtls> fetchAccountCollateralLinks(String accountNumber) {
         return getActiveAdapter().fetchAccountCollateralLinks(accountNumber);
     }
 
-    public CbsCustomer saveCustomer(CbsCustomer customer) {
-        return getActiveAdapter().saveCustomer(customer);
+    public List<CbsAccCollLinkDtls> fetchAllAccountCollateralLinks() {
+        return getActiveAdapter().fetchAllAccountCollateralLinks();
     }
 
-    public CbsFacility saveFacility(CbsFacility facility) {
-        return getActiveAdapter().saveFacility(facility);
-    }
-
-    public CbsCollateral saveCollateral(CbsCollateral collateral) {
-        return getActiveAdapter().saveCollateral(collateral);
-    }
-
-    public CbsAccCollLinkDtls saveLink(CbsAccCollLinkDtls link) {
-        return getActiveAdapter().saveLink(link);
+    public CbsConnectionStatus checkConnectionStatus() {
+        return getActiveAdapter().checkConnectionStatus();
     }
 }

@@ -18,6 +18,8 @@ public class CollateralTaxonomy {
 
     private String mandatoryCoverageType;
 
+    private boolean active = true;
+
     public CollateralTaxonomy() {}
 
     public CollateralTaxonomy(String id, String category, String subCategory, boolean insuranceMandatory, String mandatoryCoverageType) {
@@ -26,6 +28,7 @@ public class CollateralTaxonomy {
         this.subCategory = subCategory;
         this.insuranceMandatory = insuranceMandatory;
         this.mandatoryCoverageType = mandatoryCoverageType;
+        this.active = true;
     }
 
     public String getId() { return id; }
@@ -38,4 +41,6 @@ public class CollateralTaxonomy {
     public void setInsuranceMandatory(boolean insuranceMandatory) { this.insuranceMandatory = insuranceMandatory; }
     public String getMandatoryCoverageType() { return mandatoryCoverageType; }
     public void setMandatoryCoverageType(String mandatoryCoverageType) { this.mandatoryCoverageType = mandatoryCoverageType; }
+    public boolean isActive() { return active; }
+    public void setActive(boolean active) { this.active = active; }
 }

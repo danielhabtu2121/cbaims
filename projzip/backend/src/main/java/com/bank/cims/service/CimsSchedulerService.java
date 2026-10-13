@@ -34,8 +34,12 @@ public class CimsSchedulerService {
         if(configurationService.isExceptionScanEnabled()){
             long interval=configurationService.getExceptionScanIntervalMinutes()*60_000L;
             if(now-lastExceptionRun.get()>=interval){
-                try{ cimsService.scanAndGenerateExceptions(); lastExceptionRun.set(now); }
-                catch(Exception e){ cimsService.logAudit("SYSTEM","SYSADMIN","SCHEDULER_EXCEPTION_ERROR","Scheduler","EXCEPTIONS","Error","",e.getMessage(),"Scheduled exception scan failed"); }
+                try{
+                    cimsService.scanAndGenerateExceptions();
+                    cimsService.runAutomaticExceptionEscalation();
+                    lastExceptionRun.set(now);
+                }
+                catch(Exception e){ cimsService.logAudit("SYSTEM","SYSADMIN","SCHEDULER_EXCEPTION_ERROR","Scheduler","EXCEPTIONS","Error","",e.getMessage(),"Scheduled exception scan and escalation failed"); }
             }
         }
         if("Scheduled".equalsIgnoreCase(configurationService.getCbsSyncMode())){

@@ -98,7 +98,12 @@ public class OwnershipDocument {
     public String getEntityId() { return entityId; }
     public void setEntityId(String entityId) { this.entityId = entityId; }
     public String getCollateralId() { return collateralId; }
-    public void setCollateralId(String collateralId) { this.collateralId = collateralId; this.entityId = collateralId; }
+    public void setCollateralId(String collateralId) {
+        this.collateralId = collateralId;
+        if (this.entityId == null || this.entityId.isBlank()) {
+            this.entityId = collateralId;
+        }
+    }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getType() { return type; }

@@ -111,11 +111,11 @@ export const DocumentOfficerView: React.FC<DocumentOfficerViewProps> = ({
         }}
       >
         <div style={{ ...kpiCardStyle, borderLeft: '4px solid #EA580C' }}>
-          <div style={{ ...kpiLabelStyle, color: '#EA580C' }}>Pending Verification</div>
+          <div style={{ ...kpiLabelStyle, color: '#EA580C' }}>Expiring / Review Required</div>
           <div style={{ fontSize: '22px', fontWeight: 800, color: '#EA580C', marginTop: '4px' }}>
-            {summary.pendingDocumentVerificationsCount}
+            {summary.pendingDocumentVerificationsCount || 0}
           </div>
-          <div style={{ fontSize: '11px', color: '#64748B' }}>Awaiting checker review</div>
+          <div style={{ fontSize: '11px', color: '#64748B' }}>Expiring or review needed</div>
         </div>
 
         <div style={{ ...kpiCardStyle, borderLeft: '4px solid #DC2626' }}>
@@ -135,11 +135,11 @@ export const DocumentOfficerView: React.FC<DocumentOfficerViewProps> = ({
         </div>
 
         <div style={kpiCardStyle}>
-          <div style={kpiLabelStyle}>Bank Coverage %</div>
-          <div style={{ fontSize: '22px', fontWeight: 800, color: summary.insuranceCoveragePct >= 100 ? '#15803D' : '#D97706', marginTop: '4px' }}>
-            {summary.insuranceCoveragePct}%
+          <div style={kpiLabelStyle}>Insurance Compliance Rate</div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: (summary.insuranceComplianceRate ?? summary.insuranceCoveragePct) >= 100 ? '#15803D' : '#D97706', marginTop: '4px' }}>
+            {(summary.insuranceComplianceRate ?? summary.insuranceCoveragePct)}%
           </div>
-          <div style={{ fontSize: '11px', color: '#64748B' }}>Insurance adequacy</div>
+          <div style={{ fontSize: '11px', color: '#64748B' }}>(Adequate ÷ Required) × 100</div>
         </div>
       </div>
 
@@ -149,7 +149,7 @@ export const DocumentOfficerView: React.FC<DocumentOfficerViewProps> = ({
           <div style={chartHeaderStyle}>
             <div>
               <h3 style={chartTitleStyle}>Documentation Health Status</h3>
-              <p style={chartSubStyle}>Complete vs Missing vs Pending Verification breakdown</p>
+              <p style={chartSubStyle}>Complete vs Missing vs In-Review breakdown</p>
             </div>
             <FileText style={{ width: '18px', height: '18px', color: '#0E284E' }} />
           </div>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Download, Eye, ArrowUpDown, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import { Search, Download, Eye, ArrowUpDown, ChevronLeft, ChevronRight, SlidersHorizontal, X } from 'lucide-react';
 
 export interface ColumnDef<T> {
   header: string;
@@ -47,17 +47,29 @@ export function DataGrid<T extends Record<string, any>>({
   });
   const [showColToggle, setShowColToggle] = useState(false);
 
-  // Search filter
+  // Search filter with deep extraction and multi-term tokenized matching
   const filteredData = useMemo(() => {
     if (!search.trim()) return data;
-    const lower = search.toLowerCase();
-    return data.filter((item) =>
-      Object.values(item).some((val) => {
-        if (val === null || val === undefined) return false;
-        if (typeof val === 'object') return false;
-        return String(val).toLowerCase().includes(lower);
-      })
-    );
+    const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+    const extractStrings = (val: any): string[] => {
+      if (val === null || val === undefined) return [];
+      if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+        return [String(val).toLowerCase()];
+      }
+      if (Array.isArray(val)) {
+        return val.flatMap(extractStrings);
+      }
+      if (typeof val === 'object') {
+        return Object.values(val).flatMap(extractStrings);
+      }
+      return [];
+    };
+
+    return data.filter((item) => {
+      const allText = extractStrings(item).join(' ');
+      return terms.every((term) => allText.includes(term));
+    });
   }, [data, search]);
 
   // Sort
@@ -74,12 +86,13 @@ export function DataGrid<T extends Record<string, any>>({
     });
   }, [filteredData, sortKey, sortOrder]);
 
-  // Pagination
+  // Pagination with safePage clamp
   const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize));
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
   const pagedData = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
+    const start = (safePage - 1) * pageSize;
     return sortedData.slice(start, start + pageSize);
-  }, [sortedData, currentPage, pageSize]);
+  }, [sortedData, safePage, pageSize]);
 
   const handleSort = (key?: string) => {
     if (!key) return;
@@ -137,8 +150,20 @@ export function DataGrid<T extends Record<string, any>>({
                 setSearch(e.target.value);
                 setCurrentPage(1);
               }}
-              className="pl-9 pr-4 py-1.5 text-xs bg-[#EFF5FB] border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-1 focus:ring-[#3E7AB0] w-48 md:w-64 text-[#101828]"
+              className="pl-9 pr-8 py-1.5 text-xs bg-[#EFF5FB] border border-[#E2E8F0] rounded-md focus:outline-none focus:ring-1 focus:ring-[#3E7AB0] w-48 md:w-64 text-[#101828]"
             />
+            {search && (
+              <button
+                onClick={() => {
+                  setSearch('');
+                  setCurrentPage(1);
+                }}
+                className="absolute right-2.5 top-2.5 text-[#5B6472] hover:text-[#101828] cursor-pointer"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Columns Toggle */}
@@ -245,8 +270,8 @@ export function DataGrid<T extends Record<string, any>>({
       {/* Pagination Footer */}
       <div className="p-3 border-t border-[#E2E8F0] bg-white flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#5B6472]">
         <div>
-          Showing <span className="font-semibold text-[#101828] tabular-nums">{(currentPage - 1) * pageSize + (sortedData.length > 0 ? 1 : 0)}</span> to{' '}
-          <span className="font-semibold text-[#101828] tabular-nums">{Math.min(currentPage * pageSize, sortedData.length)}</span> of{' '}
+          Showing <span className="font-semibold text-[#101828] tabular-nums">{(safePage - 1) * pageSize + (sortedData.length > 0 ? 1 : 0)}</span> to{' '}
+          <span className="font-semibold text-[#101828] tabular-nums">{Math.min(safePage * pageSize, sortedData.length)}</span> of{' '}
           <span className="font-semibold text-[#101828] tabular-nums">{sortedData.length}</span> entries
         </div>
 
@@ -271,18 +296,18 @@ export function DataGrid<T extends Record<string, any>>({
 
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+              disabled={safePage === 1}
               className="p-1 rounded border border-[#E2E8F0] bg-white text-[#101828] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#EFF5FB]"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <span className="px-2 font-semibold text-[#101828] tabular-nums">
-              {currentPage} / {totalPages}
+              {safePage} / {totalPages}
             </span>
             <button
-              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+              disabled={safePage === totalPages}
               className="p-1 rounded border border-[#E2E8F0] bg-white text-[#101828] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#EFF5FB]"
             >
               <ChevronRight className="w-4 h-4" />

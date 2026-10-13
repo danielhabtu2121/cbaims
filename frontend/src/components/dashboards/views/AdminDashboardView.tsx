@@ -138,7 +138,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             <CheckCircle style={{ width: '16px', height: '16px', color: '#16A34A' }} />
           </div>
           <div style={{ fontSize: '18px', fontWeight: 800, color: '#0E284E', marginTop: '4px' }}>
-            Flowable BPMN 2.0
+            Engine 2.0
           </div>
           <div style={{ fontSize: '11px', color: '#64748B' }}>{summary.pendingApprovalsCount} tasks in queue</div>
         </div>

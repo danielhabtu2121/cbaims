@@ -27,6 +27,7 @@ import { cimsApi } from '../../api/cimsApi';
 import { ScopeBanner } from './ScopeBanner';
 import { HierarchicalDashboard } from './HierarchicalDashboard';
 import { UniversalPortfolioTable } from './UniversalPortfolioTable';
+import { PaginatedPortfolioGrid } from './components/PaginatedPortfolioGrid';
 
 interface DashboardContainerProps {
   currentUser: UserSession;
@@ -79,9 +80,12 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const fetchDashboardData = useCallback(async () => {
-    // When viewing the 9-level hierarchical drilldown, skip role-view queries
-    if (activeTab === 'hierarchy') {
+  const fetchDashboardData = useCallback(async (force = false) => {
+    if (force) {
+      cimsApi.invalidateState();
+    }
+    // When viewing the 9-level hierarchical drilldown without portfolio tab, skip role-view queries
+    if (activeTab === 'hierarchy' && !force) {
       setIsLoading(false);
       return;
     }
@@ -125,7 +129,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({
         setErrorMessage('You are not authorized to view the requested dashboard scope.');
       } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
         setErrorStatus('BACKEND_UNAVAILABLE');
-        setErrorMessage('The CBAIMS Backend Server on :8082 is unreachable. Please verify the service is running.');
+        setErrorMessage('The CBAIMS Backend Server on :8001 is unreachable. Please verify the service is running.');
       } else {
         setErrorStatus('API_ERROR');
         setErrorMessage(msg);
@@ -313,35 +317,25 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({
       {activeTab === 'hierarchy' && (
         <HierarchicalDashboard
           currentUser={currentUser}
+          selectedSegment={activeSegment}
+          onSelectSegment={onSelectSegment}
           segments={segments}
           branches={branches}
           onNavigate={onNavigate}
+          onRefreshTelemetry={fetchDashboardData}
         />
       )}
 
       {activeTab === 'portfolio' && (
         <div className="space-y-4">
-          <ScopeBanner
-            scopeData={scopeBannerData}
-            selectedSegment={activeSegment}
-            onSelectSegment={onSelectSegment}
-            filterDistrict={filterDistrict}
-            onSelectDistrict={setFilterDistrict}
-            filterBranch={filterBranch}
-            onSelectBranch={setFilterBranch}
-            filterCategory={filterCategory}
-            onSelectCategory={setFilterCategory}
-            filterStatus={filterStatus}
-            onSelectStatus={setFilterStatus}
-            filterExpiry={filterExpiry}
-            onSelectExpiry={setFilterExpiry}
-            onRefresh={fetchDashboardData}
-            onExport={handleExportCsv}
-            isLoading={isLoading}
-          />
-          <UniversalPortfolioTable
-            rows={portfolioRows}
-            onNavigate={onNavigate}
+          <PaginatedPortfolioGrid
+            userId={currentUser.userId || currentUser.username}
+            segment={activeSegment && activeSegment !== 'ALL' ? activeSegment : undefined}
+            district={filterDistrict && filterDistrict !== 'ALL' ? filterDistrict : undefined}
+            branch={filterBranch && filterBranch !== 'ALL' ? filterBranch : undefined}
+            initialStatus={filterStatus}
+            onDrillToCollateral={(id) => onNavigate('collateral-detail', { id })}
+            onDrillToCustomer={(cif) => onNavigate('customer-360', { cif })}
           />
         </div>
       )}

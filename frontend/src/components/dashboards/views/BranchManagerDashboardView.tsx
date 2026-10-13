@@ -174,11 +174,11 @@ export const BranchManagerDashboardView: React.FC<BranchManagerDashboardViewProp
         </div>
 
         <div style={kpiCardStyle}>
-          <div style={kpiLabelStyle}>Coverage %</div>
-          <div style={{ fontSize: '20px', fontWeight: 800, color: summary.insuranceCoveragePct >= 100 ? '#15803D' : '#D97706', marginTop: '4px' }}>
-            {summary.insuranceCoveragePct}%
+          <div style={kpiLabelStyle}>Insurance Compliance Rate</div>
+          <div style={{ fontSize: '20px', fontWeight: 800, color: (summary.insuranceComplianceRate ?? summary.insuranceCoveragePct) >= 100 ? '#15803D' : '#D97706', marginTop: '4px' }}>
+            {(summary.insuranceComplianceRate ?? summary.insuranceCoveragePct)}%
           </div>
-          <div style={{ fontSize: '11px', color: '#64748B' }}>Compliance index</div>
+          <div style={{ fontSize: '11px', color: '#64748B' }}>(Adequate ÷ Required) × 100</div>
         </div>
 
         <div style={{ ...kpiCardStyle, borderLeft: summary.expiredPoliciesCount > 0 ? '4px solid #DC2626' : '1px solid #DCE4EE' }}>

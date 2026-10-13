@@ -8,9 +8,27 @@ public class ApprovalHierarchyConfig {
     @Id
     private String id;
     
-    @Column(name = "transaction_type", nullable = false, unique = true)
+    @Column(name = "transaction_type", nullable = false)
     private String transactionType;
     
+    @Column(name = "hierarchy_level")
+    private String hierarchyLevel = "Branch";
+
+    @Column(name = "branch_code")
+    private String branchCode;
+
+    @Column(name = "district_name")
+    private String districtName;
+
+    @Column(name = "ho_department")
+    private String hoDepartment;
+
+    @Column(name = "exception_type")
+    private String exceptionType;
+
+    @Column(name = "maker_role")
+    private String makerRole;
+
     @Column(name = "approval_levels")
     private int approvalLevels = 1;
     
@@ -34,6 +52,18 @@ public class ApprovalHierarchyConfig {
     public void setId(String id) { this.id = id; }
     public String getTransactionType() { return transactionType; }
     public void setTransactionType(String transactionType) { this.transactionType = transactionType; }
+    public String getHierarchyLevel() { return hierarchyLevel; }
+    public void setHierarchyLevel(String hierarchyLevel) { this.hierarchyLevel = hierarchyLevel; }
+    public String getBranchCode() { return branchCode; }
+    public void setBranchCode(String branchCode) { this.branchCode = branchCode; }
+    public String getDistrictName() { return districtName; }
+    public void setDistrictName(String districtName) { this.districtName = districtName; }
+    public String getHoDepartment() { return hoDepartment; }
+    public void setHoDepartment(String hoDepartment) { this.hoDepartment = hoDepartment; }
+    public String getExceptionType() { return exceptionType; }
+    public void setExceptionType(String exceptionType) { this.exceptionType = exceptionType; }
+    public String getMakerRole() { return makerRole; }
+    public void setMakerRole(String makerRole) { this.makerRole = makerRole; }
     public int getApprovalLevels() { return approvalLevels; }
     public void setApprovalLevels(int approvalLevels) { this.approvalLevels = approvalLevels; }
     public String getLevel1Role() { return level1Role; }

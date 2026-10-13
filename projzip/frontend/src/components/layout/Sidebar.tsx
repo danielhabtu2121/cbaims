@@ -243,9 +243,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Pinned Collapse Toggle Footer */}
       <div className="shrink-0 p-2.5 border-t border-[#1B4580] bg-[#0A1C36] flex items-center justify-between">
         {!collapsed && (
-          <div className="flex items-center gap-1.5 text-[11px] text-[#8FA5C2] font-medium pl-1">
-            <Shield className="w-3 h-3 text-[#8B6BFF]" />
-            <span>CDIMS Enterprise</span>
+          <div className="flex items-center gap-2 text-[11px] text-[#8FA5C2] font-medium pl-1">
+            <img src="/dashen-logo.png" alt="Dashen Bank" className="w-4 h-4 object-contain rounded-xs bg-white p-0.5" />
+            <span className="font-semibold text-slate-200">Dashen CBAIMS</span>
           </div>
         )}
         <button

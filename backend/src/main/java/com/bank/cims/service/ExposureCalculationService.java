@@ -28,6 +28,9 @@ public class ExposureCalculationService {
     private CollateralTaxonomyRepository collateralTaxonomyRepository;
 
     @Autowired
+    private EffectiveInsuranceService effectiveInsuranceService;
+
+    @Autowired
     private ConfigurationService configurationService;
 
     public ExposureAdequacySummaryDto calculateExposureAndAdequacy(String collateralId) {
@@ -64,8 +67,13 @@ public class ExposureCalculationService {
         double totalLimit = 0;
         double totalOutstanding = 0;
         List<Map<String, Object>> breakdowns = new ArrayList<>();
+        Set<String> processedFacilityIds = new HashSet<>();
 
         for (LoanCollateralLink link : links) {
+            String linkStat = link.getStatus() != null ? link.getStatus() : link.getRelationshipStatus();
+            if ("Historical".equalsIgnoreCase(linkStat) || "Released".equalsIgnoreCase(linkStat) || "Ended".equalsIgnoreCase(linkStat) || "Inactive".equalsIgnoreCase(linkStat)) {
+                continue;
+            }
             totalAllocated += link.getAllocatedAmount();
 
             String facId = link.getLoanAccountId() != null ? link.getLoanAccountId() : link.getFacilityId();
@@ -84,8 +92,10 @@ public class ExposureCalculationService {
             bMap.put("linkageType", link.getLinkageType());
 
             if (facility != null) {
-                totalLimit += facility.getApprovedLimit();
-                totalOutstanding += facility.getOutstandingBalance();
+                if (processedFacilityIds.add(facility.getId())) {
+                    totalLimit += facility.getApprovedLimit();
+                    totalOutstanding += facility.getOutstandingBalance();
+                }
                 bMap.put("loanReference", facility.getLoanReference());
                 bMap.put("facilityType", facility.getFacilityType());
                 bMap.put("approvedLimit", facility.getApprovedLimit());
@@ -101,16 +111,7 @@ public class ExposureCalculationService {
         summary.setFacilityBreakdowns(breakdowns);
 
         // Required Insurance Rule: Sum Insured >= Max(Outstanding Balance, Collateral Value)
-        boolean isMandatory = true;
-        if (collateral.getCategory() != null) {
-            List<CollateralTaxonomy> taxonomies = collateralTaxonomyRepository.findAll();
-            for (CollateralTaxonomy tax : taxonomies) {
-                if (collateral.getCategory().equalsIgnoreCase(tax.getCategory())) {
-                    isMandatory = tax.isInsuranceMandatory();
-                    break;
-                }
-            }
-        }
+        boolean isMandatory = effectiveInsuranceService.isInsuranceMandatory(collateral.getCategory(), collateral.getType());
 
         double thresholdPct = configurationService.getMinimumCoverageAdequacyPct();
         double baseRequired = Math.max(totalOutstanding, collateral.getValuationAmount());

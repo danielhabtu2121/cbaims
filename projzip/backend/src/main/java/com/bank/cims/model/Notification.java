@@ -44,6 +44,18 @@ public class Notification {
     @Column(name = "retry_count")
     private int retryCount = 0;
 
+    @Column(name = "channel_provider")
+    private String channelProvider = "SIMULATOR";
+
+    @Column(name = "delivery_reference")
+    private String deliveryReference;
+
+    @Column(name = "read_status")
+    private String readStatus = "UNREAD";
+
+    @Column(name = "read_at")
+    private String readAt;
+
     public Notification() {}
 
     public String getId() { return id; }
@@ -72,4 +84,12 @@ public class Notification {
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public int getRetryCount() { return retryCount; }
     public void setRetryCount(int retryCount) { this.retryCount = retryCount; }
+    public String getChannelProvider() { return channelProvider; }
+    public void setChannelProvider(String channelProvider) { this.channelProvider = channelProvider; }
+    public String getDeliveryReference() { return deliveryReference; }
+    public void setDeliveryReference(String deliveryReference) { this.deliveryReference = deliveryReference; }
+    public String getReadStatus() { return readStatus; }
+    public void setReadStatus(String readStatus) { this.readStatus = readStatus; }
+    public String getReadAt() { return readAt; }
+    public void setReadAt(String readAt) { this.readAt = readAt; }
 }

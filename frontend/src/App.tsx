@@ -325,6 +325,53 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedSegment, setSelectedSegment] = useState('Corporate Banking');
 
+  // Deep-linking navigation target IDs
+  const [targetFacilityId, setTargetFacilityId] = useState<string | null>(null);
+  const [targetCollateralId, setTargetCollateralId] = useState<string | null>(null);
+  const [targetPolicyId, setTargetPolicyId] = useState<string | null>(null);
+  const [targetCustomerId, setTargetCustomerId] = useState<string | null>(null);
+  const [targetDocumentId, setTargetDocumentId] = useState<string | null>(null);
+  const [targetExceptionId, setTargetExceptionId] = useState<string | null>(null);
+
+  const handleNavigate = (page: string, params?: Record<string, any>) => {
+    let targetPage: NavPageId = page as NavPageId;
+    if (page === 'policies') targetPage = 'insurance';
+    if (page === 'collaterals') targetPage = 'collateral';
+
+    if (params?.facilityId || (targetPage === 'facilities' && (params?.id || params?.entityId))) {
+      const facId = params.facilityId || params.id || params.entityId;
+      setTargetFacilityId(facId);
+      const fac = facilities.find(f => f.id === facId || f.lineCode === facId || f.loanReference === facId);
+      if (fac && fac.segment && effectiveSegment !== 'ALL' && fac.segment.toLowerCase() !== effectiveSegment.toLowerCase()) {
+        setSelectedSegment('ALL');
+      }
+    }
+    if (params?.collateralId || (targetPage === 'collateral' && (params?.id || params?.entityId))) {
+      const colId = params.collateralId || params.id || params.entityId;
+      setTargetCollateralId(colId);
+      const col = collaterals.find(c => c.id === colId || c.code === colId);
+      if (col && col.owningSegment && effectiveSegment !== 'ALL' && col.owningSegment.toLowerCase() !== effectiveSegment.toLowerCase()) {
+        setSelectedSegment('ALL');
+      }
+    }
+    if (params?.policyId || (targetPage === 'insurance' && (params?.id || params?.entityId))) {
+      const polId = params.policyId || params.id || params.entityId;
+      setTargetPolicyId(polId);
+    }
+    if (params?.customerId || params?.cif || (targetPage === 'customers' && (params?.id || params?.selectedCif))) {
+      const custId = params.customerId || params.cif || params.id || params.selectedCif;
+      setTargetCustomerId(custId);
+    }
+    if (params?.documentId || (targetPage === 'documents' && params?.id)) {
+      setTargetDocumentId(params.documentId || params.id);
+    }
+    if (params?.exceptionId || (targetPage === 'exceptions' && params?.id)) {
+      setTargetExceptionId(params.exceptionId || params.id);
+    }
+
+    setActivePage(targetPage);
+  };
+
   // Modals & Drawers
   const [showNotifications, setShowNotifications] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -577,8 +624,15 @@ export function App() {
     }
   };
 
-  const handleAddLink = async (loanId: string, collateralId: string, amount: number) => {
-    await cimsApi.addFacilityLink(loanId, collateralId, amount, currentUser?.userId || currentUser?.username);
+  const handleAddLink = async (
+    loanId: string,
+    collateralId: string,
+    amount: number,
+    linkageType?: string,
+    effectiveDate?: string,
+    endDate?: string
+  ) => {
+    await cimsApi.addFacilityLink(loanId, collateralId, amount, currentUser?.userId || currentUser?.username, linkageType, effectiveDate, endDate);
     await loadData();
   };
 
@@ -616,38 +670,38 @@ export function App() {
     }
   };
 
-  const handleAmendPolicy = async (policyId: string, pol: Partial<InsurancePolicy>, reason: string) => {
-    await cimsApi.amendPolicy(policyId, pol, reason, currentUser?.username || 'CRO_USER');
+  const handleAmendPolicy = async (policyId: string, pol: Partial<InsurancePolicy>, reason: string, documents?: any[]) => {
+    await cimsApi.amendPolicy(policyId, pol, reason, currentUser?.username || 'CRO_USER', documents);
     await loadData();
   };
 
-  const handleRenewPolicy = async (policyId: string, amt: number, prem: number, exp: string) => {
-    await cimsApi.renewPolicy(policyId, amt, prem, exp, currentUser?.username || 'CRO_USER');
+  const handleRenewPolicy = async (policyId: string, amt: number, prem: number, exp: string, documents?: any[]) => {
+    await cimsApi.renewPolicy(policyId, amt, prem, exp, currentUser?.username || 'CRO_USER', documents);
     await loadData();
   };
 
-  const handleEndorsePolicy = async (policyId: string, endorsementNo: string, description: string, effectiveDate?: string) => {
-    await cimsApi.endorsePolicy(policyId, endorsementNo, description, effectiveDate, undefined, currentUser?.username || 'CRO_USER');
+  const handleEndorsePolicy = async (policyId: string, endorsementNo: string, description: string, effectiveDate?: string, documentId?: string, documents?: any[]) => {
+    await cimsApi.endorsePolicy(policyId, endorsementNo, description, effectiveDate, documentId, currentUser?.username || 'CRO_USER', documents);
     await loadData();
   };
 
-  const handleReplacePolicy = async (policyId: string, replacement: any, reason: string) => {
-    await cimsApi.replacePolicy(policyId, replacement, reason, currentUser?.username || 'CRO_USER');
+  const handleReplacePolicy = async (policyId: string, replacement: any, reason: string, documents?: any[]) => {
+    await cimsApi.replacePolicy(policyId, replacement, reason, currentUser?.username || 'CRO_USER', documents);
     await loadData();
   };
 
-  const handleCancelPolicy = async (policyId: string, reason: string) => {
-    await cimsApi.cancelPolicy(policyId, reason, currentUser?.username || 'CRO_USER');
+  const handleCancelPolicy = async (policyId: string, reason: string, documents?: any[]) => {
+    await cimsApi.cancelPolicy(policyId, reason, currentUser?.username || 'CRO_USER', documents);
     await loadData();
   };
 
-  const handleClosePolicy = async (policyId: string, reason: string) => {
-    await cimsApi.closePolicy(policyId, reason, currentUser?.username || 'CRO_USER');
+  const handleClosePolicy = async (policyId: string, reason: string, documents?: any[]) => {
+    await cimsApi.closePolicy(policyId, reason, currentUser?.username || 'CRO_USER', documents);
     await loadData();
   };
 
-  const handleReopenPolicy = async (policyId: string, reason: string) => {
-    await cimsApi.reopenPolicy(policyId, reason, currentUser?.username || 'CRO_USER');
+  const handleReopenPolicy = async (policyId: string, reason: string, documents?: any[]) => {
+    await cimsApi.reopenPolicy(policyId, reason, currentUser?.username || 'CRO_USER', documents);
     await loadData();
   };
 
@@ -701,8 +755,8 @@ export function App() {
     await loadData();
   };
 
-  const handleResolveException = async (id: string, action: string, notes: string) => {
-    await cimsApi.resolveException(id, action, notes);
+  const handleResolveException = async (id: string, action: string, notes: string, evidenceDoc?: string) => {
+    await cimsApi.resolveException(id, action, notes, evidenceDoc);
     await loadData();
   };
 
@@ -788,6 +842,11 @@ export function App() {
 
   const handleSaveHoliday = async (holiday: Partial<HolidayCalendar>) => {
     await cimsApi.saveHolidayCalendar(holiday);
+    await loadData();
+  };
+
+  const handleDeleteHoliday = async (holidayId: string) => {
+    await cimsApi.deleteHolidayCalendar(holidayId, currentUser?.username || 'SYSADMIN');
     await loadData();
   };
 
@@ -969,6 +1028,13 @@ export function App() {
         onChangePassword={() => setShowChangePassword(true)}
         onDelegateAuthority={() => setActivePage('approvals')}
         onLogout={handleLogout}
+        customers={customers}
+        facilities={facilities}
+        collaterals={collaterals}
+        policies={policies}
+        documents={documents}
+        exceptions={exceptions}
+        onNavigate={handleNavigate}
       />
 
       {/* Main Workspace Layout */}
@@ -1043,9 +1109,7 @@ export function App() {
                 segments={segments}
                 branches={branches}
                 systemParameters={systemParameters}
-                onNavigate={(page, params) => {
-                  setActivePage(page);
-                }}
+                onNavigate={handleNavigate}
                 onApproveTask={handleApproveTask}
                 onRejectTask={handleRejectTask}
               />
@@ -1061,6 +1125,8 @@ export function App() {
                 segments={segments}
                 branches={branches}
                 currentUser={effectiveUserSession}
+                initialCustomerId={targetCustomerId}
+                onNavigate={handleNavigate}
                 onRegisterManualCustomer={handleRegisterManualCustomer}
                 onMaintainCustomer={handleMaintainCustomer}
               />
@@ -1073,6 +1139,10 @@ export function App() {
                 collaterals={scopedCollaterals}
                 links={scopedLinks}
                 policies={scopedPolicies}
+                initialFacilityId={targetFacilityId}
+                currentUser={effectiveUserSession}
+                onNavigate={handleNavigate}
+                onRefreshData={loadData}
               />
             )}
 
@@ -1091,12 +1161,15 @@ export function App() {
                 customers={scopedCustomers}
                 systemParameters={systemParameters}
                 currentUser={effectiveUserSession}
+                initialCollateralId={targetCollateralId}
+                onNavigate={handleNavigate}
                 onRegisterCollateral={handleRegisterCollateral}
                 onAddLink={handleAddLink}
                 onRemoveLink={handleRemoveLink}
                 onValidateRelease={handleValidateRelease}
                 onInitiateTransfer={handleInitiateTransfer}
                 onMaintainCollateral={handleMaintainCollateral}
+                onRefreshData={loadData}
               />
             )}
 
@@ -1109,7 +1182,10 @@ export function App() {
                 insurers={insurers}
                 documents={scopedDocuments}
                 systemParameters={systemParameters}
+                taxonomies={taxonomies}
                 currentUser={effectiveUserSession}
+                initialPolicyId={targetPolicyId}
+                onNavigate={handleNavigate}
                 onCreatePolicyDraft={handleCreatePolicyDraft}
                 onSubmitPolicy={handleSubmitPolicy}
                 onAmendPolicy={handleAmendPolicy}
@@ -1119,6 +1195,7 @@ export function App() {
                 onCancelPolicy={handleCancelPolicy}
                 onClosePolicy={handleClosePolicy}
                 onReopenPolicy={handleReopenPolicy}
+                onReload={loadData}
               />
             )}
 
@@ -1128,6 +1205,15 @@ export function App() {
                 delegations={delegations}
                 allUsers={allUsersList}
                 currentUser={effectiveUserSession}
+                customers={scopedCustomers}
+                facilities={scopedFacilities}
+                collaterals={scopedCollaterals}
+                policies={scopedPolicies}
+                documents={scopedDocuments}
+                links={scopedLinks}
+                exceptions={scopedExceptions}
+                branches={branches}
+                insurers={insurers}
                 onApproveTask={handleApproveTask}
                 onRejectTask={handleRejectTask}
                 onReturnTask={handleReturnTask}
@@ -1135,6 +1221,7 @@ export function App() {
                 onBulkApprove={handleBulkApprove}
                 onCreateDelegation={handleCreateDelegation}
                 onRevokeDelegation={handleRevokeDelegation}
+                onReload={loadData}
               />
             )}
 
@@ -1142,9 +1229,20 @@ export function App() {
               <ExceptionManager
                 exceptions={scopedExceptions}
                 currentUser={effectiveUserSession}
+                collaterals={scopedCollaterals}
+                facilities={scopedFacilities}
+                policies={scopedPolicies}
+                customers={scopedCustomers}
+                documents={scopedDocuments}
+                mandatoryDocRules={mandatoryDocRules}
+                insurers={insurers}
+                users={allUsersList}
+                initialExceptionId={targetExceptionId}
                 onResolveException={handleResolveException}
                 onEscalateException={handleEscalateException}
                 onScanNow={handleScanExceptions}
+                onNavigate={handleNavigate}
+                onRefreshData={loadData}
               />
             )}
 
@@ -1154,6 +1252,7 @@ export function App() {
                 collaterals={scopedCollaterals}
                 mandatoryDocRules={mandatoryDocRules}
                 currentUser={effectiveUserSession}
+                initialDocumentId={targetDocumentId}
                 onUploadDocument={handleUploadDocument}
                 onRefreshData={loadData}
               />
@@ -1170,6 +1269,11 @@ export function App() {
                 scheduledReports={scheduledReports}
                 currentUser={effectiveUserSession}
                 onSaveScheduledReport={handleSaveScheduledReport}
+                documents={documents}
+                mandatoryDocRules={mandatoryDocRules}
+                insurers={insurers}
+                branches={branches}
+                segments={segments}
               />
             )}
 
@@ -1201,6 +1305,7 @@ export function App() {
                 onSaveTaxonomy={handleSaveTaxonomy}
                 onSaveMandatoryDocRule={handleSaveMandatoryDocRule}
                 onSaveHoliday={handleSaveHoliday}
+                onDeleteHoliday={handleDeleteHoliday}
               />
             )}
 

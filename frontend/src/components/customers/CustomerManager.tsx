@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Eye, Plus, ShieldCheck, CreditCard, Building2, FileCheck, FolderOpen, History, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
+import { Users, Eye, Plus, ShieldCheck, CreditCard, Building2, FileCheck, FolderOpen, History, AlertTriangle, CheckCircle, RefreshCw, ArrowUpRight } from 'lucide-react';
 import { Customer, LoanAccount, Collateral, InsurancePolicy, OwnershipDocument, UserSession, BusinessSegment, Branch, Customer360, WorkflowTask, CimsException, AuditLog, LoanCollateralLink } from '../../types';
 import { DataGrid, ColumnDef } from '../layout/DataGrid';
 import { StatusChip } from '../layout/StatusChip';
@@ -14,6 +14,8 @@ interface CustomerManagerProps {
   segments?: BusinessSegment[];
   branches?: Branch[];
   currentUser: UserSession;
+  initialCustomerId?: string | null;
+  onNavigate?: (page: string, params?: Record<string, any>) => void;
   onRegisterManualCustomer: (cust: Partial<Customer>) => Promise<void>;
   onMaintainCustomer?: (customerId: string, changes: Record<string, any>) => Promise<void>;
 }
@@ -27,6 +29,8 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
   segments,
   branches,
   currentUser,
+  initialCustomerId,
+  onNavigate,
   onRegisterManualCustomer,
   onMaintainCustomer,
 }) => {
@@ -40,6 +44,17 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
   const [maintainError, setMaintainError] = useState<string | null>(null);
   const [maintainSubmitting, setMaintainSubmitting] = useState(false);
   const [active360Tab, setActive360Tab] = useState<'overview' | 'facilities' | 'collateral' | 'policies' | 'documents' | 'approvals' | 'exceptions' | 'audit'>('overview');
+
+  useEffect(() => {
+    if (initialCustomerId && customers.length > 0) {
+      const found = customers.find(
+        (c) => c.id === initialCustomerId || c.cif === initialCustomerId
+      );
+      if (found) {
+        load360Data(found);
+      }
+    }
+  }, [initialCustomerId, customers]);
 
   const [newCust, setNewCust] = useState<Partial<Customer>>({
     cif: `CIF-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -356,15 +371,30 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                         <th className="p-2.5 text-right">Available</th>
                         <th className="p-2.5">Expiry Date</th>
                         <th className="p-2.5">Status</th>
+                        <th className="p-2.5 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E2E8F0]">
                       {currentFacilities.length === 0 ? (
-                        <tr><td colSpan={7} className="p-4 text-center text-[#5B6472]">No credit facilities found.</td></tr>
+                        <tr><td colSpan={8} className="p-4 text-center text-[#5B6472]">No credit facilities found.</td></tr>
                       ) : (
                         currentFacilities.map((f) => (
-                          <tr key={f.id} className="hover:bg-[#EFF5FB]">
-                            <td className="p-2.5 font-semibold">{f.lineCode || f.loanReference}</td>
+                          <tr key={f.id} className="hover:bg-[#EFF5FB] group">
+                            <td className="p-2.5 font-semibold">
+                              <button
+                                onClick={() => {
+                                  if (onNavigate) {
+                                    setShow360Modal(false);
+                                    onNavigate('facilities', { facilityId: f.id, id: f.id });
+                                  }
+                                }}
+                                className="font-bold text-blue-700 hover:text-blue-900 underline flex items-center gap-1 cursor-pointer text-left"
+                                title="Click to view facility details"
+                              >
+                                <span>{f.lineCode || f.loanReference}</span>
+                                <ArrowUpRight className="w-3 h-3 opacity-60 group-hover:opacity-100" />
+                              </button>
+                            </td>
                             <td className="p-2.5">{f.facilityType}</td>
                             <td className="p-2.5 text-right tabular-nums font-semibold">
                               {f.lineCurrency || 'ETB'} {f.approvedLimit?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -377,6 +407,19 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                             </td>
                             <td className="p-2.5">{f.lineExpiryDate || (f as any).maturityDate || '—'}</td>
                             <td className="p-2.5"><StatusChip label={f.status} /></td>
+                            <td className="p-2.5 text-right">
+                              <button
+                                onClick={() => {
+                                  if (onNavigate) {
+                                    setShow360Modal(false);
+                                    onNavigate('facilities', { facilityId: f.id, id: f.id });
+                                  }
+                                }}
+                                className="btn-ghost py-0.5 px-2 text-[11px] text-blue-700 hover:text-blue-900 border border-blue-200 hover:border-blue-300 rounded inline-flex items-center gap-1"
+                              >
+                                View Facility <ArrowUpRight className="w-3 h-3" />
+                              </button>
+                            </td>
                           </tr>
                         ))
                       )}
@@ -400,17 +443,33 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                           <th className="p-2.5 text-right">Allocated</th>
                           <th className="p-2.5">Insurance</th>
                           <th className="p-2.5">Status</th>
+                          <th className="p-2.5 text-right">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#E2E8F0]">
                         {currentCollaterals.length === 0 ? (
-                          <tr><td colSpan={9} className="p-4 text-center text-[#5B6472]">No collateral pledged.</td></tr>
+                          <tr><td colSpan={10} className="p-4 text-center text-[#5B6472]">No collateral pledged.</td></tr>
                         ) : (
                           currentCollaterals.map((c) => {
                             const net = c.valuationAmount * (1.0 - ((c.haircut || 0) / 100.0));
+                            const colPolicy = policies.find((p) => p.collateralId === c.id || p.collateralId === c.code);
                             return (
-                              <tr key={c.id} className="hover:bg-[#EFF5FB]">
-                                <td className="p-2.5 font-semibold">{c.code}</td>
+                              <tr key={c.id} className="hover:bg-[#EFF5FB] group">
+                                <td className="p-2.5 font-semibold">
+                                  <button
+                                    onClick={() => {
+                                      if (onNavigate) {
+                                        setShow360Modal(false);
+                                        onNavigate('collateral', { collateralId: c.id, id: c.id });
+                                      }
+                                    }}
+                                    className="font-bold text-blue-700 hover:text-blue-900 underline flex items-center gap-1 cursor-pointer text-left font-mono"
+                                    title="Click to view collateral asset"
+                                  >
+                                    <span>{c.code}</span>
+                                    <ArrowUpRight className="w-3 h-3 opacity-60 group-hover:opacity-100" />
+                                  </button>
+                                </td>
                                 <td className="p-2.5">{c.description}</td>
                                 <td className="p-2.5">{c.category}</td>
                                 <td className="p-2.5 text-right tabular-nums">
@@ -423,8 +482,39 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                                 <td className="p-2.5 text-right tabular-nums">
                                   {c.currency || 'ETB'} {(c.currentAllocation || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </td>
-                                <td className="p-2.5"><StatusChip label={c.insuranceStatus || 'Uninsured'} /></td>
+                                <td className="p-2.5">
+                                  {colPolicy ? (
+                                    <button
+                                      onClick={() => {
+                                        if (onNavigate) {
+                                          setShow360Modal(false);
+                                          onNavigate('insurance', { policyId: colPolicy.id, id: colPolicy.id });
+                                        }
+                                      }}
+                                      className="flex items-center gap-1 group/pol cursor-pointer text-left"
+                                      title={`Click to view policy: ${colPolicy.policyNumber}`}
+                                    >
+                                      <StatusChip label={c.insuranceStatus || 'Insured'} />
+                                      <ArrowUpRight className="w-3 h-3 text-blue-600 opacity-60 group-hover/pol:opacity-100" />
+                                    </button>
+                                  ) : (
+                                    <StatusChip label={c.insuranceStatus || 'Uninsured'} />
+                                  )}
+                                </td>
                                 <td className="p-2.5"><StatusChip label={c.status} /></td>
+                                <td className="p-2.5 text-right">
+                                  <button
+                                    onClick={() => {
+                                      if (onNavigate) {
+                                        setShow360Modal(false);
+                                        onNavigate('collateral', { collateralId: c.id, id: c.id });
+                                      }
+                                    }}
+                                    className="btn-ghost py-0.5 px-2 text-[11px] text-blue-700 hover:text-blue-900 border border-blue-200 hover:border-blue-300 rounded inline-flex items-center gap-1"
+                                  >
+                                    View Collateral <ArrowUpRight className="w-3 h-3" />
+                                  </button>
+                                </td>
                               </tr>
                             );
                           })
@@ -444,16 +534,58 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                             <th className="p-1.5">Linkage Type</th>
                             <th className="p-1.5 text-right">Allocated Security Amount</th>
                             <th className="p-1.5">Status</th>
+                            <th className="p-1.5 text-right">Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#E2E8F0]">
                           {currentLinks.map(lnk => (
-                            <tr key={lnk.id}>
-                              <td className="p-1.5 font-semibold">{lnk.facilityId || lnk.loanAccountId}</td>
-                              <td className="p-1.5">{lnk.collateralId}</td>
+                            <tr key={lnk.id} className="hover:bg-white/80 group">
+                              <td className="p-1.5 font-semibold">
+                                <button
+                                  onClick={() => {
+                                    if (onNavigate) {
+                                      setShow360Modal(false);
+                                      onNavigate('facilities', { facilityId: lnk.facilityId || lnk.loanAccountId, id: lnk.facilityId || lnk.loanAccountId });
+                                    }
+                                  }}
+                                  className="font-bold text-blue-700 hover:text-blue-900 underline inline-flex items-center gap-1 cursor-pointer"
+                                  title="Click to view facility"
+                                >
+                                  <span>{lnk.facilityId || lnk.loanAccountId}</span>
+                                  <ArrowUpRight className="w-3 h-3 opacity-60" />
+                                </button>
+                              </td>
+                              <td className="p-1.5">
+                                <button
+                                  onClick={() => {
+                                    if (onNavigate) {
+                                      setShow360Modal(false);
+                                      onNavigate('collateral', { collateralId: lnk.collateralId, id: lnk.collateralId });
+                                    }
+                                  }}
+                                  className="font-bold text-blue-700 hover:text-blue-900 underline inline-flex items-center gap-1 cursor-pointer font-mono"
+                                  title="Click to view collateral"
+                                >
+                                  <span>{lnk.collateralId}</span>
+                                  <ArrowUpRight className="w-3 h-3 opacity-60" />
+                                </button>
+                              </td>
                               <td className="p-1.5">{lnk.linkageType || 'Primary'}</td>
                               <td className="p-1.5 text-right tabular-nums font-semibold">ETB {(lnk.linkedAmount || lnk.allocatedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                               <td className="p-1.5"><StatusChip label={lnk.status || 'Active'} /></td>
+                              <td className="p-1.5 text-right">
+                                <button
+                                  onClick={() => {
+                                    if (onNavigate) {
+                                      setShow360Modal(false);
+                                      onNavigate('collateral', { collateralId: lnk.collateralId, id: lnk.collateralId });
+                                    }
+                                  }}
+                                  className="btn-ghost py-0.5 px-1.5 text-[10px] text-blue-700 hover:text-blue-900 border border-blue-200 rounded inline-flex items-center gap-0.5"
+                                >
+                                  Asset <ArrowUpRight className="w-2.5 h-2.5" />
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -476,15 +608,30 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                         <th className="p-2.5">Expiry Date</th>
                         <th className="p-2.5">Version</th>
                         <th className="p-2.5">Status</th>
+                        <th className="p-2.5 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E2E8F0]">
                       {currentPolicies.length === 0 ? (
-                        <tr><td colSpan={8} className="p-4 text-center text-[#5B6472]">No insurance policies found.</td></tr>
+                        <tr><td colSpan={9} className="p-4 text-center text-[#5B6472]">No insurance policies found.</td></tr>
                       ) : (
                         currentPolicies.map((p) => (
-                          <tr key={p.id} className="hover:bg-[#EFF5FB]">
-                            <td className="p-2.5 font-semibold">{p.policyNumber}</td>
+                          <tr key={p.id} className="hover:bg-[#EFF5FB] group">
+                            <td className="p-2.5 font-semibold">
+                              <button
+                                onClick={() => {
+                                  if (onNavigate) {
+                                    setShow360Modal(false);
+                                    onNavigate('insurance', { policyId: p.id, id: p.id });
+                                  }
+                                }}
+                                className="font-bold text-blue-700 hover:text-blue-900 underline flex items-center gap-1 cursor-pointer text-left"
+                                title="Click to view policy details"
+                              >
+                                <span>{p.policyNumber}</span>
+                                <ArrowUpRight className="w-3 h-3 opacity-60 group-hover:opacity-100" />
+                              </button>
+                            </td>
                             <td className="p-2.5">{p.insurerName}</td>
                             <td className="p-2.5">{p.coverageType}</td>
                             <td className="p-2.5 text-right tabular-nums font-semibold text-emerald-700">
@@ -496,6 +643,19 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                             <td className="p-2.5">{p.expiryDate}</td>
                             <td className="p-2.5 font-semibold">v{p.version || 1}</td>
                             <td className="p-2.5"><StatusChip label={p.status} /></td>
+                            <td className="p-2.5 text-right">
+                              <button
+                                onClick={() => {
+                                  if (onNavigate) {
+                                    setShow360Modal(false);
+                                    onNavigate('insurance', { policyId: p.id, id: p.id });
+                                  }
+                                }}
+                                className="btn-ghost py-0.5 px-2 text-[11px] text-blue-700 hover:text-blue-900 border border-blue-200 hover:border-blue-300 rounded inline-flex items-center gap-1"
+                              >
+                                View Policy <ArrowUpRight className="w-3 h-3" />
+                              </button>
+                            </td>
                           </tr>
                         ))
                       )}
@@ -695,26 +855,87 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-[#101828] mb-1">National ID / Passport (O)</label>
-                  <input
-                    type="text"
-                    value={newCust.nationalId || ''}
-                    onChange={(e) => setNewCust({ ...newCust, nationalId: e.target.value })}
-                    className="w-full p-2 border border-[#E2E8F0] rounded"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#101828] mb-1">Business Reg No. (O)</label>
-                  <input
-                    type="text"
-                    value={newCust.businessRegNo || ''}
-                    onChange={(e) => setNewCust({ ...newCust, businessRegNo: e.target.value })}
-                    className="w-full p-2 border border-[#E2E8F0] rounded"
-                  />
-                </div>
-              </div>
+              {/* Conditional fields based on Customer Type */}
+              {newCust.customerType === 'Individual' ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">Date of Birth</label>
+                      <input
+                        type="date"
+                        value={newCust.dobOrIncorp || ''}
+                        onChange={(e) => setNewCust({ ...newCust, dobOrIncorp: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">Gender</label>
+                      <select
+                        value={newCust.gender || ''}
+                        onChange={(e) => setNewCust({ ...newCust, gender: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded"
+                      >
+                        <option value="">Select Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">National ID / Passport</label>
+                      <input
+                        type="text"
+                        value={newCust.nationalId || ''}
+                        onChange={(e) => setNewCust({ ...newCust, nationalId: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">Tax ID / TIN</label>
+                      <input
+                        type="text"
+                        value={newCust.taxIdNo || ''}
+                        onChange={(e) => setNewCust({ ...newCust, taxIdNo: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">Date of Incorporation</label>
+                      <input
+                        type="date"
+                        value={newCust.dobOrIncorp || ''}
+                        onChange={(e) => setNewCust({ ...newCust, dobOrIncorp: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">Business Registration Number</label>
+                      <input
+                        type="text"
+                        value={newCust.businessRegNo || ''}
+                        onChange={(e) => setNewCust({ ...newCust, businessRegNo: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-[#101828] mb-1">Tax ID / TIN</label>
+                    <input
+                      type="text"
+                      value={newCust.taxIdNo || ''}
+                      onChange={(e) => setNewCust({ ...newCust, taxIdNo: e.target.value })}
+                      className="w-full p-2 border border-[#E2E8F0] rounded"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -728,6 +949,28 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                   />
                 </div>
                 <div>
+                  <label className="block font-semibold text-[#101828] mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    value={newCust.email || ''}
+                    onChange={(e) => setNewCust({ ...newCust, email: e.target.value })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Address / Registered Location</label>
+                <textarea
+                  value={newCust.address || ''}
+                  onChange={(e) => setNewCust({ ...newCust, address: e.target.value })}
+                  className="w-full p-2 border border-[#E2E8F0] rounded"
+                  rows={2}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="block font-semibold text-[#101828] mb-1">Business Segment (M)</label>
                   <select
                     value={newCust.segment || 'Corporate Banking'}
@@ -739,19 +982,22 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block font-semibold text-[#101828] mb-1">Operating Branch (M)</label>
+                  <select
+                    value={newCust.branch || currentUser.branch || 'Bole Special Branch'}
+                    onChange={(e) => setNewCust({ ...newCust, branch: e.target.value })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded"
+                  >
+                    {availableBranches.map(b => (
+                      <option key={b.id} value={b.name}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-[#101828] mb-1">Operating Branch (M)</label>
-                <select
-                  value={newCust.branch || currentUser.branch || 'Bole Special Branch'}
-                  onChange={(e) => setNewCust({ ...newCust, branch: e.target.value })}
-                  className="w-full p-2 border border-[#E2E8F0] rounded"
-                >
-                  {availableBranches.map(b => (
-                    <option key={b.id} value={b.name}>{b.name}</option>
-                  ))}
-                </select>
+              <div className="p-2.5 bg-blue-50 border border-blue-100 rounded text-[11px] text-blue-800">
+                <strong>Controlled Organizational Assignment:</strong> District, RM, and RO are assigned systematically via organizational portfolio structures upon checker authorization.
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
@@ -787,8 +1033,79 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                   {maintainError}
                 </div>
               )}
+
+              {/* Source System Classification Banner */}
+              {selectedCustomer.source === 'CBS_SIM' || selectedCustomer.cbsSyncStatus ? (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 flex items-center justify-between">
+                  <span><strong>CBS-Originated Customer:</strong> Core master fields are synced from Core Banking and read-only.</span>
+                  <span className="px-2 py-0.5 bg-amber-200 text-amber-900 rounded font-semibold text-[10px]">CBS SOURCE</span>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-blue-50 border border-blue-200 rounded text-[11px] text-blue-900 flex items-center justify-between">
+                  <span><strong>Manual / CIMS Originated Customer:</strong> Core identity master fields remain read-only post-authorization.</span>
+                  <span className="px-2 py-0.5 bg-blue-200 text-blue-900 rounded font-semibold text-[10px]">CIMS MANUAL</span>
+                </div>
+              )}
+
+              {/* Read-Only Master Identity Section */}
+              <div className="p-3 bg-gray-50 border border-[#E2E8F0] rounded space-y-2">
+                <div className="text-[11px] font-bold text-gray-700 uppercase tracking-wide flex items-center justify-between">
+                  <span>Customer Master Identity (Read-Only)</span>
+                  <span className="text-[10px] text-gray-500 font-normal">Controlled Master Data</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-gray-500 block">CIF:</span>
+                    <span className="font-semibold text-gray-800">{selectedCustomer.cif}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Customer Type:</span>
+                    <span className="font-semibold text-gray-800">{selectedCustomer.customerType}</span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-gray-500 block">Full / Business Name:</span>
+                    <span className="font-semibold text-gray-800">{selectedCustomer.name}</span>
+                  </div>
+                  {selectedCustomer.taxIdNo && (
+                    <div>
+                      <span className="text-gray-500 block">TIN / Tax ID:</span>
+                      <span className="font-semibold text-gray-800">{selectedCustomer.taxIdNo}</span>
+                    </div>
+                  )}
+                  {selectedCustomer.nationalId && (
+                    <div>
+                      <span className="text-gray-500 block">National ID / Passport:</span>
+                      <span className="font-semibold text-gray-800">{selectedCustomer.nationalId}</span>
+                    </div>
+                  )}
+                  {selectedCustomer.businessRegNo && (
+                    <div>
+                      <span className="text-gray-500 block">Business Reg No:</span>
+                      <span className="font-semibold text-gray-800">{selectedCustomer.businessRegNo}</span>
+                    </div>
+                  )}
+                  {selectedCustomer.dobOrIncorp && (
+                    <div>
+                      <span className="text-gray-500 block">{selectedCustomer.customerType === 'Individual' ? 'Date of Birth' : 'Date of Incorporation'}:</span>
+                      <span className="font-semibold text-gray-800">{selectedCustomer.dobOrIncorp}</span>
+                    </div>
+                  )}
+                  {selectedCustomer.gender && (
+                    <div>
+                      <span className="text-gray-500 block">Gender:</span>
+                      <span className="font-semibold text-gray-800">{selectedCustomer.gender}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Editable CIMS Maintenance Section */}
+              <div className="text-[11px] font-bold text-gray-700 uppercase tracking-wide pt-1">
+                CIMS-Maintained Relationship & Contact Details
+              </div>
+
               <div>
-                <label className="block font-semibold text-[#101828] mb-1">Phone</label>
+                <label className="block font-semibold text-[#101828] mb-1">Phone (CIMS Maintained)</label>
                 <input
                   value={maintainFields.phone || ''}
                   onChange={(e) => setMaintainFields({ ...maintainFields, phone: e.target.value })}
@@ -796,7 +1113,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                 />
               </div>
               <div>
-                <label className="block font-semibold text-[#101828] mb-1">Email</label>
+                <label className="block font-semibold text-[#101828] mb-1">Email (CIMS Maintained)</label>
                 <input
                   value={maintainFields.email || ''}
                   onChange={(e) => setMaintainFields({ ...maintainFields, email: e.target.value })}
@@ -804,7 +1121,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                 />
               </div>
               <div>
-                <label className="block font-semibold text-[#101828] mb-1">Address</label>
+                <label className="block font-semibold text-[#101828] mb-1">Address (CIMS Maintained)</label>
                 <textarea
                   value={maintainFields.address || ''}
                   onChange={(e) => setMaintainFields({ ...maintainFields, address: e.target.value })}
@@ -814,7 +1131,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-[#101828] mb-1">Risk Rating</label>
+                  <label className="block font-semibold text-[#101828] mb-1">Risk Rating (CIMS Maintained)</label>
                   <select
                     value={maintainFields.riskRating || ''}
                     onChange={(e) => setMaintainFields({ ...maintainFields, riskRating: e.target.value })}
@@ -824,7 +1141,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-[#101828] mb-1">Segment</label>
+                  <label className="block font-semibold text-[#101828] mb-1">Segment (CIMS Maintained)</label>
                   <select
                     value={maintainFields.segment || ''}
                     onChange={(e) => setMaintainFields({ ...maintainFields, segment: e.target.value })}
@@ -835,7 +1152,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                 </div>
               </div>
               <div>
-                <label className="block font-semibold text-[#101828] mb-1">Operating Branch</label>
+                <label className="block font-semibold text-[#101828] mb-1">Operating Branch (CIMS Maintained)</label>
                 <select
                   value={maintainFields.branch || ''}
                   onChange={(e) => setMaintainFields({ ...maintainFields, branch: e.target.value })}

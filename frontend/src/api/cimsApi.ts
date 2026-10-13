@@ -7,7 +7,13 @@ import {
   PolicyEndorsement,
   OwnershipDocument,
   WorkflowTask,
+  ApprovalHistory,
   CimsException,
+  CimsExceptionInvestigationNote,
+  CimsExceptionEscalationHistory,
+  CimsExceptionAssignmentHistory,
+  ExceptionSummaryDto,
+  ScanResultDto,
   NotificationItem,
   NotificationTemplate,
   AuditLog,
@@ -27,9 +33,23 @@ import {
   CbsCollateral,
   CbsSyncLog,
   Delegation,
+  Collateral360Dto,
+  InsuranceComplianceDto,
+  StructuredPolicyHistoryItem,
+  ValidationCheckItemDto,
+  PolicyPreValidationResultDto,
+  EntryTimeExceptionRequest,
+  CollateralFacilityLinkDto,
+  CollateralCandidateDto,
+  CollateralSecuredFacilitiesSummaryDto,
+  FacilityCollateralSummaryDto,
+  RelationshipRequestDto,
+  RelationshipValidationResultDto,
+  LoanCollateralLinkHistoryDto,
+  CbsRelationshipReconciliationDto,
 } from '../types';
 
-const API_BASE = (import.meta as any).env?.VITE_CIMS_API_BASE || 'http://localhost:8082/api';
+const API_BASE = (import.meta as any).env?.VITE_CIMS_API_BASE || '/api';
 
 function getStoredSession(): any {
   try { return JSON.parse(localStorage.getItem('cims.currentUser') || 'null'); } catch { return null; }
@@ -250,6 +270,17 @@ export const cimsApi = {
     }
   },
 
+  async getTaskHistory(taskId: string): Promise<ApprovalHistory[]> {
+    try {
+      const res = await fetch(`${API_BASE}/workflow/tasks/${encodeURIComponent(taskId)}/history`, { headers: authHeaders() });
+      if (!res.ok) return [];
+      const payload = await res.json();
+      return Array.isArray(payload) ? payload : [];
+    } catch {
+      return [];
+    }
+  },
+
   async getDelegations(): Promise<Delegation[]> {
     try {
       const state = await this.fetchFullState();
@@ -380,6 +411,10 @@ export const cimsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cust),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || err.message || 'Failed to save CBS Customer');
+    }
     invalidateStateCache();
     return res.json();
   },
@@ -395,6 +430,10 @@ export const cimsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fac),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || err.message || 'Failed to save CBS Facility');
+    }
     invalidateStateCache();
     return res.json();
   },
@@ -410,6 +449,10 @@ export const cimsApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(col),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || err.message || 'Failed to save CBS Collateral');
+    }
     invalidateStateCache();
     return res.json();
   },
@@ -494,13 +537,29 @@ export const cimsApi = {
     return data;
   },
 
-  async addFacilityLink(loanId: string, collateralId: string, amount: number, userId?: string): Promise<any> {
+  async addFacilityLink(
+    loanId: string,
+    collateralId: string,
+    amount: number,
+    userId?: string,
+    linkageType?: string,
+    effectiveDate?: string,
+    endDate?: string
+  ): Promise<any> {
     const effectiveUserId = userId || getStoredSession()?.userId || getStoredSession()?.username || '';
-    const res = await fetch(`${API_BASE}/links/add?loanId=${encodeURIComponent(loanId)}&collateralId=${encodeURIComponent(collateralId)}&amount=${amount}&userId=${encodeURIComponent(effectiveUserId)}`, {
+    let url = `${API_BASE}/links/add?loanId=${encodeURIComponent(loanId)}&collateralId=${encodeURIComponent(collateralId)}&amount=${amount}&userId=${encodeURIComponent(effectiveUserId)}`;
+    if (linkageType) url += `&linkageType=${encodeURIComponent(linkageType)}`;
+    if (effectiveDate) url += `&effectiveDate=${encodeURIComponent(effectiveDate)}`;
+    if (endDate) url += `&endDate=${encodeURIComponent(endDate)}`;
+    const res = await fetch(url, {
       method: 'POST',
     });
     invalidateStateCache();
-    return res.json();
+    const data = await res.json();
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.error || data?.message || 'Unable to link facility to collateral.');
+    }
+    return data;
   },
 
   async removeFacilityLink(linkId: string, userId?: string): Promise<any> {
@@ -529,6 +588,130 @@ export const cimsApi = {
     return res.json();
   },
 
+  async changeCollateralOwnership(collateralId: string, payload: any, userId?: string): Promise<any> {
+    const effectiveUserId = userId || getStoredSession()?.userId || getStoredSession()?.username || '';
+    const res = await fetch(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/change-ownership?userId=${encodeURIComponent(effectiveUserId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(payload),
+    });
+    invalidateStateCache();
+    const data = await res.json();
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.error || 'Unable to record collateral ownership change.');
+    }
+    return data;
+  },
+
+  async getCollateral360(collateralId: string): Promise<Collateral360Dto> {
+    return requestJson<Collateral360Dto>(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/360`);
+  },
+
+  async getCollateralDocumentChecklist(collateralId: string): Promise<any[]> {
+    return requestJson<any[]>(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/document-checklist`);
+  },
+
+  async getCollateralTaxonomy(): Promise<CollateralTaxonomy[]> {
+    return requestJson<CollateralTaxonomy[]>(`${API_BASE}/collateral/taxonomy`);
+  },
+
+  async verifyCollateralOwner(collateralId: string, ownerId: string, status = 'Verified', comments = '', userId?: string): Promise<any> {
+    const effectiveUserId = userId || getStoredSession()?.userId || getStoredSession()?.username || 'CRO_USER';
+    const res = await fetch(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/verify-owner?ownerId=${encodeURIComponent(ownerId)}&status=${encodeURIComponent(status)}&comments=${encodeURIComponent(comments)}&userId=${encodeURIComponent(effectiveUserId)}`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    invalidateStateCache();
+    const data = await res.json();
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.message || 'Unable to update owner verification.');
+    }
+    return data;
+  },
+
+  async addCollateralOwner(collateralId: string, owner: any, userId?: string): Promise<any> {
+    const effectiveUserId = userId || getStoredSession()?.userId || getStoredSession()?.username || 'CRO_USER';
+    const res = await fetch(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/add-owner?userId=${encodeURIComponent(effectiveUserId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(owner),
+    });
+    invalidateStateCache();
+    const data = await res.json();
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.message || 'Unable to add owner.');
+    }
+    return data;
+  },
+
+  async updateCollateralOwner(collateralId: string, ownerId: string, owner: any, userId?: string): Promise<any> {
+    const effectiveUserId = userId || getStoredSession()?.userId || getStoredSession()?.username || 'CRO_USER';
+    const res = await fetch(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/update-owner?ownerId=${encodeURIComponent(ownerId)}&userId=${encodeURIComponent(effectiveUserId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(owner),
+    });
+    invalidateStateCache();
+    const data = await res.json();
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.message || 'Unable to update owner.');
+    }
+    return data;
+  },
+
+  async allocateCollateralFacilities(collateralId: string, allocations: any[], userId?: string): Promise<any> {
+    const effectiveUserId = userId || getStoredSession()?.userId || getStoredSession()?.username || 'CRO_USER';
+    const res = await fetch(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/allocate-facilities?userId=${encodeURIComponent(effectiveUserId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(allocations),
+    });
+    invalidateStateCache();
+    const data = await res.json();
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.message || data?.error || 'Unable to allocate facilities.');
+    }
+    return data;
+  },
+
+  async registerCollateralWithAllocations(collateral: any, allocations: any[], arg3?: any, arg4?: any): Promise<any> {
+    let documents: any[] | undefined;
+    let userId: string | undefined;
+    if (typeof arg3 === 'string') {
+      userId = arg3;
+      documents = arg4;
+    } else {
+      documents = arg3;
+      userId = arg4;
+    }
+    const effectiveUserId = userId || getStoredSession()?.userId || getStoredSession()?.username || 'CRO_USER';
+    const res = await fetch(`${API_BASE}/collateral/register-with-allocations?userId=${encodeURIComponent(effectiveUserId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ collateral, allocations, documents }),
+    });
+    invalidateStateCache();
+    const data = await res.json();
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.message || data?.error || 'Unable to register collateral with allocations.');
+    }
+    return data;
+  },
+
+  async requestCollateralRelease(collateralId: string, reason = 'Facility settled', userId?: string): Promise<any> {
+    const effectiveUserId = userId || getStoredSession()?.userId || getStoredSession()?.username || 'CRO_USER';
+    const res = await fetch(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/request-release?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(effectiveUserId)}`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    invalidateStateCache();
+    const data = await res.json();
+    if (!res.ok || data?.success === false) {
+      throw new Error(data?.message || data?.error || 'Unable to request collateral release.');
+    }
+    return data;
+  },
+
   // Policy Lifecycle
   async createPolicyDraft(policy: Partial<InsurancePolicy>, userId = 'CRO_USER'): Promise<any> {
     const res = await fetch(`${API_BASE}/policies/add?userId=${userId}`, {
@@ -552,11 +735,11 @@ export const cimsApi = {
     return payload;
   },
 
-  async amendPolicy(policyId: string, policy: Partial<InsurancePolicy>, reason: string, userId = 'CRO_USER'): Promise<any> {
+  async amendPolicy(policyId: string, policy: Partial<InsurancePolicy>, reason: string, userId = 'CRO_USER', documents?: any[]): Promise<any> {
     const res = await fetch(`${API_BASE}/policies/${encodeURIComponent(policyId)}/amend?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify(policy),
+      body: JSON.stringify({ policy, documents }),
     });
     const payload = await res.json();
     if (!res.ok || payload?.success === false) throw new Error(payload?.message || payload?.error || 'Unable to amend policy.');
@@ -568,10 +751,11 @@ export const cimsApi = {
     return requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/history`);
   },
 
-  async renewPolicy(policyId: string, newAmount: number, newPremium: number, newExpiryDate: string, userId = 'CRO_USER'): Promise<any> {
+  async renewPolicy(policyId: string, newAmount: number, newPremium: number, newExpiryDate: string, userId = 'CRO_USER', documents?: any[]): Promise<any> {
     const res = await fetch(`${API_BASE}/policies/${encodeURIComponent(policyId)}/renew?newAmount=${newAmount}&newPremium=${newPremium}&newExpiryDate=${encodeURIComponent(newExpiryDate)}&userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
-      headers: authHeaders(),
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newAmount, newPremium, newExpiryDate, documents }),
     });
     const payload = await res.json();
     if (!res.ok || payload?.success === false) throw new Error(payload?.message || payload?.error || 'Unable to renew policy.');
@@ -655,31 +839,198 @@ export const cimsApi = {
     return res.json();
   },
 
-  // Exceptions
-  async triggerPortfolioScan(): Promise<any> {
-    const res = await fetch(`${API_BASE}/exceptions/scan-now`, { method: 'POST' });
+  // Exceptions (US-12.1 - US-12.4)
+  async triggerPortfolioScan(): Promise<ScanResultDto> {
+    const res = await fetch(`${API_BASE}/exceptions/scan-now`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload?.message || payload?.error || 'Exception scan failed.');
     invalidateStateCache();
+    return payload;
+  },
+
+  async getExceptionSummary(): Promise<ExceptionSummaryDto> {
+    const res = await fetch(`${API_BASE}/exceptions/summary`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to load exception summary.');
     return res.json();
   },
 
-  async resolveException(id: string, correctiveAction: string, resolutionNotes: string, userId = 'COMPLIANCE_USER'): Promise<any> {
-    const res = await fetch(`${API_BASE}/exceptions/${id}/resolve?correctiveAction=${encodeURIComponent(correctiveAction)}&resolutionNotes=${encodeURIComponent(resolutionNotes)}&userId=${userId}`, {
-      method: 'POST',
+  async getExceptionsList(filters?: { status?: string; role?: string; severity?: string; type?: string; slaStatus?: string; search?: string }): Promise<CimsException[]> {
+    const params = new URLSearchParams();
+    if (filters?.status) params.set('status', filters.status);
+    if (filters?.role) params.set('role', filters.role);
+    if (filters?.severity) params.set('severity', filters.severity);
+    if (filters?.type) params.set('type', filters.type);
+    if (filters?.slaStatus) params.set('slaStatus', filters.slaStatus);
+    if (filters?.search) params.set('search', filters.search);
+
+    const res = await fetch(`${API_BASE}/exceptions?${params.toString()}`, {
+      headers: authHeaders(),
     });
-    invalidateStateCache();
+    if (!res.ok) throw new Error('Failed to load exceptions.');
     return res.json();
   },
 
-  async escalateException(id: string, escalationRole: string, userId = 'COMPLIANCE_USER'): Promise<any> {
-    const res = await fetch(`${API_BASE}/exceptions/${id}/escalate?escalationRole=${escalationRole}&userId=${userId}`, {
+  async resolveException(
+    id: string,
+    correctiveAction: string,
+    resolutionNotes: string,
+    evidenceDocument?: string,
+    userId?: string,
+    isOverride?: boolean,
+    overrideReason?: string
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/exceptions/${encodeURIComponent(id)}/resolve`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        correctiveAction,
+        resolutionNotes,
+        evidenceDocument: evidenceDocument || undefined,
+        userId,
+        isOverride: !!isOverride,
+        overrideReason: overrideReason || undefined,
+      }),
     });
+    const payload = await res.json();
+    if (!res.ok) {
+      throw new Error(payload?.message || payload?.error || 'Failed to resolve exception.');
+    }
     invalidateStateCache();
+    return payload;
+  },
+
+  async addExceptionEvidence(
+    id: string,
+    payload: { documentId?: string; documentName?: string; dmsRef?: string; notes?: string; userId?: string }
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/exceptions/${encodeURIComponent(id)}/evidence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(payload),
+    });
+    const resPayload = await res.json();
+    if (!res.ok) {
+      throw new Error(resPayload?.message || resPayload?.error || 'Failed to associate evidence.');
+    }
+    invalidateStateCache();
+    return resPayload;
+  },
+
+  async recordExceptionCorrectiveAction(
+    id: string,
+    payload: { correctiveAction: string; actionNotes?: string; targetCompletionDate?: string; userId?: string }
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/exceptions/${encodeURIComponent(id)}/corrective-action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(payload),
+    });
+    const resPayload = await res.json();
+    if (!res.ok) {
+      throw new Error(resPayload?.message || resPayload?.error || 'Failed to record corrective action.');
+    }
+    invalidateStateCache();
+    return resPayload;
+  },
+
+  async escalateException(
+    id: string,
+    escalationRole: string,
+    reason?: string,
+    targetUserId?: string,
+    userId?: string
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/exceptions/${encodeURIComponent(id)}/escalate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        escalationRole,
+        reason: reason || `Operational escalation to ${escalationRole}`,
+        targetUserId,
+        userId,
+      }),
+    });
+    const payload = await res.json();
+    if (!res.ok) {
+      throw new Error(payload?.message || payload?.error || 'Failed to escalate exception.');
+    }
+    invalidateStateCache();
+    return payload;
+  },
+
+  async assignException(
+    id: string,
+    payload: { assignedToRole?: string; assignedRole?: string; assignedToUserId?: string; assignedUserId?: string; reason?: string; remarks?: string },
+    userId?: string
+  ): Promise<any> {
+    const res = await fetch(`${API_BASE}/exceptions/${encodeURIComponent(id)}/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        assignedRole: payload.assignedRole || payload.assignedToRole,
+        assignedUserId: payload.assignedUserId || payload.assignedToUserId,
+        reason: payload.reason || payload.remarks,
+        userId,
+      }),
+    });
+    const payloadRes = await res.json();
+    if (!res.ok) {
+      throw new Error(payloadRes?.message || payloadRes?.error || 'Failed to assign exception.');
+    }
+    invalidateStateCache();
+    return payloadRes;
+  },
+
+  async addExceptionInvestigationNote(id: string, noteText: string, userId?: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/exceptions/${encodeURIComponent(id)}/investigation-notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ noteText, userId }),
+    });
+    const payload = await res.json();
+    if (!res.ok) {
+      throw new Error(payload?.message || payload?.error || 'Failed to add investigation note.');
+    }
+    invalidateStateCache();
+    return payload;
+  },
+
+  async getExceptionHistory(id: string): Promise<{
+    investigationNotes: CimsExceptionInvestigationNote[];
+    escalationHistory: CimsExceptionEscalationHistory[];
+    assignmentHistory: CimsExceptionAssignmentHistory[];
+  }> {
+    const res = await fetch(`${API_BASE}/exceptions/${encodeURIComponent(id)}/history`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to load exception history.');
     return res.json();
   },
 
   // Documents (DMS)
-  async uploadDocument(entityType: string, entityId: string, docName: string, docType: string, expiryDate?: string, userId = 'COLLDOCOFF_USER', fileDetails?: { fileName?: string; fileSize?: number; contentType?: string; fileContent?: string; remarks?: string }): Promise<any> {
+  async uploadDocument(
+    entityType: string,
+    entityId: string,
+    docName: string,
+    docType: string,
+    expiryDate?: string,
+    userId = 'COLLDOCOFF_USER',
+    fileDetails?: {
+      fileName?: string;
+      fileSize?: number;
+      contentType?: string;
+      fileContent?: string;
+      remarks?: string;
+      parentDocumentId?: string;
+      versionNotes?: string;
+      forceNew?: boolean;
+    }
+  ): Promise<any> {
     const payload = {
       entityType,
       entityId,
@@ -692,6 +1043,9 @@ export const cimsApi = {
       contentType: fileDetails?.contentType,
       fileContent: fileDetails?.fileContent,
       remarks: fileDetails?.remarks,
+      parentDocumentId: fileDetails?.parentDocumentId,
+      versionNotes: fileDetails?.versionNotes,
+      forceNew: fileDetails?.forceNew,
     };
     const res = await fetch(`${API_BASE}/documents/upload`, {
       method: 'POST',
@@ -706,32 +1060,55 @@ export const cimsApi = {
     return requestJson<OwnershipDocument[]>(`${API_BASE}/documents/${encodeURIComponent(docId)}/versions`);
   },
 
+  async fetchDocumentById(docId: string): Promise<OwnershipDocument> {
+    return requestJson<OwnershipDocument>(`${API_BASE}/documents/${encodeURIComponent(docId)}`);
+  },
+
+  async fetchDocumentPreview(docId: string): Promise<any> {
+    return requestJson<any>(`${API_BASE}/documents/${encodeURIComponent(docId)}/preview`);
+  },
+
+  async fetchDocumentHistory(docId: string): Promise<{
+    rootDocumentId: string;
+    documentName: string;
+    documentType: string;
+    entityType: string;
+    entityId: string;
+    currentVersion: OwnershipDocument;
+    totalVersions: number;
+    versions: OwnershipDocument[];
+    auditLogs: any[];
+  }> {
+    return requestJson(`${API_BASE}/documents/${encodeURIComponent(docId)}/history`);
+  },
+
   async uploadDocumentVersion(docId: string, payload: { fileName?: string; fileSize?: number; contentType?: string; fileContent?: string; versionNotes?: string; expiryDate?: string; uploadedBy?: string }): Promise<any> {
-    const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(docId)}/version`, {
+    return requestJson(`${API_BASE}/documents/${encodeURIComponent(docId)}/version`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    invalidateStateCache();
-    return res.json();
   },
 
   async verifyDocument(docId: string, verificationStatus: string, remarks: string, verifiedBy = 'COLLDOCOFF_USER'): Promise<any> {
-    const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(docId)}/verify`, {
+    return requestJson(`${API_BASE}/documents/${encodeURIComponent(docId)}/verify`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ verificationStatus, remarks, verifiedBy }),
     });
-    invalidateStateCache();
-    return res.json();
   },
 
   async archiveDocument(docId: string, userId = 'COLLDOCOFF_USER'): Promise<any> {
-    const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(docId)}/archive?userId=${encodeURIComponent(userId)}`, {
+    return requestJson(`${API_BASE}/documents/${encodeURIComponent(docId)}/archive?userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
     });
-    invalidateStateCache();
-    return res.json();
+  },
+
+  async searchDocuments(params: Record<string, string | undefined>): Promise<OwnershipDocument[]> {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v && v.trim() !== '') q.set(k, v.trim());
+    });
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    return requestJson<OwnershipDocument[]>(`${API_BASE}/documents/search${qs}`);
   },
 
   // Admin Configuration
@@ -748,6 +1125,9 @@ export const cimsApi = {
   async saveCollateralTaxonomy(taxonomy: Partial<CollateralTaxonomy>, adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/taxonomy/save?userId=${encodeURIComponent(adminUserId)}`, {method:'POST',body:JSON.stringify(taxonomy)}); },
   async saveMandatoryDocRule(rule: Partial<MandatoryDocumentRule>, adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/document-rules/save?userId=${encodeURIComponent(adminUserId)}`, {method:'POST',body:JSON.stringify(rule)}); },
   async saveHolidayCalendar(holiday: Partial<HolidayCalendar>, adminUserId = 'SYSADMIN'): Promise<HolidayCalendar> { return requestJson<HolidayCalendar>(`${API_BASE}/admin/holidays/save?userId=${encodeURIComponent(adminUserId)}`, {method:'POST',body:JSON.stringify(holiday)}); },
+  async deleteHolidayCalendar(holidayId: string, adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/holidays/${encodeURIComponent(holidayId)}/delete?userId=${encodeURIComponent(adminUserId)}`, {method:'POST'}); },
+  async getDistricts(): Promise<any[]> { return requestJson<any[]>(`${API_BASE}/admin/districts`); },
+  async saveDistrict(district: any, adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/districts/save?userId=${encodeURIComponent(adminUserId)}`, {method:'POST',body:JSON.stringify(district)}); },
   async toggleSegmentStatus(segmentId: string, active: boolean, userId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/segments/${encodeURIComponent(segmentId)}/toggle-status?active=${active}&adminUserId=${encodeURIComponent(userId)}`, {method:'POST'}); },
   async toggleUserStatus(userId: string, active: boolean, adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/users/${encodeURIComponent(userId)}/toggle-status?active=${active}&adminUserId=${encodeURIComponent(adminUserId)}`, {method:'POST'}); },
 
@@ -775,36 +1155,17 @@ export const cimsApi = {
     return requestJson<any>(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/exposure-summary`);
   },
 
-  // --- Collateral Registration & Allocation API ---
-  async registerCollateralWithAllocations(collateral: any, allocations: any[], userId = 'CRO_USER', documents?: any[]): Promise<any> {
-    return requestJson<any>(`${API_BASE}/collateral/register-with-allocations?userId=${encodeURIComponent(userId)}`, {
-      method: 'POST',
-      body: JSON.stringify({ collateral, allocations, documents }),
-    });
-  },
-
-  async allocateCollateralFacilities(collateralId: string, allocations: any[], userId = 'CRO_USER'): Promise<any> {
-    return requestJson<any>(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/allocate-facilities?userId=${encodeURIComponent(userId)}`, {
-      method: 'POST',
-      body: JSON.stringify(allocations),
-    });
-  },
-
-  async requestCollateralRelease(collateralId: string, reason = 'Facility settled', userId = 'CRO_USER'): Promise<any> {
-    return requestJson<any>(`${API_BASE}/collateral/${encodeURIComponent(collateralId)}/request-release?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(userId)}`, {
-      method: 'POST',
-    });
-  },
-
   // --- Insurance Lifecycle API ---
   async registerInsurancePolicy(policy: any, userId = 'CRO_USER', documents?: any[]): Promise<any> {
-    return requestJson<any>(`${API_BASE}/policies/register?userId=${encodeURIComponent(userId)}`, {
+    const res = await requestJson<any>(`${API_BASE}/policies/register?userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
       body: JSON.stringify({ policy, documents }),
     });
+    invalidateStateCache();
+    return res;
   },
 
-  async endorsePolicy(policyId: string, endorsementNo: string, description: string, effectiveDate?: string, documentId?: string, userId = 'CRO_USER'): Promise<any> {
+  async endorsePolicy(policyId: string, endorsementNo: string, description: string, effectiveDate?: string, documentId?: string, userId = 'CRO_USER', documents?: any[]): Promise<any> {
     const params = new URLSearchParams({
       endorsementNo,
       description,
@@ -812,33 +1173,56 @@ export const cimsApi = {
     });
     if (effectiveDate) params.set('effectiveDate', effectiveDate);
     if (documentId) params.set('documentId', documentId);
-    return requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/endorse?${params.toString()}`, {
+    const res = await requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/endorse?${params.toString()}`, {
       method: 'POST',
+      body: JSON.stringify({ documents }),
     });
+    invalidateStateCache();
+    return res;
   },
 
-  async replacePolicy(policyId: string, replacement: any, reason = 'Policy replacement', userId = 'CRO_USER'): Promise<any> {
-    return requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/replace?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(userId)}`, {
+  async replacePolicy(policyId: string, replacement: any, reason = 'Policy replacement', userId = 'CRO_USER', documents?: any[]): Promise<any> {
+    const res = await requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/replace?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
-      body: JSON.stringify(replacement),
+      body: JSON.stringify({ replacement, policy: replacement, documents }),
     });
+    invalidateStateCache();
+    return res;
   },
 
-  async cancelPolicy(policyId: string, reason = 'Borrower requested cancellation', userId = 'CRO_USER'): Promise<any> {
-    return requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/cancel?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(userId)}`, {
+  async cancelPolicy(policyId: string, reason = 'Borrower requested cancellation', userId = 'CRO_USER', documents?: any[]): Promise<any> {
+    const res = await requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/cancel?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
+      body: JSON.stringify({ documents }),
     });
+    invalidateStateCache();
+    return res;
   },
 
-  async closePolicy(policyId: string, reason = 'Matured without claim', userId = 'CRO_USER'): Promise<any> {
-    return requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/close?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(userId)}`, {
+  async closePolicy(policyId: string, reason = 'Matured without claim', userId = 'CRO_USER', documents?: any[]): Promise<any> {
+    const res = await requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/close?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
+      body: JSON.stringify({ documents }),
     });
+    invalidateStateCache();
+    return res;
   },
 
-  async reopenPolicy(policyId: string, reason = 'Reopened for active facility coverage', userId = 'CRO_USER'): Promise<any> {
-    return requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/reopen?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(userId)}`, {
+  async reopenPolicy(policyId: string, reason = 'Reopened for active facility coverage', userId = 'CRO_USER', documents?: any[]): Promise<any> {
+    const res = await requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/reopen?reason=${encodeURIComponent(reason)}&userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
+      body: JSON.stringify({ documents }),
+    });
+    invalidateStateCache();
+    return res;
+  },
+
+  async evaluatePolicyCompliance(collateralId: string, policy?: any, loanAccountId?: string): Promise<InsuranceComplianceDto> {
+    const params = new URLSearchParams({ collateralId });
+    if (loanAccountId) params.set('loanAccountId', loanAccountId);
+    return requestJson<InsuranceComplianceDto>(`${API_BASE}/policies/evaluate-compliance?${params.toString()}`, {
+      method: 'POST',
+      body: JSON.stringify(policy || {}),
     });
   },
 
@@ -863,6 +1247,15 @@ export const cimsApi = {
 
   async syncFacilityFromCbs(loanRef: string, userId = 'SYSTEM'): Promise<any> {
     const res = await requestJson<any>(`${API_BASE}/cbs/sync/facility/${encodeURIComponent(loanRef)}`, {
+      method: 'POST',
+      headers: { 'X-User-Id': userId },
+    });
+    invalidateStateCache();
+    return res;
+  },
+
+  async syncCollateralFromCbs(collateralCode: string, userId = 'SYSTEM'): Promise<any> {
+    const res = await requestJson<any>(`${API_BASE}/cbs/sync/collateral/${encodeURIComponent(collateralCode)}`, {
       method: 'POST',
       headers: { 'X-User-Id': userId },
     });
@@ -1114,4 +1507,184 @@ export const cimsApi = {
     if (params.sortDir) q.set('sortDir', params.sortDir);
     return requestJson<import('../types').PaginatedPortfolioResponse>(`${API_BASE}/dashboard/portfolio/paginated?${q.toString()}`);
   },
+
+  async getDashboardRiskConcentration(params: {
+    userId?: string;
+    segment?: string;
+    district?: string;
+    branch?: string;
+  } = {}): Promise<import('../types').EnterpriseRiskConcentration> {
+    const q = new URLSearchParams();
+    if (params.userId) q.set('userId', params.userId);
+    if (params.segment && params.segment !== 'ALL') q.set('segment', params.segment);
+    if (params.district && params.district !== 'ALL') q.set('district', params.district);
+    if (params.branch && params.branch !== 'ALL') q.set('branch', params.branch);
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    return requestJson<import('../types').EnterpriseRiskConcentration>(`${API_BASE}/dashboard/risk-concentration${qs}`);
+  },
+
+  async getDashboardEnterpriseSearch(
+    query: string,
+    params: {
+      userId?: string;
+      segment?: string;
+      district?: string;
+      branch?: string;
+    } = {}
+  ): Promise<import('../types').EnterpriseSearchResponse> {
+    const q = new URLSearchParams({ q: query });
+    if (params.userId) q.set('userId', params.userId);
+    if (params.segment && params.segment !== 'ALL') q.set('segment', params.segment);
+    if (params.district && params.district !== 'ALL') q.set('district', params.district);
+    if (params.branch && params.branch !== 'ALL') q.set('branch', params.branch);
+    return requestJson<import('../types').EnterpriseSearchResponse>(`${API_BASE}/dashboard/search?${q.toString()}`);
+  },
+
+  async preValidatePolicy(
+    policy: Partial<InsurancePolicy>,
+    documents?: any[]
+  ): Promise<PolicyPreValidationResultDto> {
+    return requestJson<PolicyPreValidationResultDto>(`${API_BASE}/policies/pre-validate`, {
+      method: 'POST',
+      body: JSON.stringify({ policy, documents: documents || [] }),
+    });
+  },
+
+  async submitPolicyExceptionRequest(
+    request: EntryTimeExceptionRequest,
+    userId?: string
+  ): Promise<{ success: boolean; message: string; exceptionId: string; policyId: string; workflowTaskId: string }> {
+    const q = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    return requestJson<{ success: boolean; message: string; exceptionId: string; policyId: string; workflowTaskId: string }>(
+      `${API_BASE}/policies/submit-exception-request${q}`,
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+      }
+    );
+  },
+
+  async preValidateCollateral(
+    collateral: Partial<Collateral>,
+    documents?: any[],
+    allocations?: any[],
+    owners?: any[]
+  ): Promise<PolicyPreValidationResultDto> {
+    return requestJson<PolicyPreValidationResultDto>(`${API_BASE}/collateral/pre-validate`, {
+      method: 'POST',
+      body: JSON.stringify({
+        collateral,
+        documents: documents || [],
+        allocations: allocations || [],
+        owners: owners || [],
+      }),
+    });
+  },
+
+  async submitCollateralExceptionRequest(
+    request: EntryTimeExceptionRequest,
+    userId?: string
+  ): Promise<{ success: boolean; message: string; exceptionId: string; collateralId: string; workflowTaskId: string }> {
+    const q = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    return requestJson<{ success: boolean; message: string; exceptionId: string; collateralId: string; workflowTaskId: string }>(
+      `${API_BASE}/collateral/submit-exception-request${q}`,
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+      }
+    );
+  },
+
+  // --- Module 3: Relationship & Allocation APIs ---
+  async getCollateralSecuredFacilities(collateralId: string): Promise<CollateralSecuredFacilitiesSummaryDto> {
+    return requestJson<CollateralSecuredFacilitiesSummaryDto>(`${API_BASE}/collaterals/${encodeURIComponent(collateralId)}/facilities`);
+  },
+
+  async getFacilitySecuringCollaterals(facilityId: string): Promise<FacilityCollateralSummaryDto> {
+    return requestJson<FacilityCollateralSummaryDto>(`${API_BASE}/facilities/${encodeURIComponent(facilityId)}/collaterals`);
+  },
+
+  async getEligibleCollateralsForFacility(facilityId: string, userId?: string): Promise<CollateralCandidateDto[]> {
+    const q = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    return requestJson<CollateralCandidateDto[]>(`${API_BASE}/facilities/${encodeURIComponent(facilityId)}/eligible-collaterals${q}`);
+  },
+
+  async getEligibleFacilitiesForCollateral(collateralId: string, targetCustomerId?: string, userId?: string): Promise<LoanAccount[]> {
+    const q = new URLSearchParams();
+    if (targetCustomerId) q.append('targetCustomerId', targetCustomerId);
+    if (userId) q.append('userId', userId);
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    return requestJson<LoanAccount[]>(`${API_BASE}/collaterals/${encodeURIComponent(collateralId)}/eligible-facilities${qs}`);
+  },
+
+  async searchExistingCollateral(params: { code?: string; titleDeedNumber?: string; registrationNumber?: string; excludeId?: string }): Promise<any> {
+    const q = new URLSearchParams();
+    if (params.code) q.append('code', params.code);
+    if (params.titleDeedNumber) q.append('titleDeedNumber', params.titleDeedNumber);
+    if (params.registrationNumber) q.append('registrationNumber', params.registrationNumber);
+    if (params.excludeId) q.append('excludeId', params.excludeId);
+    return requestJson<any>(`${API_BASE}/collaterals/search-existing?${q.toString()}`);
+  },
+
+  async getAllCollateralFacilityLinks(filters?: { collateralId?: string; facilityId?: string; customerId?: string; status?: string }): Promise<CollateralFacilityLinkDto[]> {
+    const q = new URLSearchParams();
+    if (filters?.collateralId) q.append('collateralId', filters.collateralId);
+    if (filters?.facilityId) q.append('facilityId', filters.facilityId);
+    if (filters?.customerId) q.append('customerId', filters.customerId);
+    if (filters?.status) q.append('status', filters.status);
+    return requestJson<CollateralFacilityLinkDto[]>(`${API_BASE}/collateral-facility-links?${q.toString()}`);
+  },
+
+  async getCollateralFacilityLinkById(id: string): Promise<CollateralFacilityLinkDto> {
+    return requestJson<CollateralFacilityLinkDto>(`${API_BASE}/collateral-facility-links/${encodeURIComponent(id)}`);
+  },
+
+  async createCollateralFacilityLink(dto: RelationshipRequestDto, userId?: string): Promise<CollateralFacilityLinkDto> {
+    const q = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    return requestJson<CollateralFacilityLinkDto>(`${API_BASE}/collateral-facility-links${q}`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  },
+
+  async updateCollateralFacilityLink(id: string, dto: RelationshipRequestDto, userId?: string): Promise<CollateralFacilityLinkDto> {
+    const q = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    return requestJson<CollateralFacilityLinkDto>(`${API_BASE}/collateral-facility-links/${encodeURIComponent(id)}${q}`, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    });
+  },
+
+  async endCollateralFacilityLink(id: string, reason?: string, userId?: string): Promise<CollateralFacilityLinkDto> {
+    const q = new URLSearchParams();
+    if (reason) q.append('reason', reason);
+    if (userId) q.append('userId', userId);
+    return requestJson<CollateralFacilityLinkDto>(`${API_BASE}/collateral-facility-links/${encodeURIComponent(id)}/end?${q.toString()}`, {
+      method: 'POST',
+    });
+  },
+
+  async getCollateralFacilityLinkHistory(id: string): Promise<LoanCollateralLinkHistoryDto[]> {
+    return requestJson<LoanCollateralLinkHistoryDto[]>(`${API_BASE}/collateral-facility-links/${encodeURIComponent(id)}/history`);
+  },
+
+  async validateCollateralFacilityLink(dto: RelationshipRequestDto): Promise<RelationshipValidationResultDto> {
+    return requestJson<RelationshipValidationResultDto>(`${API_BASE}/collateral-facility-links/validate`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  },
+
+  async validateCollateralRelease(collateralId: string): Promise<{ canRelease: boolean; reason: string; activeFacilitiesCount: number; activeOutstandingBalance: number; hasApprovedException: boolean }> {
+    return requestJson<any>(`${API_BASE}/collateral-facility-links/validate-release?collateralId=${encodeURIComponent(collateralId)}`);
+  },
+
+  async getPortfolioExposureSummary(): Promise<{ totalFacilitiesCount: number; totalBankPortfolioExposure: number; securedFacilitiesCount: number; singleCountedAllocatedCollateral: number; netUncoveredExposure: number }> {
+    return requestJson<any>(`${API_BASE}/portfolio/exposure-summary`);
+  },
+
+  async reconcileCbsRelationships(): Promise<CbsRelationshipReconciliationDto> {
+    return requestJson<CbsRelationshipReconciliationDto>(`${API_BASE}/collateral-facility-links/reconcile-cbs`);
+  },
 };
+

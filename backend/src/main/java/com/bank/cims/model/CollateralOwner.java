@@ -24,8 +24,25 @@ public class CollateralOwner {
     @Column(name = "id_number")
     private String idNumber;
 
+    @Column(name = "business_reg_no")
+    private String businessRegNo;
+
     private String tin;
     private String phone;
+
+    private String status = "Active";
+
+    @Column(name = "effective_from")
+    private String effectiveFrom;
+
+    @Column(name = "effective_to")
+    private String effectiveTo;
+
+    @Column(name = "transfer_reason", columnDefinition = "TEXT")
+    private String transferReason;
+
+    @Column(name = "supporting_doc_ref")
+    private String supportingDocRef;
 
     @Column(name = "contact_info")
     private String contactInfo;
@@ -117,6 +134,8 @@ public class CollateralOwner {
     public void setContactInfo(String contactInfo) { this.contactInfo = contactInfo; }
     public double getPercentage() { return percentage; }
     public void setPercentage(double percentage) { this.percentage = percentage; }
+    public double getOwnershipPercentage() { return percentage; }
+    public void setOwnershipPercentage(double percentage) { this.percentage = percentage; }
     public String getRelationship() { return relationship; }
     public void setRelationship(String relationship) { this.relationship = relationship; }
     public String getRelationshipToBorrower() { return relationshipToBorrower; }
@@ -153,4 +172,16 @@ public class CollateralOwner {
     public void setAuthStat(String authStat) { this.authStat = authStat; }
     public int getModNo() { return modNo; }
     public void setModNo(int modNo) { this.modNo = modNo; }
+    public String getBusinessRegNo() { return businessRegNo; }
+    public void setBusinessRegNo(String businessRegNo) { this.businessRegNo = businessRegNo; }
+    public String getStatus() { return status != null ? status : "Active"; }
+    public void setStatus(String status) { this.status = status; }
+    public String getEffectiveFrom() { return effectiveFrom; }
+    public void setEffectiveFrom(String effectiveFrom) { this.effectiveFrom = effectiveFrom; }
+    public String getEffectiveTo() { return effectiveTo; }
+    public void setEffectiveTo(String effectiveTo) { this.effectiveTo = effectiveTo; }
+    public String getTransferReason() { return transferReason; }
+    public void setTransferReason(String transferReason) { this.transferReason = transferReason; }
+    public String getSupportingDocRef() { return supportingDocRef; }
+    public void setSupportingDocRef(String supportingDocRef) { this.supportingDocRef = supportingDocRef; }
 }

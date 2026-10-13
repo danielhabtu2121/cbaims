@@ -114,6 +114,37 @@ public class RoleHierarchyService {
         return (fallbackRole == null || fallbackRole.isBlank()) ? "BRMGR" : fallbackRole;
     }
 
+    /**
+     * Resolves the configured exception approver role based on:
+     * Exception Type + Organization / Segment + Branch / District / HO context
+     */
+    public String resolveExceptionApproverRole(String exceptionType, String segment, String branch, String district) {
+        String exc = normalize(exceptionType);
+        for (ApprovalHierarchyConfig cfg : approvalHierarchyConfigRepository.findAll()) {
+            if (!cfg.isActive()) continue;
+            boolean matchType = (cfg.getExceptionType() != null && cfg.getExceptionType().equalsIgnoreCase(exceptionType))
+                    || (cfg.getTransactionType() != null && (cfg.getTransactionType().equalsIgnoreCase("Exception Approval") || cfg.getTransactionType().equalsIgnoreCase(exceptionType)))
+                    || (!exc.isEmpty() && normalize(cfg.getExceptionType()).contains(exc));
+
+            if (matchType) {
+                if (cfg.getBranchCode() != null && !cfg.getBranchCode().isBlank() && branch != null && !branch.equalsIgnoreCase(cfg.getBranchCode())) continue;
+                if (cfg.getDistrictName() != null && !cfg.getDistrictName().isBlank() && district != null && !district.equalsIgnoreCase(cfg.getDistrictName())) continue;
+                if (cfg.getHoDepartment() != null && !cfg.getHoDepartment().isBlank() && segment != null && !segment.equalsIgnoreCase(cfg.getHoDepartment())) continue;
+                if (cfg.getLevel1Role() != null && !cfg.getLevel1Role().isBlank()) {
+                    return cfg.getLevel1Role();
+                }
+            }
+        }
+        // Fallback organizational context
+        if (segment != null && (segment.toLowerCase().contains("corporate") || segment.toLowerCase().contains("head office"))) {
+            return "HODEPT";
+        }
+        if (district != null && !district.isBlank()) {
+            return "DISTDIR";
+        }
+        return "BRMGR";
+    }
+
     private String normalize(String s) {
         if (s == null) return "";
         return s.toLowerCase().replace("_", " ").replace("proc ", "").trim();

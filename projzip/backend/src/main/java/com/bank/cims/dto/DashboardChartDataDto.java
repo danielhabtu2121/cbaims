@@ -35,9 +35,27 @@ public class DashboardChartDataDto {
     // Chart 10: Ownership Distribution
     private List<Map<String, Object>> ownershipDistribution;
 
-    // Chart 11: Genuine Historical Performance (or null/empty)
+    // Chart 11: Insurer Portfolio Exposure & Concentration
+    private List<Map<String, Object>> insurerExposure;
+
+    // Chart 12: Collateral Type Exposure
+    private List<Map<String, Object>> collateralTypeExposure;
+
+    // Chart 13: Policy Ageing
+    private List<Map<String, Object>> policyAgeing;
+
+    // Chart 14: Organizational Comparison (Chart + Table)
+    private List<Map<String, Object>> organizationalComparison;
+
+    // Chart 15: RM Compliance Analysis
+    private List<Map<String, Object>> rmCompliance;
+
+    // Chart 16: Genuine Historical Performance (or null/empty)
     private List<Map<String, Object>> historicalSnapshots;
     private String historicalDataMessage;
+
+    // Chart 17: Dynamic 12-Month Inception, Expiry & Protection Velocity Timeline
+    private List<Map<String, Object>> portfolioTimeline;
 
     public DashboardChartDataDto() {}
 
@@ -61,8 +79,20 @@ public class DashboardChartDataDto {
     public void setDocumentationHealth(List<Map<String, Object>> documentationHealth) { this.documentationHealth = documentationHealth; }
     public List<Map<String, Object>> getOwnershipDistribution() { return ownershipDistribution; }
     public void setOwnershipDistribution(List<Map<String, Object>> ownershipDistribution) { this.ownershipDistribution = ownershipDistribution; }
+    public List<Map<String, Object>> getInsurerExposure() { return insurerExposure; }
+    public void setInsurerExposure(List<Map<String, Object>> insurerExposure) { this.insurerExposure = insurerExposure; }
+    public List<Map<String, Object>> getCollateralTypeExposure() { return collateralTypeExposure; }
+    public void setCollateralTypeExposure(List<Map<String, Object>> collateralTypeExposure) { this.collateralTypeExposure = collateralTypeExposure; }
+    public List<Map<String, Object>> getPolicyAgeing() { return policyAgeing; }
+    public void setPolicyAgeing(List<Map<String, Object>> policyAgeing) { this.policyAgeing = policyAgeing; }
+    public List<Map<String, Object>> getOrganizationalComparison() { return organizationalComparison; }
+    public void setOrganizationalComparison(List<Map<String, Object>> organizationalComparison) { this.organizationalComparison = organizationalComparison; }
+    public List<Map<String, Object>> getRmCompliance() { return rmCompliance; }
+    public void setRmCompliance(List<Map<String, Object>> rmCompliance) { this.rmCompliance = rmCompliance; }
     public List<Map<String, Object>> getHistoricalSnapshots() { return historicalSnapshots; }
     public void setHistoricalSnapshots(List<Map<String, Object>> historicalSnapshots) { this.historicalSnapshots = historicalSnapshots; }
     public String getHistoricalDataMessage() { return historicalDataMessage; }
     public void setHistoricalDataMessage(String historicalDataMessage) { this.historicalDataMessage = historicalDataMessage; }
+    public List<Map<String, Object>> getPortfolioTimeline() { return portfolioTimeline; }
+    public void setPortfolioTimeline(List<Map<String, Object>> portfolioTimeline) { this.portfolioTimeline = portfolioTimeline; }
 }

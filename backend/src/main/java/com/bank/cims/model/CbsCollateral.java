@@ -39,7 +39,10 @@ public class CbsCollateral {
     private String reviewDate;
     
     @Column(name = "collateral_type", nullable = false)
-    private String collateralType = "Borrower-owned";
+    private String collateralType = "Building";
+
+    @Column(name = "ownership_type", nullable = false)
+    private String ownershipType = "Borrower-owned";
     
     private boolean tangible = true;
     
@@ -96,6 +99,8 @@ public class CbsCollateral {
     public void setReviewDate(String reviewDate) { this.reviewDate = reviewDate; }
     public String getCollateralType() { return collateralType; }
     public void setCollateralType(String collateralType) { this.collateralType = collateralType; }
+    public String getOwnershipType() { return ownershipType; }
+    public void setOwnershipType(String ownershipType) { this.ownershipType = ownershipType; }
     public boolean isTangible() { return tangible; }
     public void setTangible(boolean tangible) { this.tangible = tangible; }
     public String getLinkedLoanRefs() { return linkedLoanRefs; }

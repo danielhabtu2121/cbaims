@@ -1,0 +1,5824 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Building2,
+  Plus,
+  Eye,
+  ShieldCheck,
+  AlertTriangle,
+  Link as LinkIcon,
+  FileCheck,
+  FolderOpen,
+  History,
+  Unlock,
+  ArrowRightLeft,
+  CheckCircle,
+  XCircle,
+  FileText,
+  UserCheck,
+  Percent,
+  TrendingUp,
+  Upload,
+  UploadCloud,
+  Trash2,
+  Edit,
+  RefreshCw,
+  Paperclip,
+  Check,
+  Search,
+  User,
+  CreditCard,
+  Layers,
+  MapPin,
+  FileBadge,
+  Shield,
+  ShieldAlert,
+  Send,
+  HelpCircle,
+  Calendar,
+  ArrowUpRight,
+} from 'lucide-react';
+import {
+  Collateral,
+  CollateralOwner,
+  LoanAccount,
+  LoanCollateralLink,
+  InsurancePolicy,
+  OwnershipDocument,
+  CimsException,
+  UserSession,
+  CollateralTaxonomy,
+  MandatoryDocumentRule,
+  BusinessSegment,
+  Branch,
+  SystemParameter,
+  Customer,
+  ExposureAdequacySummary,
+  Collateral360Dto,
+  PolicyPreValidationResultDto,
+  ValidationCheckItemDto,
+  EntryTimeExceptionRequest,
+  CollateralFacilityLinkDto,
+  CollateralSecuredFacilitiesSummaryDto,
+} from '../../types';
+import { DataGrid, ColumnDef } from '../layout/DataGrid';
+import { StatusChip } from '../layout/StatusChip';
+import { CircularProgress } from '../layout/CircularProgress';
+import { cimsApi } from '../../api/cimsApi';
+import { DocumentPreviewModal } from '../documents/DocumentPreviewModal';
+import { CollateralFacilityLinkModal } from '../relationships/CollateralFacilityLinkModal';
+import { RelationshipHistoryModal } from '../relationships/RelationshipHistoryModal';
+import { CbsRelationshipReconcileModal } from '../relationships/CbsRelationshipReconcileModal';
+
+interface WizardDocItem {
+  id: string;
+  name: string;
+  type: string;
+  expiryDate: string;
+  remarks: string;
+  fileName?: string;
+  fileSize?: string;
+  fileSizeNum?: number;
+  contentType?: string;
+  fileContent?: string;
+  isMandatory?: boolean;
+}
+
+interface CollateralManagerProps {
+  collaterals: Collateral[];
+  facilities: LoanAccount[];
+  links: LoanCollateralLink[];
+  policies: InsurancePolicy[];
+  documents: OwnershipDocument[];
+  exceptions: CimsException[];
+  taxonomies?: CollateralTaxonomy[];
+  mandatoryDocRules?: MandatoryDocumentRule[];
+  segments?: BusinessSegment[];
+  branches?: Branch[];
+  customers?: Customer[];
+  systemParameters?: SystemParameter[];
+  currentUser: UserSession;
+  initialCollateralId?: string | null;
+  onNavigate?: (page: string, params?: Record<string, any>) => void;
+  onRegisterCollateral: (col: Partial<Collateral>, allocations?: any[], documents?: any[]) => Promise<void>;
+  onAddLink: (loanId: string, collateralId: string, amount: number, linkageType?: string, effectiveDate?: string, endDate?: string) => Promise<void>;
+  onRemoveLink: (linkId: string) => Promise<void>;
+  onValidateRelease: (collateralId: string) => Promise<{ canRelease: boolean; pendingExposure: number; activeLoans: string[]; message: string }>;
+  onInitiateTransfer: (collateralId: string, destSegment: string, reason: string) => Promise<void>;
+  onMaintainCollateral?: (collateralId: string, changes: Record<string, any>) => Promise<void>;
+}
+
+export const CollateralManager: React.FC<CollateralManagerProps> = ({
+  collaterals,
+  facilities,
+  links,
+  policies,
+  documents,
+  exceptions,
+  taxonomies = [],
+  mandatoryDocRules = [],
+  segments = [],
+  branches = [],
+  customers = [],
+  systemParameters = [],
+  currentUser,
+  initialCollateralId,
+  onNavigate,
+  onRegisterCollateral,
+  onAddLink,
+  onRemoveLink,
+  onValidateRelease,
+  onInitiateTransfer,
+  onMaintainCollateral,
+}) => {
+  const [selectedCol, setSelectedCol] = useState<Collateral | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'details' | 'exposure' | 'links' | 'policies' | 'documents' | 'exceptions' | 'history'>('details');
+  const [exposureSummary, setExposureSummary] = useState<ExposureAdequacySummary | null>(null);
+  const [loadingExposure, setLoadingExposure] = useState(false);
+  const [col360Data, setCol360Data] = useState<Collateral360Dto | null>(null);
+  const [loading360, setLoading360] = useState(false);
+  const [m3SecuredSummary, setM3SecuredSummary] = useState<CollateralSecuredFacilitiesSummaryDto | null>(null);
+  const [loadingM3Secured, setLoadingM3Secured] = useState(false);
+  const [showM3LinkModal, setShowM3LinkModal] = useState(false);
+  const [m3LinkModalMode, setM3LinkModalMode] = useState<'create' | 'edit'>('create');
+  const [m3LinkToEdit, setM3LinkToEdit] = useState<CollateralFacilityLinkDto | null>(null);
+  const [showM3HistoryModal, setShowM3HistoryModal] = useState(false);
+  const [m3HistoryLinkId, setM3HistoryLinkId] = useState('');
+  const [m3HistoryRef, setM3HistoryRef] = useState('');
+  const [showM3ReconcileModal, setShowM3ReconcileModal] = useState(false);
+
+  const loadM3SecuredFacilities = async (colId: string) => {
+    setLoadingM3Secured(true);
+    try {
+      const summary = await cimsApi.getCollateralSecuredFacilities(colId);
+      setM3SecuredSummary(summary);
+    } catch (err) {
+      console.warn('Failed to load M3 secured facilities summary:', err);
+    } finally {
+      setLoadingM3Secured(false);
+    }
+  };
+
+  const loadCollateral360 = async (colId: string) => {
+    setLoading360(true);
+    try {
+      const data = await cimsApi.getCollateral360(colId);
+      setCol360Data(data);
+    } catch (e) {
+      console.warn('Collateral 360 load error:', e);
+    } finally {
+      setLoading360(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialCollateralId && collaterals.length > 0) {
+      const found = collaterals.find(
+        (c) => c.id === initialCollateralId || c.code === initialCollateralId
+      );
+      if (found) {
+        setSelectedCol(found);
+        setShowDetailModal(true);
+        loadExposureSummary(found.id);
+        loadCollateral360(found.id);
+        loadM3SecuredFacilities(found.id);
+      }
+    }
+  }, [initialCollateralId, collaterals]);
+
+  // Action Modals
+  const [showRegisterWizard, setShowRegisterWizard] = useState(false);
+  const [showReleaseModal, setShowReleaseModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showAddLinkModal, setShowAddLinkModal] = useState(false);
+  const [showUploadDocModal, setShowUploadDocModal] = useState(false);
+  const [showMaintainModal, setShowMaintainModal] = useState(false);
+  const [maintainFields, setMaintainFields] = useState<Partial<Collateral>>({});
+  const [maintainError, setMaintainError] = useState<string | null>(null);
+  const [maintainSubmitting, setMaintainSubmitting] = useState(false);
+
+  // Document upload modal state (in 360 modal)
+  const [uploadDocName, setUploadDocName] = useState('');
+  const [uploadDocType, setUploadDocType] = useState('Title Deed / Property Ownership Certificate');
+  const [uploadDocExpiry, setUploadDocExpiry] = useState('');
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+
+  // Link modal state (in 360 modal)
+  const [linkLoanId, setLinkLoanId] = useState('');
+  const [linkAmount, setLinkAmount] = useState(5000000);
+  const [linkLinkageType, setLinkLinkageType] = useState('Primary');
+  const [linkEffectiveDate, setLinkEffectiveDate] = useState(new Date().toISOString().substring(0, 10));
+  const [linkEndDate, setLinkEndDate] = useState('');
+  const [linkSubmitting, setLinkSubmitting] = useState(false);
+
+  // Owner verification modal state
+  const [showVerifyOwnerModal, setShowVerifyOwnerModal] = useState(false);
+  const [verifyingOwner, setVerifyingOwner] = useState<CollateralOwner | null>(null);
+  const [verifyStatus, setVerifyStatus] = useState<string>('Verified');
+  const [verifyComments, setVerifyComments] = useState<string>('');
+  const [verifySubmitting, setVerifySubmitting] = useState(false);
+
+  // =========================================================================
+  // 8-Step Guided Collateral Registration Wizard State
+  // =========================================================================
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8>(1);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
+  const [selectedFacilityIds, setSelectedFacilityIds] = useState<string[]>([]);
+  const [facilityAllocations, setFacilityAllocations] = useState<Record<string, number>>({});
+  const [wizardDocuments, setWizardDocuments] = useState<WizardDocItem[]>([]);
+  const [wizardRegistering, setWizardRegistering] = useState(false);
+
+  // Module 4: Existing Collateral Duplicate Search in Wizard (§23, §24)
+  const [existingColDuplicate, setExistingColDuplicate] = useState<Collateral | null>(null);
+  const [searchingDuplicate, setSearchingDuplicate] = useState<boolean>(false);
+
+  // =========================================================================
+  // Real-Time Pre-Validation & Entry-Time Exception Management State
+  // =========================================================================
+  const [preValidationResult, setPreValidationResult] = useState<PolicyPreValidationResultDto | null>(null);
+  const [isValidating, setIsValidating] = useState<boolean>(false);
+  const [showExceptionModal, setShowExceptionModal] = useState<boolean>(false);
+  const [exceptionSubmitting, setExceptionSubmitting] = useState<boolean>(false);
+  const [exceptionForm, setExceptionForm] = useState<{
+    exceptionType: string;
+    failedRequirement: string;
+    reason: string;
+    comments: string;
+    evidenceDocument: string;
+    evidenceFileContent?: string;
+  }>({
+    exceptionType: 'Missing Mandatory Document',
+    failedRequirement: '',
+    reason: '',
+    comments: '',
+    evidenceDocument: '',
+    evidenceFileContent: '',
+  });
+
+  const defaultCurrency = systemParameters.find((p) => p.paramKey === 'default_currency')?.paramValue || 'ETB';
+
+  const [newCol, setNewCol] = useState<Partial<Collateral>>({
+    code: `COL-${Math.floor(100000 + Math.random() * 900000)}`,
+    category: taxonomies?.[0]?.category || 'Immovable Properties',
+    type: 'Buildings',
+    description: '',
+    location: '',
+    registrationNumber: '',
+    titleDeedNumber: '',
+    valuationAmount: 10000000,
+    haircut: 20,
+    valuationDate: new Date().toISOString().substring(0, 10),
+    valuationMethod: 'Independent Professional Valuation',
+    currency: defaultCurrency,
+    owningSegment: segments?.find((s) => s.active !== false)?.name || 'Corporate Banking',
+    branch: currentUser.branch || 'Bole Special Branch',
+    status: 'Pending Approval',
+    insuranceStatus: 'Uninsured',
+    gpsX: undefined,
+    gpsY: undefined,
+    engineNumber: '',
+    chassisNumber: '',
+    machinerySerialNo: '',
+    machineryPurchaseDate: '',
+    financialInstrumentRef: '',
+    issuingEntity: '',
+  });
+
+  const [ownerDetails, setOwnerDetails] = useState<Partial<CollateralOwner>>({
+    ownershipType: 'Borrower-owned',
+    name: '',
+    ownerType: 'Corporate',
+    idNumber: '',
+    tin: '',
+    phone: '',
+    contactInfo: '',
+    percentage: 100,
+    relationship: 'Borrower',
+    relationshipToBorrower: 'Other',
+    consentInfo: '',
+    pledgeAgreementRef: '',
+    remarks: '',
+    verificationStatus: 'Recorded',
+    verificationDate: new Date().toISOString().substring(0, 10),
+    verifyingOfficer: currentUser.name || currentUser.username,
+  });
+
+  // Multi-Owner Joint Ownership list
+  const [ownersList, setOwnersList] = useState<Array<Partial<CollateralOwner>>>([
+    {
+      ownershipType: 'Borrower-owned',
+      name: '',
+      ownerType: 'Individual',
+      idNumber: '',
+      tin: '',
+      phone: '',
+      contactInfo: '',
+      percentage: 100,
+      relationship: 'Borrower',
+      relationshipToBorrower: 'Self',
+      consentInfo: '',
+      pledgeAgreementRef: '',
+      remarks: '',
+      verificationStatus: 'Recorded',
+      verificationDate: new Date().toISOString().substring(0, 10),
+      verifyingOfficer: currentUser.name || currentUser.username,
+    },
+  ]);
+
+  // Ownership Change Modal state
+  const [showOwnershipChangeModal, setShowOwnershipChangeModal] = useState(false);
+  const [ownershipChangeForm, setOwnershipChangeForm] = useState({
+    newOwnerName: '',
+    newOwnershipType: 'Third-party-owned',
+    ownerType: 'Individual',
+    idNumber: '',
+    tin: '',
+    phone: '',
+    contactInfo: '',
+    percentage: 100,
+    relationshipToBorrower: '',
+    effectiveDate: new Date().toISOString().substring(0, 10),
+    changeReason: '',
+    supportingDocument: '',
+    remarks: '',
+  });
+  const [submittingOwnershipChange, setSubmittingOwnershipChange] = useState(false);
+  const [ownershipChangeError, setOwnershipChangeError] = useState<string | null>(null);
+
+  // Linkage metadata per facility
+  const [facilityLinkMeta, setFacilityLinkMeta] = useState<Record<string, { linkageType: string; linkedAmount?: number; effectiveDate?: string; endDate?: string }>>({});
+
+  const [destSegment, setDestSegment] = useState('Retail Banking');
+  const [transferReason, setTransferReason] = useState('');
+  const [releaseCheck, setReleaseCheck] = useState<{ canRelease: boolean; pendingExposure: number; activeLoans: string[]; message: string } | null>(null);
+  const [loadingRelease, setLoadingRelease] = useState(false);
+  const [docPreviewTarget, setDocPreviewTarget] = useState<OwnershipDocument | null>(null);
+  const [showDocPreviewModal, setShowDocPreviewModal] = useState<boolean>(false);
+
+  const isMaker = currentUser.canCreate !== false;
+
+  // Selected customer master details
+  const selectedCustomer = customers.find(
+    (c) => (c.id && c.id === selectedCustomerId) || (c.cif && c.cif === selectedCustomerId)
+  );
+
+  // Filtered customer search
+  const filteredCustomers = customers.filter((c) => {
+    if (!customerSearchQuery.trim()) return true;
+    const q = customerSearchQuery.toLowerCase();
+    return (
+      (c.name && c.name.toLowerCase().includes(q)) ||
+      (c.cif && c.cif.toLowerCase().includes(q)) ||
+      (c.id && c.id.toLowerCase().includes(q)) ||
+      (c.segment && c.segment.toLowerCase().includes(q)) ||
+      (c.branch && c.branch.toLowerCase().includes(q))
+    );
+  });
+
+  // Customer isolated facilities retrieval
+  const getFacilitiesForCustomer = (custIdOrCif?: string): LoanAccount[] => {
+    if (!custIdOrCif) return [];
+    const target = custIdOrCif.trim().toLowerCase();
+
+    const cust = customers.find(
+      (c) => (c.id && c.id.trim().toLowerCase() === target) || (c.cif && c.cif.trim().toLowerCase() === target)
+    );
+
+    const validIds = new Set<string>();
+    validIds.add(target);
+    if (cust) {
+      if (cust.id) validIds.add(cust.id.trim().toLowerCase());
+      if (cust.cif) validIds.add(cust.cif.trim().toLowerCase());
+    }
+
+    return facilities.filter((f) => {
+      if (!f.customerId) return false;
+      const fCust = f.customerId.trim().toLowerCase();
+      if (validIds.has(fCust)) return true;
+      if (cust) {
+        if (cust.id && cust.id.trim().toLowerCase() === fCust) return true;
+        if (cust.cif && cust.cif.trim().toLowerCase() === fCust) return true;
+      }
+      return false;
+    });
+  };
+
+  const isFacilityOwnedByCustomer = (facility: LoanAccount, custIdOrCif?: string): boolean => {
+    if (!custIdOrCif) return true;
+    const target = custIdOrCif.trim().toLowerCase();
+    const cust = customers.find(
+      (c) => (c.id && c.id.trim().toLowerCase() === target) || (c.cif && c.cif.trim().toLowerCase() === target)
+    );
+    const validIds = new Set<string>();
+    validIds.add(target);
+    if (cust) {
+      if (cust.id) validIds.add(cust.id.trim().toLowerCase());
+      if (cust.cif) validIds.add(cust.cif.trim().toLowerCase());
+    }
+    const fCust = (facility.customerId || '').trim().toLowerCase();
+    return validIds.has(fCust);
+  };
+
+  const customerFacilities = selectedCustomerId ? getFacilitiesForCustomer(selectedCustomerId) : [];
+
+  const netCollateralValue = (newCol.valuationAmount || 0) * (1.0 - ((newCol.haircut || 0) / 100.0));
+  const totalAllocatedAmount = Object.values(facilityAllocations).reduce((sum, amt) => sum + (Number(amt) || 0), 0);
+  const unallocatedAmount = Math.max(0, netCollateralValue - totalAllocatedAmount);
+  const isAllocationOverflow = totalAllocatedAmount > netCollateralValue + 1e-6;
+
+  // Standard full collateral subtype catalog per category
+  const DEFAULT_SUBTYPES_BY_CATEGORY: Record<string, string[]> = {
+    'Immovable Properties': [
+      'Commercial Building (Office / Retail / Mall)',
+      'Residential Villa / Single Family House',
+      'Apartment / Condominium Unit',
+      'Industrial Warehouse / Factory Plant',
+      'Commercial Land / Developed Plot',
+      'Agricultural Land / Farmland',
+      'Hotel / Hospitality & Resort Facility',
+      'Fuel Station / Petroleum Depot',
+      'Hospital / Medical Clinic Complex',
+      'School / University Educational Facility',
+      'Mixed-Use Commercial & Residential Building',
+    ],
+    'Movable Properties': [
+      'Private Passenger Vehicle (Sedan / SUV)',
+      'Commercial Heavy Truck / Prime Mover / Trailer',
+      'Commercial Bus / Public Transport Fleet',
+      'Construction Machinery (Bulldozer / Excavator / Crane / Loader)',
+      'Agricultural Machinery (Tractor / Combine Harvester)',
+      'Light Commercial Delivery Van / Pickup',
+      'Motorcycle & Delivery Fleet',
+      'Aviation Aircraft / Cargo Helicopter',
+      'Marine Vessel / Cargo Boat / Barge',
+    ],
+    'Business Mortgages': [
+      'Manufacturing & Industrial Plant Machinery / Assembly Line',
+      'Medical & Diagnostic Healthcare Equipment',
+      'Printing, Packaging & Publishing Machinery',
+      'Textile, Garment & Leather Processing Machinery',
+      'Mining, Quarrying & Mineral Extraction Equipment',
+      'Food & Beverage Processing Equipment',
+      'Heavy Electrical Generators & Power Transformers',
+      'Finished Goods Merchandise Stock / Inventory',
+      'Raw Materials & Work-in-Progress Inventory',
+    ],
+    'Financial Assets': [
+      'Fixed Term Deposit Receipt (TDR) / Certificate',
+      'Government Treasury Bills (T-Bills)',
+      'Government Treasury Bonds (T-Bonds)',
+      'National Bank (NBE) Stabilization Bills',
+      'Corporate Debt Bonds / Commercial Paper',
+      'Listed Company Equities / Shares Certificate',
+      'Cash Collateral / Blocked Margin Account',
+      'Letter of Credit (LC) Cash Margin Deposit',
+      'Life Insurance Policy Surrender Value',
+    ],
+    'Guarantees': [
+      'Corporate Cross-Guarantee',
+      'Personal Guarantee of Managing Director / Principal Shareholder',
+      'First-Class Third-Party Bank Guarantee',
+      'Sovereign / Ministry of Finance Guarantee',
+      'Multilateral Development Agency Guarantee (e.g. Aceli, FSD, IFC)',
+      'Export Credit Guarantee Facility',
+    ],
+    'Agricultural / Other': [
+      'Warehouse Receipt System (ECX WRS Certificate)',
+      'Export Coffee / Sesame / Pulse Commodity Stored in Warehouse',
+      'Commercial Livestock & Dairy Breeding Herd',
+      'Standing Crop / Commercial Plantation Mortgage',
+      'Perishable Horticultural Export Goods',
+    ],
+  };
+
+  const getSubtypesForCategory = (categoryName?: string): string[] => {
+    const chosenCat = (categoryName || newCol.category || 'Immovable Properties').trim();
+    const list: string[] = [];
+
+    (taxonomies || []).forEach((t) => {
+      const catName = (t.category || '').trim();
+      const matchCat = catName.toLowerCase() === chosenCat.toLowerCase() ||
+                       catName.toLowerCase().includes(chosenCat.toLowerCase()) ||
+                       chosenCat.toLowerCase().includes(catName.toLowerCase());
+      if (matchCat) {
+        const rawSub = t.subCategory || t.category;
+        if (rawSub) {
+          rawSub.split(/[,;\n/]+/).forEach((part) => {
+            const trimmed = part.trim();
+            if (trimmed && !list.includes(trimmed) && trimmed.toLowerCase() !== chosenCat.toLowerCase()) {
+              list.push(trimmed);
+            }
+          });
+        }
+      }
+    });
+
+    const standardMatch = Object.entries(DEFAULT_SUBTYPES_BY_CATEGORY).find(([catName]) =>
+      catName.toLowerCase() === chosenCat.toLowerCase() ||
+      catName.toLowerCase().includes(chosenCat.toLowerCase()) ||
+      chosenCat.toLowerCase().includes(catName.toLowerCase())
+    );
+
+    if (standardMatch && standardMatch[1]) {
+      standardMatch[1].forEach((sub) => {
+        if (!list.includes(sub)) {
+          list.push(sub);
+        }
+      });
+    }
+
+    return list.length > 0 ? list : [chosenCat];
+  };
+
+  // Active sub-types configured under the chosen category from backend taxonomy
+  const availableTaxonomyTypes = useMemo(() => {
+    return getSubtypesForCategory(newCol.category);
+  }, [taxonomies, newCol.category]);
+
+  // Helper to determine mandatory documents configured in Admin for category + type + ownership
+  const getRequiredDocs = (category?: string, type?: string, ownershipType?: string): MandatoryDocumentRule[] => {
+    const cat = (category || newCol.category || 'Immovable Properties').toLowerCase().trim();
+    const isThirdParty = (ownershipType || ownerDetails.ownershipType) === 'Third-party-owned';
+
+    // 1. Match directly from Admin configured rules (mandatoryDocRules)
+    const activeRules = (mandatoryDocRules || []).filter((r) => r.mandatory !== false);
+    const matched = activeRules.filter((r) => {
+      const rc = (r.collateralCategory || '').toLowerCase().trim();
+      if (rc === 'all' || rc === 'all categories') return true;
+      if (rc === cat || rc.includes(cat) || cat.includes(rc)) return true;
+      if (isThirdParty && (rc.includes('third') || rc.includes('consent') || rc.includes('pledge'))) return true;
+      return false;
+    });
+
+    const results: MandatoryDocumentRule[] = [...matched];
+
+    // 2. If no admin rules configured yet, provide baseline regulatory mandatory document rules
+    if (results.length === 0) {
+      if (cat.includes('immovable') || cat.includes('real') || cat.includes('building') || cat.includes('land')) {
+        results.push({ id: 'rule-bld-1', collateralCategory: 'Immovable Properties', documentType: 'Title Deed / Property Ownership Certificate', mandatory: true });
+        results.push({ id: 'rule-bld-2', collateralCategory: 'Immovable Properties', documentType: 'Approved Building Plan', mandatory: true });
+        results.push({ id: 'rule-bld-3', collateralCategory: 'Immovable Properties', documentType: 'Valuation Report', mandatory: true });
+      } else if (cat.includes('movable') || cat.includes('vehicle')) {
+        results.push({ id: 'rule-veh-1', collateralCategory: 'Movable Properties', documentType: 'Vehicle Registration Certificate / Logbook', mandatory: true });
+        results.push({ id: 'rule-veh-2', collateralCategory: 'Movable Properties', documentType: 'Valuation Report', mandatory: true });
+      } else if (cat.includes('machin') || cat.includes('business mortgage')) {
+        results.push({ id: 'rule-mac-1', collateralCategory: 'Business Mortgages', documentType: 'Machinery Ownership Certificate', mandatory: true });
+        results.push({ id: 'rule-mac-2', collateralCategory: 'Business Mortgages', documentType: 'Purchase Document / Invoice', mandatory: true });
+        results.push({ id: 'rule-mac-3', collateralCategory: 'Business Mortgages', documentType: 'Valuation Report', mandatory: true });
+      } else if (cat.includes('guarantee')) {
+        results.push({ id: 'rule-gar-1', collateralCategory: 'Guarantees', documentType: 'Guarantee Contract / Agreement', mandatory: true });
+      } else if (cat.includes('financial')) {
+        results.push({ id: 'rule-fin-1', collateralCategory: 'Financial Assets', documentType: 'Fixed Deposit Certificate / Treasury Instrument', mandatory: true });
+      } else {
+        results.push({ id: 'rule-gen-1', collateralCategory: 'All', documentType: 'Ownership Document / Certificate', mandatory: true });
+      }
+    }
+
+    // 3. For third-party owned collateral, ensure Third-Party Consent & Pledge is required
+    if (isThirdParty) {
+      if (!results.some((r) => r.documentType.toLowerCase().includes('consent') || r.documentType.toLowerCase().includes('pledge'))) {
+        results.push({ id: 'rule-tp-1', collateralCategory: 'Third-Party', documentType: 'Third-Party Consent and Pledge Agreement', mandatory: true });
+      }
+    }
+
+    return results;
+  };
+
+  const allConfiguredDocTypes = useMemo(() => {
+    const list = new Set<string>();
+    (mandatoryDocRules || []).forEach((r) => {
+      if (r.documentType && r.documentType.trim()) {
+        list.add(r.documentType.trim());
+      }
+    });
+    [
+      'Title Deed / Property Ownership Certificate',
+      'Approved Building Plan',
+      'BOQ (Bill of Quantities)',
+      'Third-Party Consent and Pledge Agreement',
+      'Letter of Consent',
+      'Valuation Report',
+      'Vehicle Registration Certificate / Logbook',
+      'Machinery Ownership Certificate',
+      'Purchase Document / Invoice',
+      'Lease Agreement',
+      'Lease Payment Receipt',
+      'Plastic Ear Tag Registration',
+      'Land Holding Certificate',
+      'Warehouse Receipt',
+      'Fixed Term Deposit Certificate',
+      'Guarantee Contract / Agreement',
+      'Board Resolution Authorizing Pledge',
+      'Court Documents / Power of Attorney',
+      'Collateral Custody Agreement',
+      'Other Ownership / Supporting Document',
+    ].forEach((t) => list.add(t));
+    return Array.from(list);
+  }, [mandatoryDocRules]);
+
+  const populateDefaultDocs = (category?: string, type?: string, ownershipType?: string) => {
+    const targetCat = category || newCol.category || 'Immovable Properties';
+    const targetType = type || newCol.type;
+    const targetOwnerType = ownershipType || ownerDetails.ownershipType;
+    const defaultExpiry = new Date(Date.now() + 5 * 365 * 24 * 3600 * 1000).toISOString().substring(0, 10);
+    const reqRules = getRequiredDocs(targetCat, targetType, targetOwnerType);
+
+    // Keep any existing uploaded additional docs
+    const existingAdditional = wizardDocuments.filter((d) => !d.isMandatory);
+
+    const mandatorySlots: WizardDocItem[] = reqRules.map((rule, idx) => {
+      const prevMatch = wizardDocuments.find(
+        (d) => d.isMandatory && (d.type.toLowerCase().includes(rule.documentType.toLowerCase()) || rule.documentType.toLowerCase().includes(d.type.toLowerCase()))
+      );
+      return (
+        prevMatch || {
+          id: `doc-wiz-${Date.now()}-${idx}`,
+          name: '',
+          type: rule.documentType,
+          expiryDate: defaultExpiry,
+          remarks: `Admin Mandatory Rule for ${targetCat}`,
+          fileName: '',
+          fileSize: '',
+          fileSizeNum: 0,
+          contentType: 'application/pdf',
+          fileContent: '',
+          isMandatory: true,
+        }
+      );
+    });
+
+    setWizardDocuments([...mandatorySlots, ...existingAdditional]);
+  };
+
+  const mandatoryRulesList = getRequiredDocs(newCol.category, newCol.type, ownerDetails.ownershipType);
+  const missingMandatoryDocs = mandatoryRulesList.filter((req) => {
+    return !wizardDocuments.some(
+      (d) =>
+        d.isMandatory &&
+        (d.type.toLowerCase().includes(req.documentType.toLowerCase()) || req.documentType.toLowerCase().includes(d.type.toLowerCase())) &&
+        d.fileContent &&
+        d.fileContent.trim().length > 0 &&
+        d.fileName &&
+        d.fileName.trim().length > 0
+    );
+  });
+
+  // Validation helpers for wizard steps
+  const getStep1Errors = (): string[] => {
+    const errors: string[] = [];
+    if (!selectedCustomerId) errors.push('Please select a customer / borrower.');
+    return errors;
+  };
+
+  const getStep2Errors = (): string[] => {
+    const errors: string[] = [];
+    if (customerFacilities.length > 0 && selectedFacilityIds.length === 0) {
+      errors.push('Please select at least one facility / loan account to secure, or confirm registering unlinked collateral.');
+    }
+    return errors;
+  };
+
+  const getStep3Errors = (): string[] => {
+    const errors: string[] = [];
+    if (!newCol.code || newCol.code.trim() === '') errors.push('Collateral Code is mandatory.');
+    if (!newCol.category) errors.push('Collateral Category is mandatory.');
+    if (!newCol.valuationAmount || Number(newCol.valuationAmount) <= 0) errors.push('Market Valuation Amount must be greater than zero.');
+    if (newCol.haircut === undefined || Number(newCol.haircut) < 0 || Number(newCol.haircut) > 95) errors.push('Haircut Percentage must be between 0% and 95%.');
+    return errors;
+  };
+
+  const getStep4Errors = (): string[] => {
+    const errors: string[] = [];
+    if (ownerDetails.ownershipType === 'Third-party-owned') {
+      if (ownersList.length === 0) {
+        errors.push('At least one owner record must be provided.');
+      } else {
+        const totalPct = ownersList.reduce((sum, o) => sum + (Number(o.percentage) || 0), 0);
+        if (Math.abs(totalPct - 100) > 0.01) {
+          errors.push(`Total ownership percentage across all owners must equal 100.0% (Current total: ${totalPct.toFixed(1)}%).`);
+        }
+        ownersList.forEach((o, idx) => {
+          if (!o.name || o.name.trim() === '') errors.push(`Owner #${idx + 1}: Legal Owner Name is mandatory.`);
+          if (!o.idNumber || o.idNumber.trim() === '') errors.push(`Owner #${idx + 1}: National ID / Passport / Business Registration is mandatory.`);
+          if (!o.phone || o.phone.trim() === '') errors.push(`Owner #${idx + 1}: Contact Phone is mandatory.`);
+        });
+      }
+    } else {
+      if (!selectedCustomer) errors.push('Borrower customer must be selected.');
+    }
+    return errors;
+  };
+
+  const getStep5Errors = (): string[] => {
+    const errors: string[] = [];
+    if (isAllocationOverflow) {
+      errors.push(`Allocation Overflow: Total allocated security amount (ETB ${totalAllocatedAmount.toLocaleString()}) exceeds Net Collateral Value (ETB ${netCollateralValue.toLocaleString()}).`);
+    }
+    return errors;
+  };
+
+  const getStep6Errors = (): string[] => {
+    const errors: string[] = [];
+    if (missingMandatoryDocs.length > 0) {
+      errors.push(`Missing mandatory document files: ${missingMandatoryDocs.map((m) => m.documentType).join(', ')}`);
+    }
+    return errors;
+  };
+
+  const runPreValidation = async () => {
+    if (!selectedCustomerId || !newCol.category) return;
+    setIsValidating(true);
+    try {
+      const allocationsList = Object.entries(facilityAllocations)
+        .filter(([_, amt]) => Number(amt) > 0)
+        .map(([facId, amt]) => {
+          const meta = facilityLinkMeta[facId] || {};
+          return {
+            facilityId: facId,
+            allocatedAmount: Number(amt),
+            linkedAmount: meta.linkedAmount !== undefined ? Number(meta.linkedAmount) : Number(amt),
+            linkageType: meta.linkageType || 'Primary',
+            effectiveDate: meta.effectiveDate || new Date().toISOString().substring(0, 10),
+            endDate: meta.endDate || undefined,
+          };
+        });
+
+      const ownersToEval = (ownersList.length > 0 ? ownersList : [ownerDetails]).map((o) => {
+        const isBorrowerOwned = o.ownershipType === 'Borrower-owned' || (!o.ownershipType && ownerDetails.ownershipType === 'Borrower-owned');
+        return {
+          name: isBorrowerOwned ? selectedCustomer?.name || 'Borrower' : o.name || '',
+          ownershipType: o.ownershipType || ownerDetails.ownershipType || 'Borrower-owned',
+          ownerType: o.ownerType || 'Individual',
+          idNumber: isBorrowerOwned ? (o.idNumber || selectedCustomer?.nationalId || selectedCustomer?.businessRegNo || '') : (o.idNumber || ''),
+          tin: isBorrowerOwned ? (o.tin || selectedCustomer?.taxIdNo || '') : (o.tin || ''),
+          phone: isBorrowerOwned ? (o.phone || selectedCustomer?.phone || '') : (o.phone || ''),
+          contactInfo: isBorrowerOwned ? (o.contactInfo || selectedCustomer?.address || '') : (o.contactInfo || ''),
+          percentage: Number(o.percentage || 100),
+          relationship: isBorrowerOwned ? 'Borrower' : o.relationshipToBorrower || o.relationship || 'Third-Party Owner',
+          relationshipToBorrower: o.relationshipToBorrower || '',
+          consentInfo: o.consentInfo || '',
+          pledgeAgreementRef: o.pledgeAgreementRef || '',
+          remarks: o.remarks || '',
+          verificationStatus: o.verificationStatus || 'Recorded',
+          verificationDate: o.verificationDate,
+          verifyingOfficer: o.verifyingOfficer,
+        };
+      });
+
+      const docsPayload = (wizardDocuments || []).map((d) => ({
+        type: d.type,
+        name: d.name || d.fileName || d.type,
+        fileName: d.fileName || '',
+        fileContent: d.fileContent || '',
+        isMandatory: d.isMandatory,
+      }));
+
+      const draftCol: Partial<Collateral> = {
+        ...newCol,
+        customerId: selectedCustomerId,
+        ownerType: ownerDetails.ownershipType,
+      };
+
+      const res = await cimsApi.preValidateCollateral(draftCol, docsPayload, allocationsList, ownersToEval);
+      setPreValidationResult(res);
+
+      const firstOverrideable = res.checks?.find((c) => !c.passed && c.overrideable);
+      if (firstOverrideable) {
+        setExceptionForm((prev) => ({
+          ...prev,
+          exceptionType: firstOverrideable.exceptionType || 'Missing Mandatory Document',
+          failedRequirement: firstOverrideable.failedRequirement || firstOverrideable.ruleName || '',
+        }));
+      }
+    } catch (err: any) {
+      console.warn('Collateral pre-validation failed:', err);
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  useEffect(() => {
+    if ((wizardStep === 7 || wizardStep === 8) && showRegisterWizard && selectedCustomerId) {
+      runPreValidation();
+    }
+  }, [
+    wizardStep,
+    showRegisterWizard,
+    selectedCustomerId,
+    newCol.category,
+    newCol.type,
+    newCol.valuationAmount,
+    newCol.haircut,
+    facilityAllocations,
+    wizardDocuments,
+    ownersList,
+  ]);
+
+  // Module 4: Step 3 Duplicate Collateral Search against active repository (§23, §24)
+  useEffect(() => {
+    if (wizardStep !== 3 || !showRegisterWizard) {
+      setExistingColDuplicate(null);
+      return;
+    }
+
+    const titleDeed = newCol.titleDeedNumber?.trim();
+    const regNo = newCol.registrationNumber?.trim();
+    const code = newCol.code?.trim();
+
+    if (!titleDeed && !regNo && !code) {
+      setExistingColDuplicate(null);
+      return;
+    }
+
+    let active = true;
+    setSearchingDuplicate(true);
+
+    const timer = setTimeout(() => {
+      cimsApi
+        .searchExistingCollateral({
+          titleDeedNumber: titleDeed || undefined,
+          registrationNumber: regNo || undefined,
+          code: code || undefined,
+        })
+        .then((found) => {
+          if (active) {
+            setExistingColDuplicate(found || null);
+            setSearchingDuplicate(false);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setExistingColDuplicate(null);
+            setSearchingDuplicate(false);
+          }
+        });
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [wizardStep, showRegisterWizard, newCol.titleDeedNumber, newCol.registrationNumber, newCol.code]);
+
+  const handleOpenExceptionModal = (overrideCheck?: ValidationCheckItemDto) => {
+    const targetCheck = overrideCheck || preValidationResult?.checks?.find((c) => !c.passed && c.overrideable);
+    setExceptionForm({
+      exceptionType: targetCheck?.exceptionType || 'Missing Mandatory Document',
+      failedRequirement: targetCheck?.failedRequirement || targetCheck?.ruleName || 'Validation Rule Exception',
+      reason: '',
+      comments: '',
+      evidenceDocument: '',
+      evidenceFileContent: '',
+    });
+    setShowExceptionModal(true);
+  };
+
+  const handleSubmitCollateralExceptionRequest = async () => {
+    if (!exceptionForm.reason.trim()) {
+      alert('Validation Error: Reason / justification is mandatory when requesting an exception.');
+      return;
+    }
+    if (!exceptionForm.comments.trim()) {
+      alert('Validation Error: Exception comments / operational remarks are mandatory.');
+      return;
+    }
+    if (!selectedCustomerId) {
+      alert('Validation Error: A customer must be selected.');
+      return;
+    }
+
+    setExceptionSubmitting(true);
+    try {
+      const allocationsList = Object.entries(facilityAllocations)
+        .filter(([_, amt]) => Number(amt) > 0)
+        .map(([facId, amt]) => {
+          const meta = facilityLinkMeta[facId] || {};
+          return {
+            facilityId: facId,
+            allocatedAmount: Number(amt),
+            linkedAmount: meta.linkedAmount !== undefined ? Number(meta.linkedAmount) : Number(amt),
+            linkageType: meta.linkageType || 'Primary',
+            effectiveDate: meta.effectiveDate || new Date().toISOString().substring(0, 10),
+            endDate: meta.endDate || undefined,
+          };
+        });
+
+      const ownersToSave: CollateralOwner[] = (ownersList.length > 0 ? ownersList : [ownerDetails]).map((o) => {
+        const isBorrowerOwned = o.ownershipType === 'Borrower-owned' || (!o.ownershipType && ownerDetails.ownershipType === 'Borrower-owned');
+        return {
+          name: isBorrowerOwned ? selectedCustomer?.name || 'Borrower' : o.name || '',
+          ownershipType: o.ownershipType || ownerDetails.ownershipType || 'Borrower-owned',
+          ownerType: o.ownerType || 'Individual',
+          idNumber: isBorrowerOwned ? (o.idNumber || selectedCustomer?.nationalId || selectedCustomer?.businessRegNo || '') : (o.idNumber || ''),
+          tin: isBorrowerOwned ? (o.tin || selectedCustomer?.taxIdNo || '') : (o.tin || ''),
+          phone: isBorrowerOwned ? (o.phone || selectedCustomer?.phone || '') : (o.phone || ''),
+          contactInfo: isBorrowerOwned ? (o.contactInfo || selectedCustomer?.address || '') : (o.contactInfo || ''),
+          percentage: Number(o.percentage || 100),
+          relationship: isBorrowerOwned ? 'Borrower' : o.relationshipToBorrower || o.relationship || 'Third-Party Owner',
+          relationshipToBorrower: o.relationshipToBorrower || '',
+          consentInfo: o.consentInfo || '',
+          pledgeAgreementRef: o.pledgeAgreementRef || '',
+          remarks: o.remarks || '',
+          verificationStatus: o.verificationStatus || 'Recorded',
+          verificationDate: o.verificationDate,
+          verifyingOfficer: o.verifyingOfficer,
+          gpsX: newCol.gpsX,
+          gpsY: newCol.gpsY,
+        };
+      });
+
+      const draftCol: Partial<Collateral> = {
+        ...newCol,
+        customerId: selectedCustomerId,
+        ownerType: ownerDetails.ownershipType,
+        owners: ownersToSave,
+        status: 'Pending Exception Approval',
+      };
+
+      const docsToSave = (wizardDocuments || []).map((d) => ({
+        name: d.name || d.fileName || d.type,
+        type: d.type,
+        expiryDate: d.expiryDate,
+        remarks: d.remarks,
+        fileName: d.fileName,
+        fileSize: d.fileSizeNum && d.fileSizeNum > 0 ? d.fileSizeNum : 102400,
+        contentType: d.contentType || 'application/pdf',
+        fileContent: d.fileContent,
+        isMandatory: d.isMandatory,
+      }));
+
+      if (exceptionForm.evidenceDocument && exceptionForm.evidenceFileContent) {
+        docsToSave.push({
+          name: exceptionForm.evidenceDocument,
+          type: 'Exception Supporting Evidence',
+          expiryDate: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().substring(0, 10),
+          remarks: 'Attached to Exception Request for ' + exceptionForm.failedRequirement,
+          fileName: exceptionForm.evidenceDocument,
+          fileSize: 102400,
+          contentType: 'application/pdf',
+          fileContent: exceptionForm.evidenceFileContent,
+          isMandatory: true,
+        });
+      }
+
+      const reqPayload: EntryTimeExceptionRequest = {
+        collateral: draftCol,
+        allocations: allocationsList,
+        exceptionType: exceptionForm.exceptionType,
+        failedRequirement: exceptionForm.failedRequirement,
+        reason: exceptionForm.reason.trim(),
+        comments: exceptionForm.comments.trim(),
+        evidenceDocument: exceptionForm.evidenceDocument,
+        documents: docsToSave,
+      };
+
+      const res = await cimsApi.submitCollateralExceptionRequest(reqPayload, currentUser?.username || 'CRO_USER');
+      alert(`✓ Exception Created Successfully!\n\nException ID: ${res.exceptionId}\nStatus: Pending Exception Approval\n\nCollateral ${draftCol.code} has been saved and routed to the configured approver. Upon exception approval, the transaction will automatically resume into the standard workflow without re-keying.`);
+
+      setShowExceptionModal(false);
+      setShowRegisterWizard(false);
+      window.location.reload();
+    } catch (err: any) {
+      alert(`Exception submission failed: ${err.message || err}`);
+    } finally {
+      setExceptionSubmitting(false);
+    }
+  };
+
+  const loadExposureSummary = async (collateralId: string) => {
+    setLoadingExposure(true);
+    try {
+      const data = await cimsApi.fetchCollateralExposureSummary(collateralId);
+      setExposureSummary(data);
+    } catch (e) {
+      console.error('Exposure summary load error:', e);
+    } finally {
+      setLoadingExposure(false);
+    }
+  };
+
+  const collateralColumns: ColumnDef<Collateral>[] = [
+    {
+      header: 'Collateral Code',
+      accessorKey: 'code',
+      cell: (c) => (
+        <div className="flex items-center gap-2 font-semibold text-[#102E4A]">
+          <Building2 className="w-4 h-4 text-[#1F4E7A]" />
+          <span>{c.code}</span>
+        </div>
+      ),
+    },
+    {
+      header: 'Customer / CIF',
+      accessorKey: 'customerId',
+      cell: (c) => {
+        const cust = customers.find((cu) => cu.id === c.customerId || cu.cif === c.customerId);
+        return (
+          <div>
+            <div className="font-semibold text-[#101828]">{cust?.name || c.customerId || '—'}</div>
+            <div className="text-[11px] text-[#5B6472]">{cust?.cif || c.customerId}</div>
+          </div>
+        );
+      },
+    },
+    {
+      header: 'Category / Type',
+      accessorKey: 'category',
+      cell: (c) => (
+        <div>
+          <div className="font-semibold text-[#101828]">{c.category}</div>
+          <div className="text-[11px] text-[#5B6472]">{c.type || c.category}</div>
+        </div>
+      ),
+    },
+    {
+      header: 'Market Valuation',
+      accessorKey: 'valuationAmount',
+      cell: (c) => (
+        <div className="tabular-nums font-semibold text-[#102E4A]">
+          {c.currency || 'ETB'} {c.valuationAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </div>
+      ),
+    },
+    {
+      header: 'Haircut',
+      accessorKey: 'haircut',
+      cell: (c) => (
+        <div className="text-xs font-semibold tabular-nums text-[#5B6472]">
+          {c.haircut ?? 20}%
+        </div>
+      ),
+    },
+    {
+      header: 'Net Security Value',
+      accessorKey: 'limitContribution',
+      cell: (c) => {
+        const net = (c.valuationAmount || 0) * (1.0 - ((c.haircut || 0) / 100.0));
+        return (
+          <div className="tabular-nums font-bold text-emerald-700">
+            {c.currency || 'ETB'} {net.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </div>
+        );
+      },
+    },
+    {
+      header: 'Allocated Security',
+      accessorKey: 'currentAllocation',
+      cell: (c) => (
+        <div className="tabular-nums font-semibold text-blue-800">
+          {c.currency || 'ETB'} {(c.currentAllocation || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </div>
+      ),
+    },
+    {
+      header: 'Ownership',
+      accessorKey: 'ownerType',
+      cell: (c) => (
+        <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+          {c.ownerType || 'Borrower-owned'}
+        </span>
+      ),
+    },
+    {
+      header: 'Insurance Status',
+      accessorKey: 'insuranceStatus',
+      cell: (c) => {
+        const isFully = (c.insuranceStatus || '').toLowerCase().includes('fully') || (c.status || '').toLowerCase().includes('insured');
+        const isUnder = (c.insuranceStatus || '').toLowerCase().includes('under') || (c.status || '').toLowerCase().includes('under');
+        const colPol = policies.find((p) => p.collateralId === c.id || p.collateralId === c.code);
+        return colPol ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onNavigate) {
+                onNavigate('insurance', { policyId: colPol.id, id: colPol.id });
+              }
+            }}
+            className="flex items-center gap-1 group/pol cursor-pointer text-left"
+            title={`Click to view policy: ${colPol.policyNumber}`}
+          >
+            <StatusChip
+              label={c.insuranceStatus || c.status || 'Insured'}
+              variant={isFully ? 'success' : isUnder ? 'warning' : 'neutral'}
+            />
+            <ArrowUpRight className="w-3 h-3 text-blue-600 opacity-60 group-hover/pol:opacity-100" />
+          </button>
+        ) : (
+          <StatusChip
+            label={c.insuranceStatus || c.status || 'Uninsured'}
+            variant={isFully ? 'success' : isUnder ? 'warning' : 'neutral'}
+          />
+        );
+      },
+    },
+    {
+      header: 'Workflow State',
+      accessorKey: 'authStat',
+      cell: (c) => (
+        <StatusChip
+          label={c.authStat === 'A' ? 'Active / Authorized' : c.authStat === 'R' ? 'Rejected' : 'Pending Approval'}
+          variant={c.authStat === 'A' ? 'success' : c.authStat === 'R' ? 'danger' : 'warning'}
+        />
+      ),
+    },
+    {
+      header: 'Actions',
+      cell: (c) => (
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedCol(c);
+              setShowDetailModal(true);
+              loadExposureSummary(c.id);
+              loadCollateral360(c.id);
+              loadM3SecuredFacilities(c.id);
+            }}
+            className="btn-secondary py-1 px-2.5 text-xs flex items-center gap-1"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            Collateral 360
+          </button>
+          {isMaker && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedCol(c);
+                setM3LinkToEdit(null);
+                setM3LinkModalMode('create');
+                setShowM3LinkModal(true);
+              }}
+              className="btn-primary py-1 px-2.5 text-xs flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded"
+              title="Link credit facility to this collateral"
+            >
+              <LinkIcon className="w-3.5 h-3.5" />
+              Link Facility
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const colLinks = selectedCol
+    ? links.filter((l) => l.collateralId === selectedCol.id || l.collateralId === selectedCol.code)
+    : [];
+  const colPolicies = selectedCol
+    ? policies.filter((p) => p.collateralId === selectedCol.id || p.collateralId === selectedCol.code)
+    : [];
+  const colDocs = selectedCol
+    ? documents.filter((d) => d.entityId === selectedCol.id || d.collateralId === selectedCol.id || d.entityId === selectedCol.code || d.collateralId === selectedCol.code)
+    : [];
+  const colExceptions = selectedCol
+    ? exceptions.filter((e) => e.entityId === selectedCol.id || e.entityId === selectedCol.code)
+    : [];
+
+  const handleOpenReleaseModal = async () => {
+    if (!selectedCol) return;
+    setLoadingRelease(true);
+    try {
+      const res = await onValidateRelease(selectedCol.id);
+      setReleaseCheck(res);
+      setShowReleaseModal(true);
+    } finally {
+      setLoadingRelease(false);
+    }
+  };
+
+  const handleStartWizard = () => {
+    setWizardStep(1);
+    const initialCust = customers[0]?.id || '';
+    setSelectedCustomerId(initialCust);
+    setCustomerSearchQuery('');
+    setSelectedFacilityIds([]);
+    setFacilityAllocations({});
+    const initialCategory = taxonomies?.[0]?.category || 'Immovable Properties';
+    const initialType = 'Buildings';
+    setNewCol({
+      code: `COL-${Math.floor(100000 + Math.random() * 900000)}`,
+      category: initialCategory,
+      type: initialType,
+      description: '',
+      location: '',
+      registrationNumber: '',
+      titleDeedNumber: '',
+      valuationAmount: 10000000,
+      haircut: 20,
+      valuationDate: new Date().toISOString().substring(0, 10),
+      valuationMethod: 'Independent Professional Valuation',
+      currency: defaultCurrency,
+      owningSegment: segments?.find((s) => s.active !== false)?.name || 'Corporate Banking',
+      branch: currentUser.branch || 'Bole Special Branch',
+      status: 'Pending Approval',
+      insuranceStatus: 'Uninsured',
+      gpsX: undefined,
+      gpsY: undefined,
+    });
+    setOwnerDetails({
+      ownershipType: 'Borrower-owned',
+      name: customers[0]?.name || '',
+      ownerType: customers[0]?.customerType || 'Corporate',
+      idNumber: customers[0]?.nationalId || customers[0]?.businessRegNo || '',
+      tin: customers[0]?.taxIdNo || '',
+      phone: customers[0]?.phone || '',
+      contactInfo: customers[0]?.address || '',
+      percentage: 100,
+      relationship: 'Borrower',
+      relationshipToBorrower: 'Other',
+      consentInfo: '',
+      pledgeAgreementRef: '',
+      remarks: '',
+      verificationStatus: 'Recorded',
+      verificationDate: new Date().toISOString().substring(0, 10),
+      verifyingOfficer: currentUser.name || currentUser.username,
+    });
+    setOwnersList([
+      {
+        ownershipType: 'Borrower-owned',
+        name: customers[0]?.name || '',
+        ownerType: customers[0]?.customerType || 'Corporate',
+        idNumber: customers[0]?.nationalId || customers[0]?.businessRegNo || '',
+        tin: customers[0]?.taxIdNo || '',
+        phone: customers[0]?.phone || '',
+        contactInfo: customers[0]?.address || '',
+        percentage: 100,
+        relationship: 'Borrower',
+        relationshipToBorrower: 'Self',
+        consentInfo: '',
+        pledgeAgreementRef: '',
+        remarks: '',
+        verificationStatus: 'Recorded',
+        verificationDate: new Date().toISOString().substring(0, 10),
+        verifyingOfficer: currentUser.name || currentUser.username,
+      },
+    ]);
+    setFacilityLinkMeta({});
+    populateDefaultDocs(initialCategory, initialType, 'Borrower-owned');
+    setShowRegisterWizard(true);
+  };
+
+  const handleFinishWizard = async () => {
+    if (!selectedCustomerId) {
+      alert('Please select a customer.');
+      return;
+    }
+    if (isAllocationOverflow) {
+      alert('Total allocated security amount exceeds the Net Collateral Value.');
+      return;
+    }
+    if (preValidationResult && !preValidationResult.valid) {
+      alert(
+        `Cannot submit to standard Checker:\n\n${preValidationResult.summaryMessage}\n\nPlease either attach the missing document(s) on Step 6 or submit this transaction as an Exception.`
+      );
+      setWizardStep(7);
+      return;
+    }
+    if (missingMandatoryDocs.length > 0) {
+      alert(
+        `Cannot submit: Missing uploaded files for mandatory document(s) configured in Admin:\n\n• ` +
+          missingMandatoryDocs.map((m) => m.documentType).join('\n• ') +
+          `\n\nPlease attach valid files for all mandatory documents before submitting, or submit as an authorized exception.`
+      );
+      setWizardStep(7);
+      return;
+    }
+
+    // Validate Joint and Third-Party Ownership
+    if (ownerDetails.ownershipType === 'Third-party-owned') {
+      const activeOwners = ownersList.length > 0 ? ownersList : [ownerDetails];
+      if (!activeOwners || activeOwners.length === 0) {
+        alert('Cannot submit: At least one legal owner is required for third-party collateral.');
+        setWizardStep(4);
+        return;
+      }
+      for (let i = 0; i < activeOwners.length; i++) {
+        const o = activeOwners[i];
+        if (!o.name || !o.name.trim()) {
+          alert(`Cannot submit: Legal Owner #${i + 1} Name is mandatory.`);
+          setWizardStep(4);
+          return;
+        }
+        if (!o.idNumber?.trim() && !o.tin?.trim() && !o.businessRegNo?.trim()) {
+          alert(`Cannot submit: Legal Owner #${i + 1} (${o.name}) must have valid identification (National ID / Business Reg / TIN).`);
+          setWizardStep(4);
+          return;
+        }
+        if (!o.relationshipToBorrower || !o.relationshipToBorrower.trim()) {
+          alert(`Cannot submit: Legal Owner #${i + 1} (${o.name}) must have an explicitly selected relationship to borrower.`);
+          setWizardStep(4);
+          return;
+        }
+      }
+      const totalPct = activeOwners.reduce((sum, o) => sum + (Number(o.percentage) || 0), 0);
+      if (Math.abs(totalPct - 100) > 0.01) {
+        alert(`Cannot submit: Total Ownership Percentage across third-party owners must equal exactly 100.0%. Current total: ${totalPct.toFixed(1)}%.`);
+        setWizardStep(4);
+        return;
+      }
+    } else if (ownerDetails.ownershipType === 'Joint' || ownerDetails.ownershipType === 'Jointly-owned' || ownersList.length > 1) {
+      if (ownersList.length < 2) {
+        alert('Cannot submit: Joint ownership requires at least two legal co-owners.');
+        setWizardStep(4);
+        return;
+      }
+      const totalPct = ownersList.reduce((sum, o) => sum + (Number(o.percentage) || 0), 0);
+      if (Math.abs(totalPct - 100) > 0.01) {
+        alert(`Cannot submit: Total Ownership Percentage across all joint owners must equal exactly 100.0%. Current total: ${totalPct.toFixed(1)}%.`);
+        setWizardStep(4);
+        return;
+      }
+    }
+
+    const allocationsList = Object.entries(facilityAllocations)
+      .filter(([_, amt]) => Number(amt) > 0)
+      .map(([facId, amt]) => {
+        const meta = facilityLinkMeta[facId] || {};
+        return {
+          facilityId: facId,
+          allocatedAmount: Number(amt),
+          linkedAmount: meta.linkedAmount !== undefined ? Number(meta.linkedAmount) : Number(amt),
+          linkageType: meta.linkageType || 'Primary',
+          effectiveDate: meta.effectiveDate || new Date().toISOString().substring(0, 10),
+          endDate: meta.endDate || undefined,
+        };
+      });
+
+    // Prepare owner entity list
+    const ownersToSave: CollateralOwner[] = (ownersList.length > 0 ? ownersList : [ownerDetails]).map((o) => {
+      const isBorrowerOwned = o.ownershipType === 'Borrower-owned' || (!o.ownershipType && ownerDetails.ownershipType === 'Borrower-owned');
+      return {
+        name: isBorrowerOwned ? selectedCustomer?.name || 'Borrower' : o.name || '',
+        ownershipType: o.ownershipType || ownerDetails.ownershipType || 'Borrower-owned',
+        ownerType: o.ownerType || 'Individual',
+        idNumber: isBorrowerOwned ? (o.idNumber || selectedCustomer?.nationalId || selectedCustomer?.businessRegNo || '') : (o.idNumber || ''),
+        tin: isBorrowerOwned ? (o.tin || selectedCustomer?.taxIdNo || '') : (o.tin || ''),
+        phone: isBorrowerOwned ? (o.phone || selectedCustomer?.phone || '') : (o.phone || ''),
+        contactInfo: isBorrowerOwned ? (o.contactInfo || selectedCustomer?.address || '') : (o.contactInfo || ''),
+        percentage: Number(o.percentage || 100),
+        relationship: isBorrowerOwned ? 'Borrower' : o.relationshipToBorrower || o.relationship || 'Third-Party Owner',
+        relationshipToBorrower: o.relationshipToBorrower || '',
+        consentInfo: o.consentInfo || '',
+        pledgeAgreementRef: o.pledgeAgreementRef || '',
+        remarks: o.remarks || '',
+        verificationStatus: o.verificationStatus || 'Recorded',
+        verificationDate: o.verificationDate,
+        verifyingOfficer: o.verifyingOfficer,
+        gpsX: newCol.gpsX,
+        gpsY: newCol.gpsY,
+      };
+    });
+
+    setWizardRegistering(true);
+    try {
+      const colToSave: Partial<Collateral> = {
+        ...newCol,
+        customerId: selectedCustomerId,
+        ownerType: ownerDetails.ownershipType,
+        owners: ownersToSave,
+        verificationStatus: 'Recorded',
+        status: 'Pending Approval',
+      };
+      const docsToSave = (wizardDocuments || []).map((d) => ({
+        name: d.name || d.fileName || d.type,
+        type: d.type,
+        expiryDate: d.expiryDate,
+        remarks: d.remarks,
+        fileName: d.fileName,
+        fileSize: d.fileSizeNum && d.fileSizeNum > 0 ? d.fileSizeNum : 102400,
+        contentType: d.contentType || 'application/pdf',
+        fileContent: d.fileContent,
+        isMandatory: d.isMandatory,
+      }));
+      await onRegisterCollateral(colToSave, allocationsList, docsToSave);
+      setShowRegisterWizard(false);
+      const shouldLink = window.confirm(
+        `Collateral ${colToSave.code} registered and submitted for Checker authorization.\n\nWould you like to link this collateral to credit facilities or other securities now?`
+      );
+      if (shouldLink) {
+        setSelectedCol(colToSave as Collateral);
+        setM3LinkToEdit(null);
+        setM3LinkModalMode('create');
+        setShowM3LinkModal(true);
+      }
+    } catch (err: any) {
+      alert(`Registration failed: ${err.message || err}`);
+    } finally {
+      setWizardRegistering(false);
+    }
+  };
+
+  const handleAddLinkSubmit = async () => {
+    if (!selectedCol) return;
+    if (!linkLoanId) {
+      alert('Please select a facility to link.');
+      return;
+    }
+    if (linkAmount <= 0) {
+      alert('Link amount must be greater than zero.');
+      return;
+    }
+    setLinkSubmitting(true);
+    try {
+      await onAddLink(linkLoanId, selectedCol.id, linkAmount, linkLinkageType, linkEffectiveDate, linkEndDate);
+      alert('Facility linked successfully.');
+      setShowAddLinkModal(false);
+      loadExposureSummary(selectedCol.id);
+      loadCollateral360(selectedCol.id);
+    } catch (e: any) {
+      alert(`Failed to link facility: ${e?.message || e}`);
+    } finally {
+      setLinkSubmitting(false);
+    }
+  };
+
+  const handleVerifyOwnerSubmit = async () => {
+    if (!selectedCol || !verifyingOwner) return;
+    setVerifySubmitting(true);
+    try {
+      await cimsApi.verifyCollateralOwner(
+        selectedCol.id,
+        verifyingOwner.id || '',
+        verifyStatus,
+        verifyComments,
+        currentUser.username || currentUser.name || 'CRO_USER'
+      );
+      alert(`Owner "${verifyingOwner.name}" marked as ${verifyStatus}.`);
+      setShowVerifyOwnerModal(false);
+      setVerifyingOwner(null);
+      setVerifyComments('');
+      await loadCollateral360(selectedCol.id);
+    } catch (e: any) {
+      alert(`Owner verification failed: ${e?.message || e}`);
+    } finally {
+      setVerifySubmitting(false);
+    }
+  };
+
+  const handleUploadDocSubmit = async () => {
+    if (!selectedCol) return;
+    if (!uploadDocName.trim()) {
+      alert('Please enter a document title.');
+      return;
+    }
+    setUploadingDoc(true);
+    try {
+      await cimsApi.uploadDocument('Collateral', selectedCol.id, uploadDocName, uploadDocType, uploadDocExpiry || undefined);
+      alert('Document uploaded to DMS successfully (Status: Pending Verification).');
+      setShowUploadDocModal(false);
+      setUploadDocName('');
+      window.location.reload();
+    } catch (e: any) {
+      alert(`Failed to upload document: ${e?.message || e}`);
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <DataGrid
+        title="Collateral Master & Securities"
+        subtitle="Manage Pledged Assets, Multi-Facility Security Allocations, Haircuts, Mandatory Documents, and Insurance Coverages"
+        data={collaterals}
+        columns={collateralColumns}
+        keyExtractor={(c) => c.id}
+        onRowClick={(c) => {
+          setSelectedCol(c);
+          setShowDetailModal(true);
+          loadExposureSummary(c.id);
+          loadCollateral360(c.id);
+          loadM3SecuredFacilities(c.id);
+        }}
+        actions={
+          isMaker ? (
+            <button
+              onClick={handleStartWizard}
+              className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Register New Collateral
+            </button>
+          ) : undefined
+        }
+      />
+
+      {/* Collateral 360 Detail Modal */}
+      {showDetailModal && selectedCol && (
+        <div className="fixed inset-0 bg-[#102E4A]/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden text-xs">
+            {/* Header */}
+            <div className="p-5 bg-[#102E4A] text-white flex justify-between items-start">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-bold">
+                    {selectedCol.code} — {selectedCol.category}
+                  </h2>
+                  {colPolicies.length > 0 ? (
+                    <button
+                      onClick={() => {
+                        if (onNavigate) {
+                          setShowDetailModal(false);
+                          onNavigate('insurance', { policyId: colPolicies[0].id, id: colPolicies[0].id });
+                        }
+                      }}
+                      className="cursor-pointer inline-flex items-center gap-1 group/chip"
+                      title="Click to view securing insurance policy"
+                    >
+                      <StatusChip
+                        label={selectedCol.insuranceStatus || selectedCol.status || 'Insured'}
+                        variant={(selectedCol.insuranceStatus || '').toLowerCase().includes('fully') ? 'success' : 'warning'}
+                      />
+                      <ArrowUpRight className="w-3.5 h-3.5 text-blue-300 group-hover/chip:text-white" />
+                    </button>
+                  ) : (
+                    <StatusChip
+                      label={selectedCol.insuranceStatus || selectedCol.status || 'Uninsured'}
+                      variant={(selectedCol.insuranceStatus || '').toLowerCase().includes('fully') ? 'success' : 'warning'}
+                    />
+                  )}
+                </div>
+                <div className="text-xs text-blue-200 mt-1 flex gap-4">
+                  <span>
+                    Customer: {customers.find((c) => c.id === selectedCol.customerId || c.cif === selectedCol.customerId)?.name || selectedCol.customerId}
+                  </span>
+                  <span>Owning Segment: {selectedCol.owningSegment}</span>
+                  <span>Branch: {selectedCol.branch}</span>
+                  <span>Currency: {selectedCol.currency || 'ETB'}</span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                {isMaker && selectedCol.authStat === 'A' && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const firstOwner = selectedCol.owners?.[0];
+                        setOwnershipChangeForm({
+                          newOwnerName: '',
+                          newOwnershipType: 'Third-party-owned',
+                          ownerType: 'Individual',
+                          idNumber: '',
+                          tin: '',
+                          phone: '',
+                          contactInfo: '',
+                          percentage: 100,
+                          relationshipToBorrower: '',
+                          effectiveDate: new Date().toISOString().substring(0, 10),
+                          changeReason: '',
+                          supportingDocument: '',
+                          remarks: '',
+                        });
+                        setOwnershipChangeError(null);
+                        setShowOwnershipChangeModal(true);
+                      }}
+                      className="btn-ghost py-1 px-2.5 text-xs text-white border border-white/30 rounded flex items-center gap-1 hover:bg-white/10"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      Change Ownership
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMaintainFields({
+                          valuationAmount: selectedCol.valuationAmount,
+                          haircut: selectedCol.haircut,
+                          reviewDate: selectedCol.reviewDate,
+                        });
+                        setMaintainError(null);
+                        setShowMaintainModal(true);
+                      }}
+                      className="btn-ghost py-1 px-2.5 text-xs text-white border border-white/30 rounded flex items-center gap-1 hover:bg-white/10"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      Maintain Details
+                    </button>
+                    <button
+                      onClick={() => setShowTransferModal(true)}
+                      className="btn-ghost py-1 px-2.5 text-xs text-white border border-white/30 rounded flex items-center gap-1 hover:bg-white/10"
+                    >
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                      Transfer Segment
+                    </button>
+                    <button
+                      onClick={handleOpenReleaseModal}
+                      disabled={loadingRelease}
+                      className="btn-ghost py-1 px-2.5 text-xs text-white border border-white/30 rounded flex items-center gap-1 hover:bg-white/10"
+                    >
+                      <Unlock className="w-3.5 h-3.5" />
+                      {loadingRelease ? 'Validating…' : 'Release Security'}
+                    </button>
+                  </>
+                )}
+                {isMaker && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setM3LinkToEdit(null);
+                      setM3LinkModalMode('create');
+                      setShowM3LinkModal(true);
+                    }}
+                    className="btn-primary py-1 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-1 font-semibold shadow-xs"
+                    title="Link credit facility to this collateral"
+                  >
+                    <LinkIcon className="w-3.5 h-3.5" />
+                    + Link Facility
+                  </button>
+                )}
+                <button onClick={() => setShowDetailModal(false)} className="text-white hover:text-gray-300 text-lg ml-2">
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-[#E2E8F0] bg-[#EFF5FB] px-6 gap-2 pt-2">
+              {(['details', 'exposure', 'links', 'policies', 'documents', 'exceptions', 'history'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`pb-2.5 px-3 font-semibold border-b-2 capitalize transition-colors ${
+                    activeTab === tab ? 'border-[#102E4A] text-[#102E4A]' : 'border-transparent text-[#5B6472] hover:text-[#102E4A]'
+                  }`}
+                >
+                  {tab === 'details' && 'Overview & Valuation'}
+                  {tab === 'exposure' && 'Exposure & Adequacy'}
+                  {tab === 'links' && `Secured Facilities (${m3SecuredSummary?.securedFacilities?.length ?? colLinks.length})`}
+                  {tab === 'policies' && `Insurance Coverages (${colPolicies.length})`}
+                  {tab === 'documents' && `DMS Documents (${colDocs.length})`}
+                  {tab === 'exceptions' && `Exceptions (${colExceptions.length})`}
+                  {tab === 'history' && `Audit History (${col360Data?.auditHistory?.length || 0})`}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab Contents */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              {activeTab === 'details' && (
+                <div className="space-y-4">
+                  {/* Section 58 Third-Party Collateral Compliance Banner */}
+                  {selectedCol.ownerType === 'Third-party-owned' && (() => {
+                    const activeOwners = (col360Data?.activeOwners && col360Data.activeOwners.length > 0)
+                      ? col360Data.activeOwners
+                      : (selectedCol.owners || []).filter(o => !o.supersededDate && o.status !== 'Historical');
+                    const hasPledgeDoc = colDocs.some(d => {
+                      const t = (d.type || d.name || '').toLowerCase();
+                      return t.includes('pledge') || t.includes('third-party consent');
+                    });
+                    const hasConsentDoc = colDocs.some(d => {
+                      const t = (d.type || d.name || '').toLowerCase();
+                      return t.includes('consent');
+                    });
+                    const isFullyCompliant = activeOwners.length > 0 &&
+                      activeOwners.every(o => (o.idNumber || o.businessRegNo || o.tin) && o.relationshipToBorrower) &&
+                      (hasPledgeDoc || hasConsentDoc);
+
+                    return (
+                      <div className="p-4 rounded-lg border border-purple-300 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 text-purple-950 space-y-3 shadow-sm">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            <ShieldAlert className="w-5 h-5 text-purple-700 flex-shrink-0" />
+                            <div>
+                              <h5 className="font-bold text-sm text-purple-900 flex items-center gap-2">
+                                Section 58 Third-Party Pledged Collateral Notice
+                                {isFullyCompliant ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                    Legally Compliant
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                    Action Required
+                                  </span>
+                                )}
+                              </h5>
+                              <p className="text-xs text-purple-800 mt-0.5">
+                                This asset is pledged by a third-party legal owner to secure credit facility obligations of borrower <strong>{customers.find(c => c.id === selectedCol.customerId || c.cif === selectedCol.customerId)?.name || selectedCol.customerId}</strong> under Commercial Code / Banking Directives (Section 58).
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 bg-purple-200/80 text-purple-900 rounded font-mono">
+                            Section 58 Pledge
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-xs">
+                          <div className="p-2.5 bg-white/80 rounded border border-purple-200 space-y-1">
+                            <span className="text-[10px] font-bold text-purple-700 uppercase block">Legal Owner(s)</span>
+                            {activeOwners.length > 0 ? (
+                              activeOwners.map((o, idx) => (
+                                <div key={idx} className="font-medium text-slate-900">
+                                  <strong>{o.name}</strong> ({o.percentage ?? 100}%)
+                                  <div className="text-[11px] text-slate-600">
+                                    Relationship: <span className="font-semibold text-purple-800">{o.relationshipToBorrower || o.relationship || 'Unspecified'}</span>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-amber-800 font-semibold text-xs">⚠️ No legal owners registered</div>
+                            )}
+                          </div>
+
+                          <div className="p-2.5 bg-white/80 rounded border border-purple-200 space-y-1">
+                            <span className="text-[10px] font-bold text-purple-700 uppercase block">Owner Identity Verification</span>
+                            {activeOwners.map((o, idx) => (
+                              <div key={idx} className="text-slate-800">
+                                <div>ID / Reg: <span className="font-mono font-semibold">{o.businessRegNo || o.idNumber || '—'}</span></div>
+                                <div>TIN: <span className="font-mono">{o.tin || '—'}</span></div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="p-2.5 bg-white/80 rounded border border-purple-200 space-y-1">
+                            <span className="text-[10px] font-bold text-purple-700 uppercase block">Statutory Documentation</span>
+                            <div className="flex items-center gap-1.5">
+                              {hasPledgeDoc ? (
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              ) : (
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                              )}
+                              <span>Third-Party Consent & Pledge Agmt</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {hasConsentDoc ? (
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              ) : (
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                              )}
+                              <span>Letter of Consent</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="cims-card p-4 space-y-2">
+                      <h4 className="font-bold text-[#101828] border-b border-[#E2E8F0] pb-1 flex items-center justify-between">
+                        <span>Valuation & Security</span>
+                        <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-semibold">Regulatory Standard</span>
+                      </h4>
+                      <div>
+                        <span className="text-[#5B6472]">Collateral Value (Market):</span>{' '}
+                        <strong className="text-[#102E4A] tabular-nums">{selectedCol.currency || 'ETB'} {selectedCol.valuationAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Haircut Applied:</span>{' '}
+                        <strong className="text-amber-800">{selectedCol.haircut ?? 20}%</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Net Security Value (NSV):</span>{' '}
+                        <strong className="text-emerald-700 tabular-nums">
+                          {selectedCol.currency || 'ETB'} {(selectedCol.nsv ?? ((selectedCol.valuationAmount || 0) * (1.0 - ((selectedCol.haircut || 0) / 100.0)))).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </strong>
+                      </div>
+                      <div className="bg-emerald-50/70 border border-emerald-200 rounded p-2 text-[11px] text-emerald-900">
+                        <div className="flex items-center gap-1 font-semibold text-emerald-800">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          NSV Formula: Value × (1 - Haircut%)
+                        </div>
+                        <div className="font-mono text-[10px] text-emerald-700 mt-0.5">
+                          ETB {selectedCol.valuationAmount?.toLocaleString()} × (1 - {selectedCol.haircut ?? 20}%) = <strong>ETB {(selectedCol.nsv ?? ((selectedCol.valuationAmount || 0) * (1.0 - ((selectedCol.haircut || 0) / 100.0)))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Total Allocated Amount:</span>{' '}
+                        <strong className="text-blue-800 tabular-nums">{selectedCol.currency || 'ETB'} {(col360Data?.totalAllocatedAmount ?? selectedCol.currentAllocation ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Remaining Capacity:</span>{' '}
+                        <strong className="text-indigo-800 tabular-nums">{selectedCol.currency || 'ETB'} {(col360Data?.remainingCollateralCapacity ?? Math.max(0, (selectedCol.nsv ?? ((selectedCol.valuationAmount || 0) * 0.8)) - (selectedCol.currentAllocation || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Capacity Utilization:</span>{' '}
+                        <strong className="tabular-nums">{(selectedCol.utilizationPercentage || 0).toFixed(1)}%</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Valuation Method:</span>{' '}
+                        <strong className="text-[#102E4A]">{selectedCol.valuationMethod || 'Certified Independent Appraisal'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Valuation Date:</span>{' '}
+                        <strong className="text-[#102E4A]">{selectedCol.valuationDate || selectedCol.startDate || '—'}</strong>
+                      </div>
+                    </div>
+
+                    <div className="cims-card p-4 space-y-2">
+                      <h4 className="font-bold text-[#101828] border-b border-[#E2E8F0] pb-1 flex items-center justify-between">
+                        <span>Asset Metadata & Taxonomy</span>
+                        <span className="text-[10px] font-mono text-[#5B6472]">{selectedCol.code}</span>
+                      </h4>
+                      <div>
+                        <span className="text-[#5B6472]">Borrower / Customer:</span>{' '}
+                        <strong className="text-[#101828]">{customers.find(c => c.id === selectedCol.customerId || c.cif === selectedCol.customerId)?.name || selectedCol.customerId}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Description:</span> <strong>{selectedCol.description || '—'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Collateral Category:</span> <strong>{selectedCol.category}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Collateral Type:</span> <strong>{selectedCol.type || selectedCol.category}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Ownership Type:</span>{' '}
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-900 border border-blue-200">
+                          {selectedCol.ownerType}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Charge Type:</span>{' '}
+                        <strong>{col360Data?.collateral?.chargeType || selectedCol.chargeType || 'Mortgage / Fixed Charge'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Tangible Property:</span>{' '}
+                        <strong>{selectedCol.tangible !== false ? 'Yes (Tangible Asset)' : 'No (Intangible/Financial)'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Secured Status:</span>{' '}
+                        <strong>{selectedCol.secured !== false ? 'Secured' : 'Unsecured / Unpledged'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Source System:</span>{' '}
+                        <span className="font-mono text-[#102E4A]">{selectedCol.sourceSystem || 'CBS / T24 Core'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">CBS Last Updated:</span>{' '}
+                        <span className="font-mono text-[#5B6472] text-[11px]">{col360Data?.collateral?.cbsLastUpdated || selectedCol.cbsLastUpdated || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Owning Segment / Branch:</span> <strong>{selectedCol.owningSegment} / {selectedCol.branch}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Start Date / Review:</span> <strong>{selectedCol.startDate || '—'} / {selectedCol.reviewDate || '—'}</strong>
+                      </div>
+                      {selectedCol.gpsCoordinates && (
+                        <div>
+                          <span className="text-[#5B6472]">GPS Coordinates:</span> <strong>{selectedCol.gpsCoordinates}</strong>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="cims-card p-4 space-y-2">
+                      <h4 className="font-bold text-[#101828] border-b border-[#E2E8F0] pb-1">Insurance & Governance</h4>
+                      <div>
+                        <span className="text-[#5B6472]">Insured Amount:</span>{' '}
+                        <strong className="text-emerald-700 tabular-nums">{selectedCol.currency || 'ETB'} {(selectedCol.insuredAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                        <div className="text-[10px] text-[#5B6472] italic">(Directly maintained baseline; synchronized with active policies)</div>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Insurance Status:</span> <strong>{selectedCol.insuranceStatus || 'Uninsured'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Maker:</span> <strong>{selectedCol.makerId || 'CRO_USER'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Creation Date:</span> <strong>{selectedCol.makerDtStamp?.substring(0, 10) || '—'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Checker:</span> <strong>{selectedCol.checkerId || 'Pending'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Auth Status:</span> <strong>{selectedCol.authStat === 'A' ? 'Authorized' : 'Pending Authorization'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[#5B6472]">Verification Status:</span> <strong>{selectedCol.verificationStatus || 'Recorded'}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Collateral Legal Owners Breakdown & History */}
+                  <div className="cims-card p-4 space-y-3">
+                    <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-2">
+                      <div>
+                        <h4 className="font-bold text-[#101828]">Legal Ownership & Verification Records</h4>
+                        <p className="text-[11px] text-[#5B6472]">Multi-owner breakdown, joint percentage distribution (summing to 100%), and non-destructive ownership history.</p>
+                      </div>
+                      {isMaker && selectedCol.authStat === 'A' && (
+                        <button
+                          onClick={() => {
+                            setOwnershipChangeForm({
+                              newOwnerName: '',
+                              newOwnershipType: 'Third-party-owned',
+                              ownerType: 'Individual',
+                              idNumber: '',
+                              tin: '',
+                              phone: '',
+                              contactInfo: '',
+                              percentage: 100,
+                              relationshipToBorrower: '',
+                              effectiveDate: new Date().toISOString().substring(0, 10),
+                              changeReason: '',
+                              supportingDocument: '',
+                              remarks: '',
+                            });
+                            setOwnershipChangeError(null);
+                            setShowOwnershipChangeModal(true);
+                          }}
+                          className="btn-secondary py-1 px-2.5 text-xs flex items-center gap-1"
+                        >
+                          <UserCheck className="w-3.5 h-3.5 text-[#1F4E7A]" />
+                          Initiate Ownership Change
+                        </button>
+                      )}
+                    </div>
+
+                    {(() => {
+                      const displayOwners: CollateralOwner[] = (col360Data?.activeOwners && col360Data.activeOwners.length > 0)
+                        ? [...col360Data.activeOwners, ...(col360Data.historicalOwners || [])]
+                        : (selectedCol.owners || []);
+
+                      if (displayOwners.length === 0) {
+                        return (
+                          <div className="p-3 bg-slate-50 border border-[#E2E8F0] rounded text-slate-600 text-xs">
+                            No distinct owner records attached. Primary registered owner is <strong>{customers.find(c => c.id === selectedCol.customerId || c.cif === selectedCol.customerId)?.name || selectedCol.customerId}</strong> (100.0% Borrower-owned).
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-50 text-[#5B6472] border-b border-[#E2E8F0]">
+                              <tr>
+                                <th className="p-2">Owner Name</th>
+                                <th className="p-2">Ownership Type</th>
+                                <th className="p-2">Relationship</th>
+                                <th className="p-2">ID / Reg No</th>
+                                <th className="p-2">TIN</th>
+                                <th className="p-2">Contact Phone</th>
+                                <th className="p-2">Contact Address</th>
+                                <th className="p-2 text-right">Share %</th>
+                                <th className="p-2">Verification Details</th>
+                                <th className="p-2">Record Status</th>
+                                <th className="p-2 text-right">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#E2E8F0]">
+                              {displayOwners.map((owner, idx) => {
+                                const isSuperseded = !!owner.supersededDate || owner.status === 'Historical';
+                                const isVerified = owner.verificationStatus === 'Verified';
+                                return (
+                                  <tr key={owner.id || idx} className={isSuperseded ? 'bg-slate-100/70 text-slate-500' : 'hover:bg-slate-50'}>
+                                    <td className="p-2 font-bold text-[#101828]">
+                                      {owner.name}
+                                      {isSuperseded && <span className="ml-1.5 text-[10px] px-1.5 py-0.2 bg-slate-200 text-slate-700 rounded font-normal">Historical</span>}
+                                    </td>
+                                    <td className="p-2">{owner.ownershipType || owner.ownerType || selectedCol.ownerType}</td>
+                                    <td className="p-2">{owner.relationshipToBorrower || owner.relationship || 'Borrower'}</td>
+                                    <td className="p-2 font-mono">{owner.businessRegNo || owner.idNumber || '—'}</td>
+                                    <td className="p-2 font-mono">{owner.tin || '—'}</td>
+                                    <td className="p-2">{owner.phone || '—'}</td>
+                                    <td className="p-2">{owner.contactInfo || '—'}</td>
+                                    <td className="p-2 text-right font-bold tabular-nums text-emerald-700">{owner.percentage ?? owner.ownershipPercentage}%</td>
+                                    <td className="p-2">
+                                      <div className="text-[11px]">
+                                        <span className={`inline-block px-1.5 py-0.2 rounded font-semibold ${isVerified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                          {owner.verificationStatus || 'Pending Verification'}
+                                        </span>
+                                        {owner.verificationDate && <span className="text-[#5B6472]"> ({owner.verificationDate})</span>}
+                                        {owner.verifyingOfficer && <div className="text-[#5B6472] text-[10px]">Officer: {owner.verifyingOfficer}</div>}
+                                        {owner.remarks && <div className="text-slate-500 text-[10px] italic">"{owner.remarks}"</div>}
+                                      </div>
+                                    </td>
+                                    <td className="p-2">
+                                      {isSuperseded ? (
+                                        <div className="text-[10px] text-amber-700 font-semibold">
+                                          <div>Superseded: {owner.supersededDate || owner.effectiveTo || 'Historical'}</div>
+                                          {owner.transferReason && <div className="text-slate-500 font-normal italic">{owner.transferReason}</div>}
+                                        </div>
+                                      ) : (
+                                        <span className="text-[10px] text-emerald-700 font-semibold">Active Owner</span>
+                                      )}
+                                    </td>
+                                    <td className="p-2 text-right">
+                                      {!isSuperseded && !isVerified && (
+                                        <button
+                                          onClick={() => {
+                                            setVerifyingOwner(owner);
+                                            setVerifyStatus('Verified');
+                                            setVerifyComments('');
+                                            setShowVerifyOwnerModal(true);
+                                          }}
+                                          className="btn-ghost py-0.5 px-2 text-[10px] text-blue-700 hover:text-blue-900 border border-blue-200 hover:border-blue-300 rounded inline-flex items-center gap-1 font-semibold"
+                                        >
+                                          <CheckCircle className="w-3 h-3 text-emerald-600" /> Verify
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'exposure' && (
+                <div>
+                  {loadingExposure ? (
+                    <div className="p-8 text-center text-[#5B6472]">Computing exposure & adequacy metrics…</div>
+                  ) : exposureSummary ? (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-4 gap-4">
+                        <div className="cims-card p-4 bg-[#EFF5FB] border-[#DCE9F5]">
+                          <div className="text-[11px] text-[#1F4E7A] font-semibold uppercase">Total Outstanding Exposure</div>
+                          <div className="text-base font-bold text-[#102E4A] mt-1 tabular-nums">
+                            ETB {exposureSummary.totalOutstandingExposure?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                        <div className="cims-card p-4 bg-emerald-50 border-emerald-100">
+                          <div className="text-[11px] text-emerald-700 font-semibold uppercase">Total Active Insurance</div>
+                          <div className="text-base font-bold text-emerald-900 mt-1 tabular-nums">
+                            ETB {exposureSummary.currentInsuredAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                        <div className="cims-card p-4 bg-blue-50 border-blue-100">
+                          <div className="text-[11px] text-blue-700 font-semibold uppercase">Required Insurance (Max[Exp, Val])</div>
+                          <div className="text-base font-bold text-blue-900 mt-1 tabular-nums">
+                            ETB {exposureSummary.requiredInsuranceAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                        <div className="cims-card p-4 bg-purple-50 border-purple-100 flex items-center justify-between">
+                          <div>
+                            <div className="text-[11px] text-purple-700 font-semibold uppercase">Adequacy Coverage</div>
+                            <div className="text-base font-bold text-purple-900 mt-1 tabular-nums">
+                              {(exposureSummary.requiredInsuranceAmount > 0
+                                ? (exposureSummary.currentInsuredAmount / exposureSummary.requiredInsuranceAmount) * 100
+                                : exposureSummary.currentInsuredAmount > 0
+                                ? 100
+                                : 0
+                              ).toFixed(1)}
+                              %
+                            </div>
+                          </div>
+                          <CircularProgress
+                            value={Math.min(
+                              100,
+                              exposureSummary.requiredInsuranceAmount > 0
+                                ? (exposureSummary.currentInsuredAmount / exposureSummary.requiredInsuranceAmount) * 100
+                                : exposureSummary.currentInsuredAmount > 0
+                                ? 100
+                                : 0
+                            )}
+                            size={48}
+                            strokeWidth={5}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center text-[#5B6472]">Exposure breakdown not available.</div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'links' && (
+                <div className="space-y-4">
+                  {/* Module 4: Prominent SHARED / CROSS-COLLATERALIZED Banner (§21) */}
+                  {((m3SecuredSummary?.linkedFacilityCount ?? colLinks.length) > 1) && (
+                    <div className="p-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-[#102E4A] rounded-xl text-white shadow-lg space-y-3 border border-indigo-700/60">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <span className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wider bg-amber-400 text-slate-900 shadow-sm animate-pulse">
+                            SHARED / CROSS-COLLATERALIZED
+                          </span>
+                          <span className="text-xs font-semibold text-blue-200">
+                            Single master asset simultaneously securing multiple credit facilities
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-mono text-blue-200">
+                          Master Asset Code: <strong className="text-white font-bold">{selectedCol.code}</strong>
+                        </div>
+                      </div>
+
+                      {/* 7 Authoritative Aggregate Exposure & Insurance Metrics */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 text-xs">
+                        <div className="p-2.5 bg-white/10 rounded-lg border border-white/10">
+                          <span className="text-[10px] text-blue-200 uppercase font-semibold block">1. Facilities</span>
+                          <strong className="text-lg font-bold text-white block mt-0.5">
+                            {m3SecuredSummary?.linkedFacilityCount ?? colLinks.length}
+                          </strong>
+                          <span className="text-[9px] text-blue-300">Active Facilities</span>
+                        </div>
+
+                        <div className="p-2.5 bg-white/10 rounded-lg border border-white/10">
+                          <span className="text-[10px] text-blue-200 uppercase font-semibold block">2. Aggregate Exposure</span>
+                          <strong className="text-sm font-bold text-amber-300 block mt-0.5 tabular-nums">
+                            ETB {(m3SecuredSummary?.aggregateSecuredExposure ?? (col360Data?.totalSecuredExposure || 0)).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                          </strong>
+                          <span className="text-[9px] text-blue-300">Sum of Outstandings</span>
+                        </div>
+
+                        <div className="p-2.5 bg-white/10 rounded-lg border border-white/10">
+                          <span className="text-[10px] text-blue-200 uppercase font-semibold block">3. Total Allocation</span>
+                          <strong className="text-sm font-bold text-emerald-300 block mt-0.5 tabular-nums">
+                            ETB {(m3SecuredSummary?.totalAllocatedSecurity ?? (col360Data?.totalAllocatedAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                          </strong>
+                          <span className="text-[9px] text-blue-300">Pledged Security</span>
+                        </div>
+
+                        <div className="p-2.5 bg-white/10 rounded-lg border border-white/10">
+                          <span className="text-[10px] text-blue-200 uppercase font-semibold block">4. Capacity Remaining</span>
+                          <strong className="text-sm font-bold text-cyan-300 block mt-0.5 tabular-nums">
+                            ETB {(m3SecuredSummary?.unallocatedSecurity ?? (col360Data?.remainingCollateralCapacity || 0)).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                          </strong>
+                          <span className="text-[9px] text-blue-300">Unallocated Headroom</span>
+                        </div>
+
+                        <div className="p-2.5 bg-white/10 rounded-lg border border-white/10">
+                          <span className="text-[10px] text-blue-200 uppercase font-semibold block">5. Insurance Required</span>
+                          <strong className="text-sm font-bold text-slate-200 block mt-0.5 tabular-nums">
+                            ETB {(m3SecuredSummary?.requiredInsuranceAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                          </strong>
+                          <span className="text-[9px] text-blue-300">Min Coverage Need</span>
+                        </div>
+
+                        <div className="p-2.5 bg-white/10 rounded-lg border border-white/10">
+                          <span className="text-[10px] text-blue-200 uppercase font-semibold block">6. Insurance Active</span>
+                          <strong className="text-sm font-bold text-emerald-300 block mt-0.5 tabular-nums">
+                            ETB {(m3SecuredSummary?.currentInsuredAmount ?? selectedCol.insuredAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                          </strong>
+                          <span className="text-[9px] text-blue-300">Valid Policy Cover</span>
+                        </div>
+
+                        <div className="p-2.5 bg-white/10 rounded-lg border border-white/10">
+                          <span className="text-[10px] text-blue-200 uppercase font-semibold block">7. Insurance Gap</span>
+                          <strong className={`text-sm font-bold block mt-0.5 tabular-nums ${
+                            (m3SecuredSummary?.insuranceGap ?? 0) > 0 ? 'text-rose-400 font-black' : 'text-emerald-400'
+                          }`}>
+                            ETB {(m3SecuredSummary?.insuranceGap ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                          </strong>
+                          <span className="text-[9px] text-blue-300">
+                            {(m3SecuredSummary?.insuranceGap ?? 0) > 0 ? 'Deficit Warning' : 'Adequate'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Authoritative Relationship Summary & Cross-Collateral Engine (Section 18) */}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-blue-700" />
+                        <span className="font-bold text-xs uppercase tracking-wider text-slate-800">
+                          Secured Facilities &amp; Cross-Collateral Relationship Engine
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-800">
+                          {m3SecuredSummary?.linkedFacilityCount ?? colLinks.length} Facilities Secured
+                        </span>
+                        {((m3SecuredSummary?.linkedFacilityCount ?? colLinks.length) > 1 || col360Data?.crossCollateralized) && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-indigo-100 text-indigo-800">
+                            Cross-Collateralized Asset
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowM3ReconcileModal(true)}
+                          className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 flex items-center gap-1 transition-colors"
+                        >
+                          🔄 CBS Reconciliation (Section 29)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                      <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
+                        <span className="text-slate-500 block text-[10px] uppercase font-semibold">Net Collateral Value</span>
+                        <strong className="text-slate-900 font-bold tabular-nums text-sm">
+                          ETB {(m3SecuredSummary?.netCollateralValue ?? (selectedCol.valuationAmount * (1 - (selectedCol.haircut || 20) / 100))).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </strong>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Allocation Ceiling (MV - {selectedCol.haircut || 20}%)</span>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
+                        <span className="text-blue-700 block text-[10px] uppercase font-semibold">Total Allocated Security</span>
+                        <strong className="text-blue-800 font-bold tabular-nums text-sm">
+                          ETB {(m3SecuredSummary?.totalAllocatedSecurity ?? (col360Data?.totalAllocatedAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </strong>
+                        <span className="text-[10px] text-blue-600 block mt-0.5">Pledged Security Value</span>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
+                        <span className="text-slate-500 block text-[10px] uppercase font-semibold">Unallocated Security</span>
+                        <strong className="text-indigo-900 font-bold tabular-nums text-sm">
+                          ETB {(m3SecuredSummary?.unallocatedSecurity ?? (col360Data?.remainingCollateralCapacity || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </strong>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Available Collateral Capacity</span>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
+                        <span className="text-slate-500 block text-[10px] uppercase font-semibold">Aggregate Secured Exposure</span>
+                        <strong className="text-slate-900 font-bold tabular-nums text-sm">
+                          ETB {(m3SecuredSummary?.aggregateSecuredExposure ?? (col360Data?.totalSecuredExposure || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </strong>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Sum of Active Linked Outstandings</span>
+                      </div>
+                    </div>
+
+                    {/* Insurance Adequacy relative to aggregate secured exposure (Section 14 & 18) */}
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-3">
+                        <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                        <div>
+                          <div className="font-semibold text-slate-800">
+                            Insurance Adequacy Monitoring (Aggregate Exposure Context)
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            Active Valid Insurance:{' '}
+                            <strong className="text-emerald-700">
+                              ETB {(m3SecuredSummary?.currentInsuredAmount ?? selectedCol.insuredAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </strong>
+                            {' • '}
+                            Required:{' '}
+                            <strong>
+                              ETB {(m3SecuredSummary?.requiredInsuranceAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </strong>
+                            {' • '}
+                            Insurance Gap:{' '}
+                            <strong className={m3SecuredSummary && m3SecuredSummary.insuranceGap > 0 ? 'text-red-600' : 'text-emerald-600'}>
+                              ETB {(m3SecuredSummary?.insuranceGap ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                            (m3SecuredSummary?.adequacyStatus === 'ADEQUATE' || m3SecuredSummary?.adequacyStatus === 'Adequately Insured')
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}
+                        >
+                          {m3SecuredSummary?.adequacyStatus || selectedCol.insuranceStatus || 'Adequately Insured'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Table Header and Action */}
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-bold text-[#101828]">Secured Core Banking Facilities &amp; Sub-Limits</h4>
+                      <p className="text-[11px] text-[#5B6472]">
+                        Authoritative relationship linkages: Customer → Facility → Loan Account ↔ Collateral Asset
+                      </p>
+                    </div>
+                    {isMaker && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setM3LinkToEdit(null);
+                          setM3LinkModalMode('create');
+                          setShowM3LinkModal(true);
+                        }}
+                        className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        + Link Credit Facility
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Secured Facilities Table */}
+                  <div className="cims-card overflow-x-auto">
+                    <table className="w-full text-left text-xs min-w-[950px]">
+                      <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
+                        <tr>
+                          <th className="p-2.5">Facility / Loan Ref</th>
+                          <th className="p-2.5">Customer / Borrower</th>
+                          <th className="p-2.5">Facility Type</th>
+                          <th className="p-2.5 text-right">Limit &amp; Outstanding</th>
+                          <th className="p-2.5 text-right">Allocated Security</th>
+                          <th className="p-2.5 text-right">% of Collateral</th>
+                          <th className="p-2.5 text-right">% Facility Covered</th>
+                          <th className="p-2.5">Linkage Type</th>
+                          <th className="p-2.5">Status &amp; Source</th>
+                          <th className="p-2.5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E2E8F0]">
+                        {loadingM3Secured ? (
+                          <tr>
+                            <td colSpan={10} className="p-6 text-center text-slate-500">
+                              <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                              Loading authoritative secured facilities...
+                            </td>
+                          </tr>
+                        ) : (!m3SecuredSummary?.securedFacilities || m3SecuredSummary.securedFacilities.length === 0) ? (
+                          <tr>
+                            <td colSpan={10} className="p-6 text-center text-slate-500">
+                              No credit facilities currently secured by this collateral asset.
+                            </td>
+                          </tr>
+                        ) : (
+                          m3SecuredSummary.securedFacilities.map((l) => {
+                            const isThirdParty = Boolean(l.thirdParty || (l.customerId && selectedCol.customerId && l.customerId !== selectedCol.customerId));
+                            const borrowerName = l.borrowerName || l.customerName || (l.borrowerCif ? `Borrower (${l.borrowerCif})` : 'Borrower');
+                            const borrowerCif = l.borrowerCif || l.customerCif || l.customerId || '—';
+                            const legalOwner = l.legalOwnerNames || (selectedCol as any).legalOwnerNames || (selectedCol as any).owners?.map((o: any) => o.name).join(', ') || 'Collateral Legal Owner';
+                            return (
+                              <tr key={l.id} className="hover:bg-[#EFF5FB]/60 group">
+                                <td className="p-2.5 font-semibold text-[#102E4A]">
+                                  <div className="flex items-center gap-1.5">
+                                    <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                                    <span className="font-mono">{l.loanReference || l.facilityId}</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                    Acc: {l.accountNumber || l.loanAccountId || '—'}
+                                  </div>
+                                </td>
+                                <td className="p-2.5">
+                                  <div className="font-semibold text-slate-900">
+                                    {borrowerName}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 flex flex-col gap-0.5 mt-0.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span>CIF: {borrowerCif}</span>
+                                      {isThirdParty ? (
+                                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded font-semibold text-[9px]">
+                                          Third-Party Pledge{l.relationshipToBorrower ? `: ${l.relationshipToBorrower}` : ''}
+                                        </span>
+                                      ) : (
+                                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded font-medium text-[9px]">
+                                          Borrower-owned
+                                        </span>
+                                      )}
+                                    </div>
+                                    {isThirdParty && (
+                                      <div className="text-[10px] text-slate-600 font-medium">
+                                        Owner: <span className="text-slate-800 font-semibold">{legalOwner}</span>
+                                        {l.pledgeAgreementRef && (
+                                          <span className="text-slate-500 font-mono ml-1">({l.pledgeAgreementRef})</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-2.5">
+                                  <div className="font-medium text-slate-800">{l.facilityType || 'Term Loan'}</div>
+                                  <div className="text-[10px] text-slate-500">{l.businessSegment || '—'}</div>
+                                </td>
+                                <td className="p-2.5 text-right tabular-nums">
+                                  <div className="font-semibold text-slate-900">
+                                    ETB {Number(l.approvedLimit || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  </div>
+                                  <div className="text-[10px] text-amber-700">
+                                    Out: ETB {Number(l.outstandingBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  </div>
+                                </td>
+                                <td className="p-2.5 text-right tabular-nums font-bold text-blue-700">
+                                  ETB {Number(l.allocatedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="p-2.5 text-right tabular-nums font-semibold text-slate-700">
+                                  {Number(l.collateralAllocationPct || 0).toFixed(1)}%
+                                </td>
+                                <td className="p-2.5 text-right tabular-nums font-semibold text-emerald-700">
+                                  {Number(l.facilityCoveragePct || 0).toFixed(1)}%
+                                </td>
+                                <td className="p-2.5">
+                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-800 border border-blue-200">
+                                    {l.linkageType || 'Primary'}
+                                  </span>
+                                </td>
+                                <td className="p-2.5">
+                                  <div className="flex flex-col gap-0.5">
+                                    <StatusChip label={l.relationshipStatus || 'Active'} />
+                                    <span className="text-[9px] font-mono text-slate-400">Src: {l.source || 'CIMS'}</span>
+                                  </div>
+                                </td>
+                                <td className="p-2.5 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (onNavigate) {
+                                          setShowDetailModal(false);
+                                          onNavigate('facilities', { facilityId: l.facilityId || l.loanAccountId, id: l.facilityId || l.loanAccountId });
+                                        }
+                                      }}
+                                      className="py-1 px-2 text-[10px] font-semibold text-blue-700 hover:text-blue-900 border border-blue-200 hover:border-blue-300 rounded inline-flex items-center gap-0.5"
+                                      title="View Credit Facility"
+                                    >
+                                      View <ArrowUpRight className="w-2.5 h-2.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setM3HistoryLinkId(l.id);
+                                        setM3HistoryRef(`${selectedCol.code} ↔ ${l.loanReference || l.facilityId}`);
+                                        setShowM3HistoryModal(true);
+                                      }}
+                                      className="py-1 px-2 text-[10px] font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 rounded inline-flex items-center gap-0.5"
+                                      title="View Relationship History"
+                                    >
+                                      📜 History
+                                    </button>
+                                    {isMaker && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setM3LinkToEdit(l);
+                                            setM3LinkModalMode('edit');
+                                            setShowM3LinkModal(true);
+                                          }}
+                                          className="py-1 px-2 text-[10px] font-semibold text-indigo-700 hover:text-indigo-900 border border-indigo-200 rounded"
+                                          title="Edit Relationship Allocation"
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            const reason = prompt(`Enter change reason for ending link with ${l.loanReference || l.facilityId}:`, 'Obligation settled or facility closed');
+                                            if (reason === null) return;
+                                            try {
+                                              const userId = currentUser?.userId || currentUser?.username || 'CRO_OFFICER';
+                                              await cimsApi.endCollateralFacilityLink(l.id, reason, userId);
+                                              loadM3SecuredFacilities(selectedCol.id);
+                                              loadCollateral360(selectedCol.id);
+                                            } catch (err: any) {
+                                              alert(`Failed to end relationship: ${err.message || 'Error'}`);
+                                            }
+                                          }}
+                                          className="py-1 px-2 text-[10px] font-semibold text-red-600 hover:text-red-800 border border-red-200 rounded"
+                                          title="End Relationship"
+                                        >
+                                          End
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'policies' && (
+                <div className="cims-card overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
+                      <tr>
+                        <th className="p-2.5">Policy Number</th>
+                        <th className="p-2.5">Insurer</th>
+                        <th className="p-2.5">Coverage Type</th>
+                        <th className="p-2.5 text-right">Insured Amount</th>
+                        <th className="p-2.5">Expiry Date</th>
+                        <th className="p-2.5">Status</th>
+                        <th className="p-2.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E2E8F0]">
+                      {colPolicies.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-4 text-center text-[#5B6472]">
+                            No insurance policies found for this collateral.
+                          </td>
+                        </tr>
+                      ) : (
+                        colPolicies.map((p) => (
+                          <tr key={p.id} className="hover:bg-[#EFF5FB] group">
+                            <td className="p-2.5 font-semibold text-[#102E4A]">
+                              <button
+                                onClick={() => {
+                                  if (onNavigate) {
+                                    setShowDetailModal(false);
+                                    onNavigate('insurance', { policyId: p.id, id: p.id });
+                                  }
+                                }}
+                                className="font-bold text-blue-700 hover:text-blue-900 underline flex items-center gap-1.5 text-left cursor-pointer"
+                                title="Click to view policy details"
+                              >
+                                <FileCheck className="w-3.5 h-3.5 text-[#2C6295]" />
+                                <span>{p.policyNumber}</span>
+                                <ArrowUpRight className="w-3 h-3 opacity-60 group-hover:opacity-100" />
+                              </button>
+                            </td>
+                            <td className="p-2.5">{p.insurerName}</td>
+                            <td className="p-2.5">{p.coverageType}</td>
+                            <td className="p-2.5 text-right tabular-nums font-semibold text-emerald-700">
+                              ETB {p.insuredAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="p-2.5">{p.expiryDate}</td>
+                            <td className="p-2.5">
+                              <StatusChip label={p.status} />
+                            </td>
+                            <td className="p-2.5 text-right">
+                              <button
+                                onClick={() => {
+                                  if (onNavigate) {
+                                    setShowDetailModal(false);
+                                    onNavigate('insurance', { policyId: p.id, id: p.id });
+                                  }
+                                }}
+                                className="btn-ghost py-0.5 px-2 text-[11px] text-blue-700 hover:text-blue-900 border border-blue-200 hover:border-blue-300 rounded inline-flex items-center gap-1"
+                              >
+                                View Policy <ArrowUpRight className="w-3 h-3" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {activeTab === 'documents' && (
+                <div className="space-y-4">
+                  {/* Regulatory Mandatory Document Checklist */}
+                  {col360Data?.documentChecklist && col360Data.documentChecklist.length > 0 && (
+                    <div className="cims-card p-4 space-y-3 bg-[#F8FAFC]">
+                      <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-2">
+                        <div>
+                          <h5 className="font-bold text-[#101828] flex items-center gap-1.5">
+                            <FileCheck className="w-4 h-4 text-[#1F4E7A]" />
+                            Regulatory Mandatory Document Checklist
+                          </h5>
+                          <p className="text-[11px] text-[#5B6472]">
+                            Prerequisite documentation required by Bank Credit Policy and NBE Directives for {selectedCol.category} — {selectedCol.type || selectedCol.category}
+                            {selectedCol.ownerType === 'Third-party-owned' && ' (including Third-Party Consent/Pledge Contract)'}.
+                          </p>
+                        </div>
+                        {col360Data.documentChecklist.every((d) => d.satisfied) ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full font-semibold text-xs">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                            All Mandatory Documents Satisfied
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full font-semibold text-xs">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                            Pending Mandatory Verification
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {col360Data.documentChecklist.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className={`p-2.5 rounded-lg border flex items-start gap-2.5 text-xs ${
+                              item.satisfied
+                                ? 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
+                                : item.mandatory
+                                ? 'bg-amber-50/60 border-amber-200 text-amber-950'
+                                : 'bg-slate-50 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {item.satisfied ? (
+                              <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                            ) : item.mandatory ? (
+                              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                            ) : (
+                              <FileText className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                            )}
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold">{item.documentName}</span>
+                                <span
+                                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                                    item.mandatory
+                                      ? 'bg-amber-200/80 text-amber-900'
+                                      : 'bg-slate-200 text-slate-700'
+                                  }`}
+                                >
+                                  {item.mandatory ? 'Mandatory' : 'Optional'}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-[#5B6472] mt-0.5">{item.notes}</div>
+                              {item.matchingDocumentNames && item.matchingDocumentNames.length > 0 && (
+                                <div className="mt-1 text-[11px] text-emerald-700 font-medium flex items-center gap-1">
+                                  <Paperclip className="w-3 h-3 text-emerald-600" />
+                                  <span>Attached: {item.matchingDocumentNames.join(', ')}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-bold text-[#101828]">DMS Ownership & Compliance Documents</h4>
+                    {isMaker && (
+                      <button
+                        onClick={() => setShowUploadDocModal(true)}
+                        className="btn-primary py-1 px-2.5 text-xs flex items-center gap-1"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        + Upload Document
+                      </button>
+                    )}
+                  </div>
+                  <div className="cims-card overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
+                        <tr>
+                          <th className="p-2.5">Document Title</th>
+                          <th className="p-2.5">Document Type</th>
+                          <th className="p-2.5">Version</th>
+                          <th className="p-2.5">Verification Status</th>
+                          <th className="p-2.5">Upload Date</th>
+                          <th className="p-2.5">Expiry Date</th>
+                          <th className="p-2.5">Status</th>
+                          <th className="p-2.5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E2E8F0]">
+                        {colDocs.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="p-4 text-center text-[#5B6472]">
+                              No documents uploaded.
+                            </td>
+                          </tr>
+                        ) : (
+                          colDocs.map((d) => (
+                            <tr key={d.id} className="hover:bg-[#EFF5FB]">
+                              <td className="p-2.5 font-semibold text-[#102E4A] flex items-center gap-1.5">
+                                <FileText className="w-3.5 h-3.5 text-[#2C6295]" />
+                                {d.name}
+                              </td>
+                              <td className="p-2.5">{d.type}</td>
+                              <td className="p-2.5">v{d.version || 1}</td>
+                              <td className="p-2.5">
+                                <StatusChip label={d.verificationStatus || 'Pending Verification'} variant="neutral" />
+                              </td>
+                              <td className="p-2.5">{d.uploadDate?.substring(0, 10)}</td>
+                              <td className="p-2.5">{d.expiryDate?.substring(0, 10) || 'N/A'}</td>
+                              <td className="p-2.5">
+                                <StatusChip label={d.status || 'Active'} />
+                              </td>
+                              <td className="p-2.5 text-right">
+                                <button
+                                  onClick={() => {
+                                    setDocPreviewTarget(d);
+                                    setShowDocPreviewModal(true);
+                                  }}
+                                  className="btn-ghost py-0.5 px-2 text-[11px] text-[#1F4E7A] hover:text-[#102E4A] border border-[#B9D3EB] hover:bg-[#EFF5FB] rounded inline-flex items-center gap-1 font-semibold"
+                                  title="Preview Document File"
+                                >
+                                  <Eye className="w-3 h-3" /> Preview
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'exceptions' && (
+                <div className="cims-card overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
+                      <tr>
+                        <th className="p-2.5">Exception Type</th>
+                        <th className="p-2.5">Severity</th>
+                        <th className="p-2.5">Description</th>
+                        <th className="p-2.5">Identified Date</th>
+                        <th className="p-2.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E2E8F0]">
+                      {colExceptions.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="p-4 text-center text-[#5B6472]">
+                            No open exceptions logged.
+                          </td>
+                        </tr>
+                      ) : (
+                        colExceptions.map((e) => (
+                          <tr key={e.id} className="hover:bg-[#EFF5FB]">
+                            <td className="p-2.5 font-semibold">{e.exceptionType}</td>
+                            <td className="p-2.5">
+                              <StatusChip label={e.severity} />
+                            </td>
+                            <td className="p-2.5">{e.description}</td>
+                            <td className="p-2.5">{e.detectedAt?.substring(0, 10)}</td>
+                            <td className="p-2.5">
+                              <StatusChip label={e.status} />
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {activeTab === 'history' && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-bold text-[#101828]">Collateral Audit Trail &amp; Lifecycle History</h4>
+                      <p className="text-[11px] text-[#5B6472]">Complete four-eyes authorization history, valuation revisions, ownership changes, and facility linkages.</p>
+                    </div>
+                  </div>
+                  <div className="cims-card overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
+                        <tr>
+                          <th className="p-2.5">Timestamp</th>
+                          <th className="p-2.5">User</th>
+                          <th className="p-2.5">Action Event</th>
+                          <th className="p-2.5">Entity / Record</th>
+                          <th className="p-2.5">Attribute Changed</th>
+                          <th className="p-2.5">Old Value</th>
+                          <th className="p-2.5">New Value</th>
+                          <th className="p-2.5">Reason / Comments</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E2E8F0]">
+                        {!col360Data?.auditHistory || col360Data.auditHistory.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="p-4 text-center text-[#5B6472]">
+                              No audit trail entries recorded for this collateral yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          col360Data.auditHistory.map((h, idx) => (
+                            <tr key={h.id || idx} className="hover:bg-[#EFF5FB]">
+                              <td className="p-2.5 text-[#5B6472] font-mono whitespace-nowrap">
+                                {h.timestamp?.replace('T', ' ').substring(0, 19) || '—'}
+                              </td>
+                              <td className="p-2.5 font-semibold text-[#101828]">
+                                {h.username || 'System'}
+                              </td>
+                              <td className="p-2.5">
+                                <span className="font-mono text-[10px] px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-800 rounded font-bold">
+                                  {h.action}
+                                </span>
+                              </td>
+                              <td className="p-2.5 font-mono text-[#5B6472]">
+                                {h.entityType}: {h.entityId}
+                              </td>
+                              <td className="p-2.5 font-semibold text-[#102E4A]">
+                                {h.fieldChanged || '—'}
+                              </td>
+                              <td className="p-2.5 font-mono text-slate-500 max-w-[120px] truncate">
+                                {h.oldValue || '—'}
+                              </td>
+                              <td className="p-2.5 font-mono text-emerald-700 max-w-[120px] truncate">
+                                {h.newValue || '—'}
+                              </td>
+                              <td className="p-2.5 text-slate-600 max-w-[200px] truncate">
+                                {h.reason || '—'}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          8-Step Guided Collateral Registration Wizard Modal
+          ========================================================================= */}
+      {showRegisterWizard && (
+        <div className="fixed inset-0 bg-[#102E4A]/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-2xl max-w-4xl w-full max-h-[94vh] flex flex-col overflow-hidden text-xs">
+            {/* Modal Header */}
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold">Register Collateral</h3>
+                <p className="text-[11px] text-blue-200">
+                  Step {wizardStep} of 8: Production Capture &amp; Four-Eyes Control Flow
+                </p>
+              </div>
+              <button onClick={() => setShowRegisterWizard(false)} className="text-white hover:text-gray-300 text-lg">
+                ✕
+              </button>
+            </div>
+
+            {/* Stepper Navigation Indicator */}
+            <div className="grid grid-cols-8 bg-[#EFF5FB] border-b border-[#E2E8F0] text-center py-2 text-[10px] font-semibold divide-x divide-[#E2E8F0]/60">
+              <div className={wizardStep === 1 ? 'text-[#102E4A] font-bold bg-white shadow-xs' : 'text-[#5B6472]'}>
+                1. Customer
+              </div>
+              <div className={wizardStep === 2 ? 'text-[#102E4A] font-bold bg-white shadow-xs' : 'text-[#5B6472]'}>
+                2. Facility
+              </div>
+              <div className={wizardStep === 3 ? 'text-[#102E4A] font-bold bg-white shadow-xs' : 'text-[#5B6472]'}>
+                3. Collateral
+              </div>
+              <div className={wizardStep === 4 ? 'text-[#102E4A] font-bold bg-white shadow-xs' : 'text-[#5B6472]'}>
+                4. Ownership
+              </div>
+              <div className={wizardStep === 5 ? 'text-[#102E4A] font-bold bg-white shadow-xs' : 'text-[#5B6472]'}>
+                5. Allocation
+              </div>
+              <div className={wizardStep === 6 ? 'text-[#102E4A] font-bold bg-white shadow-xs' : 'text-[#5B6472]'}>
+                6. Documents
+              </div>
+              <div className={wizardStep === 7 ? 'text-[#102E4A] font-bold bg-white shadow-xs' : 'text-[#5B6472]'}>
+                7. Validation
+              </div>
+              <div className={wizardStep === 8 ? 'text-[#102E4A] font-bold bg-white shadow-xs' : 'text-[#5B6472]'}>
+                8. Submit
+              </div>
+            </div>
+
+            {/* Wizard Body */}
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* -------------------------------------------------------------------
+                  STEP 1: CUSTOMER SELECTION & CBS MASTER INFORMATION
+                  ------------------------------------------------------------------- */}
+              {wizardStep === 1 && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-bold text-[#101828] text-sm flex items-center gap-1.5">
+                        <User className="w-4 h-4 text-[#1F4E7A]" />
+                        Step 1: Select Borrower / Customer
+                      </h4>
+                      <p className="text-[#5B6472] text-[11px]">
+                        Search and select existing customer from Core Banking System (CBS) master records.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Customer Search Box */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-[#5B6472] absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      placeholder="Search by Customer Name, CIF Number, ID, Segment, or Branch..."
+                      value={customerSearchQuery}
+                      onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 border border-[#E2E8F0] rounded text-xs bg-slate-50 focus:bg-white"
+                    />
+                  </div>
+
+                  {/* Customers Dropdown / Selection Grid */}
+                  <div>
+                    <label className="block font-semibold text-[#101828] mb-1">
+                      Choose Customer Record <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={selectedCustomerId}
+                      onChange={(e) => {
+                        const newCustId = e.target.value;
+                        setSelectedCustomerId(newCustId);
+                        setSelectedFacilityIds([]);
+                        setFacilityAllocations({});
+                        const cust = customers.find((c) => c.id === newCustId || c.cif === newCustId);
+                        if (cust) {
+                          setOwnerDetails((prev) => ({
+                            ...prev,
+                            name: cust.name,
+                            ownerType: cust.customerType || 'Corporate',
+                            idNumber: cust.nationalId || cust.businessRegNo || '',
+                            tin: cust.taxIdNo || '',
+                            phone: cust.phone || '',
+                            contactInfo: cust.address || '',
+                          }));
+                        }
+                      }}
+                      className="w-full p-2.5 border border-[#E2E8F0] rounded font-semibold text-xs bg-white"
+                    >
+                      <option value="">-- Select Existing Verified Customer --</option>
+                      {filteredCustomers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.cif} — {c.name} ({c.customerType} | {c.segment} | {c.branch})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Display CBS Master Information for Selected Customer */}
+                  {selectedCustomer ? (
+                    <div className="p-4 bg-[#EFF5FB] border border-[#B9D3EB] rounded-lg space-y-3">
+                      <div className="font-bold text-[#102E4A] border-b border-[#B9D3EB] pb-1.5 flex items-center justify-between">
+                        <span>Core Banking Customer Master Information</span>
+                        <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                          Status: {selectedCustomer.status}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-xs">
+                        <div>
+                          <span className="text-[#5B6472] block">Customer Name:</span>
+                          <strong className="text-slate-900 text-sm">{selectedCustomer.name}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">CIF Number:</span>
+                          <strong className="font-mono text-[#102E4A]">{selectedCustomer.cif}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">Customer Type:</span>
+                          <strong>{selectedCustomer.customerType}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">Business Segment:</span>
+                          <strong>{selectedCustomer.segment}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">Branch / Center:</span>
+                          <strong>{selectedCustomer.branch}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">District:</span>
+                          <strong>{selectedCustomer.district || 'Central Addis District'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">Responsible RM:</span>
+                          <strong>{selectedCustomer.responsibleRm || selectedCustomer.makerId || 'Senior RM - Corporate'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">Responsible RO:</span>
+                          <strong>{selectedCustomer.responsibleRo || 'Relationship Officer'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">Tax / TIN ID:</span>
+                          <strong className="font-mono">{selectedCustomer.taxIdNo || 'TIN-4891029'}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-6 bg-slate-50 border border-dashed border-[#E2E8F0] rounded-lg text-center text-[#5B6472]">
+                      Please select a customer from the dropdown above to display master profile and retrieve authorized credit facilities.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* -------------------------------------------------------------------
+                  STEP 2: CUSTOMER FACILITIES & LOANS SELECTION
+                  ------------------------------------------------------------------- */}
+              {wizardStep === 2 && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-bold text-[#101828] text-sm flex items-center gap-1.5">
+                        <CreditCard className="w-4 h-4 text-[#1F4E7A]" />
+                        Step 2: Customer Authorized Facilities & Loan Accounts
+                      </h4>
+                      <p className="text-[#5B6472] text-[11px]">
+                        Select one or multiple credit facilities strictly belonging to {selectedCustomer?.name || 'the customer'}.
+                      </p>
+                    </div>
+                    <div className="text-xs text-[#5B6472]">
+                      Selected: <strong>{selectedFacilityIds.length}</strong> / {customerFacilities.length} Facilities
+                    </div>
+                  </div>
+
+                  {customerFacilities.length === 0 ? (
+                    <div className="p-6 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-center space-y-2">
+                      <AlertTriangle className="w-6 h-6 text-amber-600 mx-auto" />
+                      <p className="font-bold">No Active Credit Facilities in CBS for this Customer</p>
+                      <p className="text-[11px] text-amber-800">
+                        You can still register this collateral and allocate it to loan accounts later after loan approval.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {customerFacilities.map((fac) => {
+                        const isSelected = selectedFacilityIds.includes(fac.id);
+                        return (
+                          <div
+                            key={fac.id}
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedFacilityIds(selectedFacilityIds.filter((id) => id !== fac.id));
+                                const updatedAlloc = { ...facilityAllocations };
+                                delete updatedAlloc[fac.id];
+                                setFacilityAllocations(updatedAlloc);
+                              } else {
+                                setSelectedFacilityIds([...selectedFacilityIds, fac.id]);
+                              }
+                            }}
+                            className={`p-3.5 rounded-lg border cursor-pointer transition-all ${
+                              isSelected ? 'bg-[#EFF5FB] border-[#5F97C7] shadow-2xs' : 'bg-white border-[#E2E8F0] hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="rounded border-[#E2E8F0] text-[#102E4A] focus:ring-[#1F4E7A]"
+                                />
+                                <div>
+                                  <div className="font-bold text-[#101828] text-xs">
+                                    {fac.lineCode} — {fac.facilityType}
+                                  </div>
+                                  <div className="text-[11px] text-[#5B6472] flex gap-3 mt-0.5">
+                                    <span>Loan Ref: <strong className="font-mono">{fac.loanReference}</strong></span>
+                                    <span>Takedown Acc: <strong className="font-mono">{fac.takedownAccountNumber || fac.id}</strong></span>
+                                    <span>Segment: <strong>{fac.segment}</strong></span>
+                                    <span>Branch: <strong>{fac.branch}</strong></span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-[11px] text-[#5B6472]">
+                                  Approved Limit: <strong className="text-slate-900">ETB {fac.approvedLimit?.toLocaleString()}</strong>
+                                </div>
+                                <div className="text-[11px] font-bold text-red-700">
+                                  Outstanding: ETB {fac.outstandingBalance?.toLocaleString()}
+                                </div>
+                                <div className="text-[10px] text-[#5B6472]">
+                                  Maturity: {fac.lineExpiryDate || '2028-12-31'}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* -------------------------------------------------------------------
+                  STEP 3: COLLATERAL BASIC INFORMATION & TAXONOMY
+                  ------------------------------------------------------------------- */}
+              {wizardStep === 3 && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold text-[#101828] text-sm flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-[#1F4E7A]" />
+                      Step 3: Collateral Basic Information & Taxonomy
+                    </h4>
+                    <p className="text-[#5B6472] text-[11px]">
+                      Select active category and dynamic collateral subtype. Fill in category-specific attributes.
+                    </p>
+                  </div>
+
+                  {/* Module 4 Duplicate Collateral Master Alert (§23, §24) */}
+                  {existingColDuplicate && (
+                    <div className="p-4 bg-amber-50 border-2 border-amber-400 rounded-xl space-y-3 shadow-sm animate-fadeIn">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                          <h5 className="font-bold text-amber-900 text-sm">
+                            Possible Existing Collateral Found in System (Single Master Asset Rule)
+                          </h5>
+                        </div>
+                        <span className="text-xs px-2.5 py-1 font-mono font-bold bg-amber-200 text-amber-900 rounded-md">
+                          {existingColDuplicate.code}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-amber-800">
+                        An active collateral master record already exists with matching property identifiers (Title Deed: <strong>{existingColDuplicate.titleDeedNumber || '—'}</strong>, Registration: <strong>{existingColDuplicate.registrationNumber || '—'}</strong>). Under CIMS policy, <strong>1 Physical Asset = 1 Collateral Master Record</strong>. Do not create a duplicate collateral record merely to secure additional facilities.
+                      </p>
+
+                      <div className="p-3 bg-white rounded-lg border border-amber-200 text-xs grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div>
+                          <span className="text-slate-500 block text-[10px]">Collateral Master ID:</span>
+                          <strong className="font-mono text-slate-900">{existingColDuplicate.code}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[10px]">Registered Customer:</span>
+                          <strong className="text-slate-900">{existingColDuplicate.customerId}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[10px]">Category &amp; Type:</span>
+                          <strong className="text-slate-900">{existingColDuplicate.category} — {existingColDuplicate.type}</strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[10px]">Valuation Amount:</span>
+                          <strong className="text-emerald-700 font-bold tabular-nums">
+                            ETB {Number(existingColDuplicate.valuationAmount || 0).toLocaleString()}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCol(existingColDuplicate);
+                            setShowDetailModal(true);
+                            setActiveTab('links');
+                            setShowRegisterWizard(false);
+                            loadExposureSummary(existingColDuplicate.id);
+                            loadCollateral360(existingColDuplicate.id);
+                            loadM3SecuredFacilities(existingColDuplicate.id);
+                          }}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-sm flex items-center gap-1.5 transition-colors"
+                        >
+                          <Building2 className="w-4 h-4" />
+                          Open Existing Collateral Asset
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">
+                        Collateral Category <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={newCol.category || 'Immovable Properties'}
+                        onChange={(e) => {
+                          const cat = e.target.value;
+                          const subList = getSubtypesForCategory(cat);
+                          const firstSub = subList[0] || cat;
+                          setNewCol({ ...newCol, category: cat, type: firstSub });
+                          populateDefaultDocs(cat, firstSub, ownerDetails.ownershipType);
+                        }}
+                        className="w-full p-2 border border-[#E2E8F0] rounded font-semibold text-xs bg-white"
+                      >
+                        {(taxonomies.length > 0
+                          ? Array.from(new Set(taxonomies.map((t) => t.category)))
+                          : [
+                              'Immovable Properties',
+                              'Movable Properties',
+                              'Business Mortgages',
+                              'Financial Assets',
+                              'Agricultural / Other',
+                              'Guarantees',
+                            ]
+                        ).map((cat, idx) => (
+                          <option key={idx} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">
+                        Collateral Type / Subtype <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={newCol.type || availableTaxonomyTypes[0] || newCol.category}
+                        onChange={(e) => {
+                          const typ = e.target.value;
+                          setNewCol({ ...newCol, type: typ });
+                          populateDefaultDocs(newCol.category, typ, ownerDetails.ownershipType);
+                        }}
+                        className="w-full p-2 border border-[#E2E8F0] rounded font-semibold text-xs bg-white"
+                      >
+                        {availableTaxonomyTypes.length > 0 ? (
+                          availableTaxonomyTypes.map((sub: string, idx: number) => (
+                            <option key={idx} value={sub}>
+                              {sub}
+                            </option>
+                          ))
+                        ) : (
+                          <option value={newCol.category}>{newCol.category}</option>
+                        )}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">
+                        Collateral Code (System Generated) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        value={newCol.code || ''}
+                        className="w-full p-2 border border-[#E2E8F0] rounded font-mono font-bold text-[#102E4A] bg-slate-100 cursor-not-allowed"
+                        title="Collateral Code is securely system-generated to enforce uniqueness."
+                      />
+                    </div>
+                  </div>
+
+                  {/* General Description & Currency */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <label className="block font-semibold text-[#101828] mb-1">
+                        Collateral Description / Asset Title <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Commercial Mixed-Use G+4 Building in Bole Subcity"
+                        value={newCol.description || ''}
+                        onChange={(e) => setNewCol({ ...newCol, description: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">
+                        Collateral Currency <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={newCol.currency || 'ETB'}
+                        onChange={(e) => setNewCol({ ...newCol, currency: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded font-semibold text-xs bg-white"
+                      >
+                        <option value="ETB">ETB — Ethiopian Birr</option>
+                        <option value="USD">USD — US Dollar</option>
+                        <option value="EUR">EUR — Euro</option>
+                        <option value="GBP">GBP — British Pound</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Valuation Method, Valuation Date, Valuation Amount, Haircut */}
+                  <div className="grid grid-cols-4 gap-3">
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">
+                        Valuation Method <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={newCol.valuationMethod || 'Certified Appraisal'}
+                        onChange={(e) => setNewCol({ ...newCol, valuationMethod: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded font-semibold text-xs bg-white"
+                      >
+                        <option value="Certified Appraisal">Certified Appraisal</option>
+                        <option value="Market Comparison">Market Comparison</option>
+                        <option value="Cost Approach">Cost Approach</option>
+                        <option value="Income Capitalization">Income Capitalization</option>
+                        <option value="CBS Book Value">CBS Book Value</option>
+                        <option value="Bank Internal Assessor">Bank Internal Assessor</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">
+                        Valuation Date <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={newCol.valuationDate || ''}
+                        onChange={(e) => setNewCol({ ...newCol, valuationDate: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded text-xs bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">
+                        Estimated Valuation ({newCol.currency || 'ETB'}) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={newCol.valuationAmount || ''}
+                        onChange={(e) => setNewCol({ ...newCol, valuationAmount: Number(e.target.value) })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded font-bold tabular-nums"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">
+                        Haircut Applied (%) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="90"
+                        value={newCol.haircut ?? 20}
+                        onChange={(e) => setNewCol({ ...newCol, haircut: Number(e.target.value) })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded font-bold tabular-nums"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Start Date, Next Review Date, Baseline Insured Amount */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">Start / Creation Date</label>
+                      <input
+                        type="date"
+                        value={newCol.startDate || ''}
+                        onChange={(e) => setNewCol({ ...newCol, startDate: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">Next Valuation Review Date</label>
+                      <input
+                        type="date"
+                        value={newCol.reviewDate || ''}
+                        onChange={(e) => setNewCol({ ...newCol, reviewDate: e.target.value })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded text-xs bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-[#101828] mb-1">
+                        Insured Amount ({newCol.currency || 'ETB'})
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0.00"
+                        value={newCol.insuredAmount ?? 0}
+                        onChange={(e) => setNewCol({ ...newCol, insuredAmount: Number(e.target.value) })}
+                        className="w-full p-2 border border-[#E2E8F0] rounded font-bold tabular-nums"
+                      />
+                      <span className="text-[10px] text-[#5B6472] block mt-0.5">Directly maintained baseline; reconciled with active policies.</span>
+                    </div>
+                  </div>
+
+                  {/* Real-Time Net Collateral Value Banner */}
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase text-emerald-800">Net Security Value (Available Allocation Capacity)</div>
+                      <div className="text-base font-extrabold text-emerald-900 tabular-nums">
+                        {newCol.currency || 'ETB'} {netCollateralValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                    <ShieldCheck className="w-7 h-7 text-emerald-700" />
+                  </div>
+
+                  {/* Category-Specific Dynamic Fields */}
+                  <div className="p-4 bg-slate-50 border border-[#E2E8F0] rounded-lg space-y-3">
+                    <h5 className="font-bold text-[#101828] text-xs uppercase tracking-wide">
+                      {newCol.category} Category-Specific Attributes
+                    </h5>
+
+                    {/* Building / Immovable Properties */}
+                    {(newCol.category?.toLowerCase().includes('immovable') || newCol.category?.toLowerCase().includes('building')) && (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Title Deed / Certificate Number</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. TD-99210-AA"
+                            value={newCol.titleDeedNumber || ''}
+                            onChange={(e) => setNewCol({ ...newCol, titleDeedNumber: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Property Location / Address</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Bole Subcity, Woreda 03, Addis Ababa"
+                            value={newCol.location || ''}
+                            onChange={(e) => setNewCol({ ...newCol, location: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Registration Number</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. REG-881902"
+                            value={newCol.registrationNumber || ''}
+                            onChange={(e) => setNewCol({ ...newCol, registrationNumber: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs"
+                          />
+                        </div>
+                        {/* OPTIONAL GPS Section (Not mandatory) */}
+                        <div className="col-span-3 p-2.5 bg-blue-50/70 border border-blue-200 rounded space-y-1.5">
+                          <div className="flex items-center gap-1.5 font-bold text-blue-900 text-[11px]">
+                            <MapPin className="w-3.5 h-3.5 text-blue-700" />
+                            <span>Building GPS Coordinates (Optional Location Attribute)</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[10px] font-semibold text-[#5B6472]">GPS X (Longitude - Optional)</label>
+                              <input
+                                type="number"
+                                step="any"
+                                placeholder="e.g. 38.7578"
+                                value={newCol.gpsX ?? ''}
+                                onChange={(e) => setNewCol({ ...newCol, gpsX: e.target.value ? Number(e.target.value) : undefined })}
+                                className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-semibold text-[#5B6472]">GPS Y (Latitude - Optional)</label>
+                              <input
+                                type="number"
+                                step="any"
+                                placeholder="e.g. 9.0054"
+                                value={newCol.gpsY ?? ''}
+                                onChange={(e) => setNewCol({ ...newCol, gpsY: e.target.value ? Number(e.target.value) : undefined })}
+                                className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                          <div className="text-[10px] text-blue-700 italic">
+                            Note: GPS is purely optional. Registration is not blocked if GPS coordinates are not provided.
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Vehicles / Movable Properties */}
+                    {(newCol.category?.toLowerCase().includes('movable') || newCol.category?.toLowerCase().includes('vehicle')) && (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Plate / Registration Number</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 3-B92810-AA"
+                            value={newCol.registrationNumber || ''}
+                            onChange={(e) => setNewCol({ ...newCol, registrationNumber: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Engine Number</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. ENG-449102"
+                            value={newCol.engineNumber || ''}
+                            onChange={(e) => setNewCol({ ...newCol, engineNumber: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Chassis / VIN Number</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. VIN-77881920"
+                            value={newCol.chassisNumber || ''}
+                            onChange={(e) => setNewCol({ ...newCol, chassisNumber: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-mono"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Machinery / Business Mortgages */}
+                    {(newCol.category?.toLowerCase().includes('machin') || newCol.category?.toLowerCase().includes('business mortgage')) && (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Machinery Serial Number</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. SN-889912-CAT"
+                            value={newCol.machinerySerialNo || ''}
+                            onChange={(e) => setNewCol({ ...newCol, machinerySerialNo: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Purchase Date / Reference</label>
+                          <input
+                            type="date"
+                            value={newCol.machineryPurchaseDate || ''}
+                            onChange={(e) => setNewCol({ ...newCol, machineryPurchaseDate: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Registration / Certificate Ref</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. MOC-338192"
+                            value={newCol.registrationNumber || ''}
+                            onChange={(e) => setNewCol({ ...newCol, registrationNumber: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Financial Assets */}
+                    {newCol.category?.toLowerCase().includes('financial') && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Instrument / Account Reference</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Treasury Bill #TB-99120 / Blocked Acc #011299"
+                            value={newCol.financialInstrumentRef || ''}
+                            onChange={(e) => setNewCol({ ...newCol, financialInstrumentRef: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Issuing Entity / Bank</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. National Bank of Ethiopia"
+                            value={newCol.issuingEntity || ''}
+                            onChange={(e) => setNewCol({ ...newCol, issuingEntity: e.target.value })}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* -------------------------------------------------------------------
+                  STEP 4: OWNERSHIP STRUCTURE (BORROWER VS THIRD-PARTY)
+                  ------------------------------------------------------------------- */}
+              {wizardStep === 4 && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold text-[#101828] text-sm flex items-center gap-1.5">
+                      <UserCheck className="w-4 h-4 text-[#1F4E7A]" />
+                      Step 4: Collateral Legal Ownership & Consent
+                    </h4>
+                    <p className="text-[#5B6472] text-[11px]">
+                      Capture legal owner details. Distinguish between Borrower-Owned and Third-Party-Owned assets.
+                    </p>
+                  </div>
+
+                  {/* Ownership Type Radio Toggle */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <label
+                      className={`p-3.5 rounded-lg border cursor-pointer flex items-start gap-3 transition-colors ${
+                        ownerDetails.ownershipType === 'Borrower-owned'
+                          ? 'bg-[#EFF5FB] border-[#5F97C7] shadow-2xs'
+                          : 'bg-white border-[#E2E8F0] hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="ownershipType"
+                        value="Borrower-owned"
+                        checked={ownerDetails.ownershipType === 'Borrower-owned'}
+                        onChange={() => {
+                          setOwnerDetails({
+                            ...ownerDetails,
+                            ownershipType: 'Borrower-owned',
+                            name: selectedCustomer?.name || '',
+                            ownerType: selectedCustomer?.customerType || 'Corporate',
+                            idNumber: selectedCustomer?.nationalId || selectedCustomer?.businessRegNo || '',
+                            tin: selectedCustomer?.taxIdNo || '',
+                            phone: selectedCustomer?.phone || '',
+                            contactInfo: selectedCustomer?.address || '',
+                            percentage: 100,
+                            relationship: 'Borrower',
+                            relationshipToBorrower: 'Self',
+                            verificationStatus: 'Recorded',
+                            verificationDate: new Date().toISOString().substring(0, 10),
+                            verifyingOfficer: currentUser.name || currentUser.username,
+                          });
+                          setOwnersList([
+                            {
+                              ownershipType: 'Borrower-owned',
+                              name: selectedCustomer?.name || '',
+                              ownerType: selectedCustomer?.customerType || 'Corporate',
+                              idNumber: selectedCustomer?.nationalId || selectedCustomer?.businessRegNo || '',
+                              tin: selectedCustomer?.taxIdNo || '',
+                              phone: selectedCustomer?.phone || '',
+                              contactInfo: selectedCustomer?.address || '',
+                              percentage: 100,
+                              relationship: 'Borrower',
+                              relationshipToBorrower: 'Self',
+                              consentInfo: '',
+                              pledgeAgreementRef: '',
+                              remarks: '',
+                              verificationStatus: 'Recorded',
+                              verificationDate: new Date().toISOString().substring(0, 10),
+                              verifyingOfficer: currentUser.name || currentUser.username,
+                            },
+                          ]);
+                          populateDefaultDocs(newCol.category, newCol.type, 'Borrower-owned');
+                        }}
+                        className="mt-0.5 text-[#102E4A] focus:ring-[#1F4E7A]"
+                      />
+                      <div>
+                        <div className="font-bold text-[#101828] text-xs">Borrower-Owned Collateral</div>
+                        <div className="text-[11px] text-[#5B6472]">
+                          The borrower ({selectedCustomer?.name || 'Customer'}) is the 100% legal owner of this asset.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`p-3.5 rounded-lg border cursor-pointer flex items-start gap-3 transition-colors ${
+                        ownerDetails.ownershipType === 'Third-party-owned'
+                          ? 'bg-purple-50 border-purple-400 shadow-2xs'
+                          : 'bg-white border-[#E2E8F0] hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="ownershipType"
+                        value="Third-party-owned"
+                        checked={ownerDetails.ownershipType === 'Third-party-owned'}
+                        onChange={() => {
+                          setOwnerDetails({
+                            ...ownerDetails,
+                            ownershipType: 'Third-party-owned',
+                            name: '',
+                            ownerType: 'Individual',
+                            idNumber: '',
+                            tin: '',
+                            phone: '',
+                            contactInfo: '',
+                            percentage: 100,
+                            relationship: 'Third-Party Owner',
+                            relationshipToBorrower: '',
+                            consentInfo: '',
+                            pledgeAgreementRef: '',
+                            verificationStatus: 'Recorded',
+                            verificationDate: new Date().toISOString().substring(0, 10),
+                            verifyingOfficer: currentUser.name || currentUser.username,
+                          });
+                          if (ownersList.length === 0 || ownersList[0].ownershipType === 'Borrower-owned') {
+                            setOwnersList([
+                              {
+                                ownershipType: 'Third-party-owned',
+                                name: '',
+                                ownerType: 'Individual',
+                                idNumber: '',
+                                tin: '',
+                                phone: '',
+                                contactInfo: '',
+                                percentage: 100,
+                                relationship: 'Third-Party Owner',
+                                relationshipToBorrower: '',
+                                consentInfo: '',
+                                pledgeAgreementRef: '',
+                                remarks: '',
+                                verificationStatus: 'Recorded',
+                                verificationDate: new Date().toISOString().substring(0, 10),
+                                verifyingOfficer: currentUser.name || currentUser.username,
+                              },
+                            ]);
+                          }
+                          populateDefaultDocs(newCol.category, newCol.type, 'Third-party-owned');
+                        }}
+                        className="mt-0.5 text-purple-900 focus:ring-purple-700"
+                      />
+                      <div>
+                        <div className="font-bold text-purple-950 text-xs">Third-Party / Jointly Owned Collateral</div>
+                        <div className="text-[11px] text-purple-800">
+                          Asset owned by one or more third parties (Shareholder, Director, Guarantor, Spouse, Joint Owners).
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Borrower-Owned Display */}
+                  {ownerDetails.ownershipType === 'Borrower-owned' ? (
+                    <div className="p-4 bg-slate-50 border border-[#E2E8F0] rounded-lg space-y-4">
+                      <div className="font-bold text-[#101828] border-b border-[#E2E8F0] pb-1.5 flex justify-between items-center">
+                        <span>Borrower Legal Owner Summary</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                          Ownership Share: 100.0% (Sole Owner)
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-xs">
+                        <div>
+                          <span className="text-[#5B6472] block">Legal Owner:</span>
+                          <strong className="text-[#102E4A]">{selectedCustomer?.name}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">Owner Type:</span>
+                          <strong>{selectedCustomer?.customerType}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">National ID / Business Reg No:</span>
+                          <strong className="font-mono">{selectedCustomer?.nationalId || selectedCustomer?.businessRegNo || 'N/A'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">TIN Number:</span>
+                          <strong className="font-mono">{selectedCustomer?.taxIdNo || 'N/A'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">Contact Phone:</span>
+                          <strong>{selectedCustomer?.phone || 'N/A'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[#5B6472] block">Contact Address:</span>
+                          <strong>{selectedCustomer?.address || 'N/A'}</strong>
+                        </div>
+                      </div>
+
+                      {/* Ownership Verification Details */}
+                      <div className="pt-3 border-t border-[#E2E8F0] space-y-2">
+                        <div className="font-semibold text-xs text-[#101828]">Ownership Verification Attributes</div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Verification Status</label>
+                            <select
+                              value={ownersList[0]?.verificationStatus || 'Recorded'}
+                              onChange={(e) => {
+                                const updated = [...ownersList];
+                                updated[0] = { ...updated[0], verificationStatus: e.target.value };
+                                setOwnersList(updated);
+                              }}
+                              className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white"
+                            >
+                              <option value="Recorded">Recorded</option>
+                              <option value="Pending Verification">Pending Verification</option>
+                              <option value="Verified">Verified</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Verification Date</label>
+                            <input
+                              type="date"
+                              value={ownersList[0]?.verificationDate || ''}
+                              onChange={(e) => {
+                                const updated = [...ownersList];
+                                updated[0] = { ...updated[0], verificationDate: e.target.value };
+                                setOwnersList(updated);
+                              }}
+                              className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white"
+                            >
+                            </input>
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Verifying Officer</label>
+                            <input
+                              type="text"
+                              value={ownersList[0]?.verifyingOfficer || ''}
+                              onChange={(e) => {
+                                const updated = [...ownersList];
+                                updated[0] = { ...updated[0], verifyingOfficer: e.target.value };
+                                setOwnersList(updated);
+                              }}
+                              className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Ownership Remarks</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Registered in borrower title registry database"
+                            value={ownersList[0]?.remarks || ''}
+                            onChange={(e) => {
+                              const updated = [...ownersList];
+                              updated[0] = { ...updated[0], remarks: e.target.value };
+                              setOwnersList(updated);
+                            }}
+                            className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Third-Party & Multi-Owner Joint Ownership Section */
+                    <div className="space-y-4">
+                      {/* Joint Ownership Total Percentage Banner */}
+                      {(() => {
+                        const totalPct = ownersList.reduce((sum, o) => sum + (Number(o.percentage) || 0), 0);
+                        const isExactly100 = Math.abs(totalPct - 100) < 0.01;
+                        return (
+                          <div
+                            className={`p-3 rounded-lg border flex items-center justify-between text-xs ${
+                              isExactly100
+                                ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                                : 'bg-amber-50 border-amber-300 text-amber-900'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {isExactly100 ? (
+                                <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                              ) : (
+                                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                              )}
+                              <span>
+                                <strong>Total Ownership Share:</strong> {totalPct.toFixed(1)}% of 100.0%
+                                {!isExactly100 && ' — Must equal exactly 100.0% for valid registration.'}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOwnersList([
+                                  ...ownersList,
+                                  {
+                                    ownershipType: 'Third-party-owned',
+                                    name: '',
+                                    ownerType: 'Individual',
+                                    idNumber: '',
+                                    tin: '',
+                                    phone: '',
+                                    contactInfo: '',
+                                    percentage: 0,
+                                    relationship: 'Third-Party Owner',
+                                    relationshipToBorrower: '',
+                                    consentInfo: '',
+                                    pledgeAgreementRef: '',
+                                    remarks: '',
+                                    verificationStatus: 'Recorded',
+                                    verificationDate: new Date().toISOString().substring(0, 10),
+                                    verifyingOfficer: currentUser.name || currentUser.username,
+                                  },
+                                ]);
+                              }}
+                              className="btn-secondary py-1 px-2.5 text-xs flex items-center gap-1 bg-white"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              + Add Owner
+                            </button>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Owner Cards List */}
+                      <div className="space-y-4">
+                        {ownersList.map((owner, idx) => (
+                          <div key={idx} className="p-4 bg-purple-50/50 border border-purple-200 rounded-lg space-y-3">
+                            <div className="font-bold text-purple-950 border-b border-purple-200 pb-1.5 flex justify-between items-center text-xs">
+                              <span>Owner #{idx + 1} Details & Relationship to Borrower ({selectedCustomer?.name})</span>
+                              {ownersList.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOwnersList(ownersList.filter((_, i) => i !== idx));
+                                  }}
+                                  className="text-red-600 hover:text-red-800 text-[11px] font-semibold"
+                                >
+                                  ✕ Remove Owner
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-3">
+                              <div className="col-span-2">
+                                <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                                  Legal Owner Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Full Legal Name / Company Name"
+                                  value={owner.name || ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], name: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-semibold bg-white"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                                  Owner Type <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                  value={owner.ownerType || 'Individual'}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], ownerType: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white font-semibold"
+                                >
+                                  <option value="Individual">Individual</option>
+                                  <option value="Corporate">Corporate / Enterprise</option>
+                                  <option value="Government">Government / Public Body</option>
+                                  <option value="Other">Other</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                                  Ownership Share (%) <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0.1"
+                                  max="100"
+                                  step="0.1"
+                                  placeholder="100.0"
+                                  value={owner.percentage ?? ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], percentage: Number(e.target.value) };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-bold text-emerald-800 bg-white"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-3">
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                                  Relationship to Borrower <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                  value={owner.relationshipToBorrower || ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], relationshipToBorrower: e.target.value as any };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-bold text-purple-900 bg-white"
+                                  required
+                                >
+                                  <option value="">-- Select Relationship to Borrower --</option>
+                                  <option value="Shareholder">Shareholder</option>
+                                  <option value="Parent Company">Parent Company</option>
+                                  <option value="Director">Director</option>
+                                  <option value="Guarantor">Guarantor</option>
+                                  <option value="Spouse">Spouse</option>
+                                  <option value="Family Member">Family Member</option>
+                                  <option value="Business Partner">Business Partner</option>
+                                  <option value="Other">Other Documented Relationship</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                                  National ID / Passport / Business Reg No <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. ET-ID-881920"
+                                  value={owner.idNumber || ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], idNumber: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-mono bg-white"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#101828] mb-1">TIN Number</label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. 008910281"
+                                  value={owner.tin || ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], tin: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs font-mono bg-white"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                                  Contact Phone <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="+251 9..."
+                                  value={owner.phone || ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], phone: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-[#101828] mb-1">Contact Address</label>
+                              <input
+                                type="text"
+                                placeholder="Subcity, Woreda, House No, City"
+                                value={owner.contactInfo || ''}
+                                onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], contactInfo: e.target.value };
+                                    setOwnersList(updated);
+                                }}
+                                className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white"
+                              />
+                            </div>
+
+                            {/* Consent & Pledge Recording */}
+                            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-purple-200">
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                                  Third-Party Consent Agreement Information
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Written Consent Letter dated YYYY-MM-DD"
+                                  value={owner.consentInfo || ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], consentInfo: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                                  Pledge Agreement Reference
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. PLEDGE-AGR-YYYY-XXX"
+                                  value={owner.pledgeAgreementRef || ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], pledgeAgreementRef: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white font-mono"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Ownership Verification Details */}
+                            <div className="grid grid-cols-4 gap-3 pt-2 border-t border-purple-200">
+                              <div>
+                                <label className="block text-[10px] font-semibold text-[#5B6472] mb-0.5">Verification Status</label>
+                                <select
+                                  value={owner.verificationStatus || 'Recorded'}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], verificationStatus: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1 border border-[#E2E8F0] rounded text-xs bg-white"
+                                >
+                                  <option value="Recorded">Recorded</option>
+                                  <option value="Pending Verification">Pending Verification</option>
+                                  <option value="Verified">Verified</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-semibold text-[#5B6472] mb-0.5">Verification Date</label>
+                                <input
+                                  type="date"
+                                  value={owner.verificationDate || ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], verificationDate: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1 border border-[#E2E8F0] rounded text-xs bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-semibold text-[#5B6472] mb-0.5">Verifying Officer</label>
+                                <input
+                                  type="text"
+                                  value={owner.verifyingOfficer || ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], verifyingOfficer: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1 border border-[#E2E8F0] rounded text-xs bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-semibold text-[#5B6472] mb-0.5">Ownership Remarks</label>
+                                <input
+                                  type="text"
+                                  placeholder="Verification remarks"
+                                  value={owner.remarks || ''}
+                                  onChange={(e) => {
+                                    const updated = [...ownersList];
+                                    updated[idx] = { ...updated[idx], remarks: e.target.value };
+                                    setOwnersList(updated);
+                                  }}
+                                  className="w-full p-1 border border-[#E2E8F0] rounded text-xs bg-white"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* -------------------------------------------------------------------
+                  STEP 5: FACILITY-COLLATERAL ALLOCATION
+                  ------------------------------------------------------------------- */}
+              {wizardStep === 5 && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-bold text-[#101828] text-sm flex items-center gap-1.5">
+                        <Percent className="w-4 h-4 text-[#1F4E7A]" />
+                        Step 5: Facility-Collateral Allocation & Linkage
+                      </h4>
+                      <p className="text-[#5B6472] text-[11px]">
+                        Allocate collateral security amounts and configure relationship linkage types across selected customer facilities.
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[11px] text-[#5B6472]">
+                        Net Collateral Value: <strong className="text-emerald-700">{newCol.currency || 'ETB'} {netCollateralValue.toLocaleString()}</strong>
+                      </div>
+                      <div className="text-[11px] text-[#5B6472]">
+                        Total Allocated:{' '}
+                        <strong className={isAllocationOverflow ? 'text-red-600' : 'text-blue-800'}>
+                          {newCol.currency || 'ETB'} {totalAllocatedAmount.toLocaleString()}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {selectedFacilityIds.length === 0 ? (
+                    <div className="p-4 bg-slate-50 border border-[#E2E8F0] rounded text-center text-[#5B6472]">
+                      No facilities were selected in Step 2. You can allocate 0 ETB now and link facilities after registration.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {customerFacilities
+                        .filter((f) => selectedFacilityIds.includes(facIdOrRef(f)))
+                        .map((f) => {
+                          const allocatedAmt = facilityAllocations[f.id] || 0;
+                          const allocPct = netCollateralValue > 0 ? ((allocatedAmt / netCollateralValue) * 100).toFixed(1) : '0.0';
+                          const meta = facilityLinkMeta[f.id] || {
+                            linkageType: 'Primary',
+                            linkedAmount: allocatedAmt,
+                            effectiveDate: new Date().toISOString().substring(0, 10),
+                          };
+                          const linkedAmt = meta.linkedAmount !== undefined ? meta.linkedAmount : allocatedAmt;
+                          const linkedPct = (f.approvedLimit && f.approvedLimit > 0)
+                            ? ((linkedAmt / f.approvedLimit) * 100).toFixed(1)
+                            : '0.0';
+
+                          return (
+                            <div key={f.id} className="p-4 bg-white border border-[#E2E8F0] rounded-lg shadow-2xs space-y-3">
+                              {/* Facility Master Information (CBS derived) */}
+                              <div className="flex items-start justify-between border-b border-[#E2E8F0] pb-2">
+                                <div>
+                                  <div className="font-bold text-[#101828] text-xs">
+                                    {f.lineCode} — {f.facilityType}
+                                  </div>
+                                  <div className="text-[11px] text-[#5B6472] flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                                    <span>Loan Ref: <strong className="font-mono text-slate-800">{f.loanReference}</strong></span>
+                                    <span>Customer: <strong className="text-slate-800">{selectedCustomer?.name || f.customerId}</strong></span>
+                                    <span>Segment: <strong className="text-slate-800">{f.segment}</strong></span>
+                                    <span>Branch: <strong className="text-slate-800">{f.branch}</strong></span>
+                                    <span>RM: <strong className="text-slate-800">{f.rmUserId || 'Branch RO'}</strong></span>
+                                  </div>
+                                </div>
+                                <div className="text-right text-xs">
+                                  <div>
+                                    <span className="text-[#5B6472]">Approved Limit:</span>{' '}
+                                    <strong className="text-slate-900">{f.lineCurrency || 'ETB'} {f.approvedLimit?.toLocaleString()}</strong>
+                                  </div>
+                                  <div>
+                                    <span className="text-[#5B6472]">Outstanding:</span>{' '}
+                                    <strong className="text-red-700">{f.lineCurrency || 'ETB'} {f.outstandingBalance?.toLocaleString()}</strong>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Relationship Values */}
+                              <div className="grid grid-cols-4 gap-3">
+                                <div>
+                                  <label className="block text-[10px] font-semibold text-[#101828] mb-0.5">
+                                    Allocated Security Amount ({newCol.currency || 'ETB'}) <span className="text-red-500">*</span>
+                                  </label>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      placeholder="0.00"
+                                      value={facilityAllocations[f.id] ?? ''}
+                                      onChange={(e) => {
+                                        const val = Number(e.target.value);
+                                        setFacilityAllocations({
+                                          ...facilityAllocations,
+                                          [f.id]: val,
+                                        });
+                                        setFacilityLinkMeta({
+                                          ...facilityLinkMeta,
+                                          [f.id]: {
+                                            ...meta,
+                                            linkedAmount: val,
+                                          },
+                                        });
+                                      }}
+                                      className="w-full p-1.5 border border-[#E2E8F0] rounded font-bold tabular-nums text-right text-xs"
+                                    />
+                                    <span className="text-[10px] font-mono text-[#5B6472] whitespace-nowrap">
+                                      {allocPct}% col
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] font-semibold text-[#101828] mb-0.5">
+                                    Linkage Type <span className="text-red-500">*</span>
+                                  </label>
+                                  <select
+                                    value={meta.linkageType || 'Primary'}
+                                    onChange={(e) => {
+                                      setFacilityLinkMeta({
+                                        ...facilityLinkMeta,
+                                        [f.id]: {
+                                          ...meta,
+                                          linkageType: e.target.value,
+                                        },
+                                      });
+                                    }}
+                                    className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white font-semibold"
+                                  >
+                                    <option value="Primary">Primary</option>
+                                    <option value="Secondary">Secondary</option>
+                                    <option value="Cross-Collateral">Cross-Collateral</option>
+                                  </select>
+                                  <span className="text-[10px] font-mono text-blue-700 block mt-0.5">
+                                    Linked: {linkedPct}% limit
+                                  </span>
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] font-semibold text-[#101828] mb-0.5">
+                                    Relationship Effective Date <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={meta.effectiveDate || new Date().toISOString().substring(0, 10)}
+                                    onChange={(e) => {
+                                      setFacilityLinkMeta({
+                                        ...facilityLinkMeta,
+                                        [f.id]: {
+                                          ...meta,
+                                          effectiveDate: e.target.value,
+                                        },
+                                      });
+                                    }}
+                                    className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] font-semibold text-[#101828] mb-0.5">
+                                    Relationship End Date
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={meta.endDate || ''}
+                                    onChange={(e) => {
+                                      setFacilityLinkMeta({
+                                        ...facilityLinkMeta,
+                                        [f.id]: {
+                                          ...meta,
+                                          endDate: e.target.value,
+                                        },
+                                      });
+                                    }}
+                                    className="w-full p-1.5 border border-[#E2E8F0] rounded text-xs bg-white"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+
+                  {isAllocationOverflow && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 flex items-center gap-2 text-xs">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                      <span>
+                        <strong>Allocation Overflow Error:</strong> Total allocated amount ({newCol.currency || 'ETB'} {totalAllocatedAmount.toLocaleString()}) exceeds Net Collateral Value ({newCol.currency || 'ETB'} {netCollateralValue.toLocaleString()}).
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* -------------------------------------------------------------------
+                  STEP 6: DOCUMENTS (MANDATORY RESOLVED + ADDITIONAL SUPPORTING)
+                  ------------------------------------------------------------------- */}
+              {wizardStep === 6 && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-bold text-[#101828] text-sm flex items-center gap-1.5">
+                        <FileBadge className="w-4 h-4 text-[#1F4E7A]" />
+                        Step 6: Document Uploads & Version Control (DMS)
+                      </h4>
+                      <p className="text-[#5B6472] text-[11px]">
+                        Part A: Admin-Configured Mandatory Documents. Part B: Additional Supporting Legal Files.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => populateDefaultDocs(newCol.category, newCol.type, ownerDetails.ownershipType)}
+                      className="btn-ghost text-[#102E4A] font-semibold text-xs flex items-center gap-1 hover:underline"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Reset Mandatory Slots
+                    </button>
+                  </div>
+
+                  {/* Part A: Admin Mandatory Documents Status Banner */}
+                  <div
+                    className={`p-3.5 rounded-lg border flex items-center justify-between ${
+                      missingMandatoryDocs.length === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-amber-50 border-amber-200 text-amber-900'
+                    }`}
+                  >
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-xs flex items-center gap-1.5">
+                        <ShieldCheck className={`w-4 h-4 ${missingMandatoryDocs.length === 0 ? 'text-emerald-700' : 'text-amber-700'}`} />
+                        <span>Part A: Mandatory Document Rules ({mandatoryRulesList.length} Rules Active)</span>
+                      </div>
+                      <div className="text-[11px]">
+                        {missingMandatoryDocs.length === 0 ? (
+                          <span className="text-emerald-700 font-semibold">
+                            ✓ All {mandatoryRulesList.length} mandatory document files attached.
+                          </span>
+                        ) : (
+                          <span className="text-amber-900">
+                            Files missing: <strong>{missingMandatoryDocs.map((m) => m.documentType).join(', ')}</strong> — <span className="text-[#5B6472]">You can attach files now, or proceed to Step 7 &amp; 8 to submit this collateral as an <strong>Authorized Exception</strong>.</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {missingMandatoryDocs.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenExceptionModal()}
+                          className="btn-primary bg-[#F59E0B] hover:bg-[#D97706] text-white py-1 px-3 text-xs font-bold shrink-0 cursor-pointer flex items-center gap-1 shadow-xs"
+                          title="Submit transaction as an authorized exception for management approval"
+                        >
+                          <Shield className="w-3.5 h-3.5" />
+                          Request Exception
+                        </button>
+                      )}
+                      <span
+                        className={`px-2.5 py-1 rounded text-xs font-bold ${
+                          missingMandatoryDocs.length === 0 ? 'bg-emerald-200 text-emerald-900' : 'bg-amber-200 text-amber-900'
+                        }`}
+                      >
+                        {mandatoryRulesList.length - missingMandatoryDocs.length} / {mandatoryRulesList.length} Uploaded
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Document Ingestion Slots */}
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                      <div>
+                        <span className="font-bold text-[#101828] text-xs block">Attached Document Files ({wizardDocuments.length})</span>
+                        <span className="text-[11px] text-[#5B6472]">Mandatory Admin Rules + Additional Supporting Documents</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newDoc: WizardDocItem = {
+                            id: `doc-wiz-extra-${Date.now()}-${wizardDocuments.length}`,
+                            name: '',
+                            type: 'Valuation Report',
+                            expiryDate: new Date(Date.now() + 5 * 365 * 24 * 3600 * 1000).toISOString().substring(0, 10),
+                            remarks: 'Additional supporting document',
+                            fileName: '',
+                            fileSize: '',
+                            fileSizeNum: 0,
+                            contentType: 'application/pdf',
+                            fileContent: '',
+                            isMandatory: false,
+                          };
+                          setWizardDocuments([...wizardDocuments, newDoc]);
+                        }}
+                        className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5 font-bold shadow-xs cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        + Add Other / Supporting Document
+                      </button>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {wizardDocuments.map((doc, idx) => {
+                        const hasFile = Boolean(doc.fileContent && doc.fileName);
+                        return (
+                          <div
+                            key={doc.id}
+                            className={`p-3.5 rounded-lg border space-y-2 transition-all ${
+                              hasFile
+                                ? 'bg-white border-emerald-300 shadow-2xs'
+                                : doc.isMandatory
+                                ? 'bg-amber-50/50 border-amber-300'
+                                : 'bg-white border-[#E2E8F0]'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2.5 flex-1">
+                                <Paperclip
+                                  className={`w-4 h-4 flex-shrink-0 ${
+                                    hasFile ? 'text-emerald-600' : doc.isMandatory ? 'text-amber-600' : 'text-slate-400'
+                                  }`}
+                                />
+                                <div className="flex-1 grid grid-cols-3 gap-2">
+                                  <div>
+                                    <div className="flex items-center justify-between mb-0.5">
+                                      <label className="block text-[10px] font-semibold text-[#5B6472]">Document Type</label>
+                                      {doc.isMandatory ? (
+                                        <span className="text-[9px] px-1 py-0.2 rounded bg-amber-100 text-amber-900 font-bold border border-amber-300">
+                                          Mandatory
+                                        </span>
+                                      ) : (
+                                        <span className="text-[9px] px-1 py-0.2 rounded bg-blue-100 text-blue-900 font-bold border border-blue-200">
+                                          Supporting
+                                        </span>
+                                      )}
+                                    </div>
+                                    <select
+                                      value={doc.type}
+                                      onChange={(e) => {
+                                        const updated = [...wizardDocuments];
+                                        updated[idx].type = e.target.value;
+                                        setWizardDocuments(updated);
+                                      }}
+                                      className="w-full p-1 border border-[#E2E8F0] rounded text-xs font-semibold"
+                                    >
+                                      {allConfiguredDocTypes.map((typ: string, tIdx: number) => (
+                                        <option key={tIdx} value={typ}>
+                                          {typ}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[10px] font-semibold text-[#5B6472]">Document Title / Ref</label>
+                                    <input
+                                      type="text"
+                                      placeholder="e.g. Official Deed #TD-99120"
+                                      value={doc.name}
+                                      onChange={(e) => {
+                                        const updated = [...wizardDocuments];
+                                        updated[idx].name = e.target.value;
+                                        setWizardDocuments(updated);
+                                      }}
+                                      className="w-full p-1 border border-[#E2E8F0] rounded text-xs"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[10px] font-semibold text-[#5B6472]">Expiry Date</label>
+                                    <input
+                                      type="date"
+                                      value={doc.expiryDate}
+                                      onChange={(e) => {
+                                        const updated = [...wizardDocuments];
+                                        updated[idx].expiryDate = e.target.value;
+                                        setWizardDocuments(updated);
+                                      }}
+                                      className="w-full p-1 border border-[#E2E8F0] rounded text-xs"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {!doc.isMandatory ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setWizardDocuments(wizardDocuments.filter((_, i) => i !== idx));
+                                  }}
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  title="Remove supporting document slot"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              ) : null}
+                            </div>
+
+                            {/* Digital File Attachment Control */}
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] bg-slate-50 p-2 rounded">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="file"
+                                  id={`file-col-wizard-${doc.id}`}
+                                  className="hidden"
+                                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.tif,.tiff"
+                                  onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                      const file = e.target.files[0];
+                                      const reader = new FileReader();
+                                      reader.onload = () => {
+                                        const updated = [...wizardDocuments];
+                                        updated[idx].fileName = file.name;
+                                        updated[idx].fileSize = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+                                        updated[idx].fileSizeNum = file.size;
+                                        updated[idx].contentType = file.type || 'application/pdf';
+                                        updated[idx].fileContent = reader.result as string;
+                                        if (!updated[idx].name || updated[idx].name.trim().length === 0) {
+                                          updated[idx].name = file.name.replace(/\.[^/.]+$/, '');
+                                        }
+                                        setWizardDocuments(updated);
+                                      };
+                                      reader.readAsDataURL(file);
+                                    }
+                                  }}
+                                />
+                                <label
+                                  htmlFor={`file-col-wizard-${doc.id}`}
+                                  className={`cursor-pointer py-1 px-3 rounded font-semibold flex items-center gap-1.5 text-xs shadow-2xs transition-colors ${
+                                    hasFile
+                                      ? 'bg-white border border-emerald-400 text-emerald-900 hover:bg-emerald-50'
+                                      : doc.isMandatory
+                                      ? 'bg-[#102E4A] text-white hover:bg-[#173F63]'
+                                      : 'bg-slate-700 text-white hover:bg-slate-800'
+                                  }`}
+                                >
+                                  <UploadCloud className="w-3.5 h-3.5" />
+                                  {hasFile ? 'Replace File' : 'Attach File (PDF / Images)'}
+                                </label>
+
+                                {hasFile ? (
+                                  <span className="font-mono text-emerald-700 font-bold flex items-center gap-1">
+                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                    {doc.fileName} ({doc.fileSize}) — Status: Uploaded
+                                  </span>
+                                ) : doc.isMandatory ? (
+                                  <span className="text-amber-800 font-semibold text-[11px] flex items-center gap-1">
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>Mandatory Document — <span className="font-normal text-slate-600">File pending (can proceed to submit as Exception)</span></span>
+                                  </span>
+                                ) : (
+                                  <span className="text-[#5B6472] italic text-[11px]">
+                                    Optional Supporting Document
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Prominent Add Supporting Document Card Button at Bottom */}
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newDoc: WizardDocItem = {
+                            id: `doc-wiz-extra-${Date.now()}-${wizardDocuments.length}`,
+                            name: '',
+                            type: 'Valuation Report',
+                            expiryDate: new Date(Date.now() + 5 * 365 * 24 * 3600 * 1000).toISOString().substring(0, 10),
+                            remarks: 'Additional supporting document',
+                            fileName: '',
+                            fileSize: '',
+                            fileSizeNum: 0,
+                            contentType: 'application/pdf',
+                            fileContent: '',
+                            isMandatory: false,
+                          };
+                          setWizardDocuments([...wizardDocuments, newDoc]);
+                        }}
+                        className="w-full py-3 px-4 border-2 border-dashed border-[#5F97C7] hover:border-[#1F4E7A] bg-[#EFF5FB]/60 hover:bg-[#DCE9F5]/70 rounded-lg text-[#102E4A] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs group"
+                      >
+                        <div className="p-1 rounded-full bg-[#B9D3EB] group-hover:bg-[#8FB8DC] text-[#102E4A]">
+                          <Plus className="w-4 h-4" />
+                        </div>
+                        <span>+ Add Other / Supporting Document (Power of Attorney, Site Photos, Valuation, Legal Agreements, etc.)</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* -------------------------------------------------------------------
+                  STEP 7: PRE-SUBMISSION VALIDATION SUMMARY & CHECKS
+                  ------------------------------------------------------------------- */}
+              {wizardStep === 7 && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold text-[#101828] text-sm flex items-center gap-1.5">
+                      <CheckCircle className="w-4 h-4 text-emerald-700" />
+                      Step 7: Pre-Submission Completeness &amp; Regulatory Compliance Validation
+                    </h4>
+                    <p className="text-[#5B6472] text-[11px]">
+                      Real-time automated validation checks for customer KYC, collateral asset integrity, ownership percentage, facility allocation limits, and mandatory regulatory documents.
+                    </p>
+                  </div>
+
+                  {/* Real-Time Pre-Validation Result Card */}
+                  <div className="space-y-3">
+                    {isValidating && (
+                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3 text-xs text-blue-900">
+                        <RefreshCw className="w-5 h-5 animate-spin text-[#1F4E7A] flex-shrink-0" />
+                        <div>
+                          <strong>Evaluating Enterprise Pre-Validation Rules...</strong>
+                          <div className="text-[11px] text-blue-700">
+                            Validating customer KYC, collateral asset code uniqueness, taxonomy compatibility, valuation &amp; NSV, joint ownership, allocation capacity, and mandatory documents.
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {!isValidating && preValidationResult && (
+                      <>
+                        {preValidationResult.valid ? (
+                          <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="w-5 h-5 text-emerald-600" />
+                                <span className="font-bold text-emerald-900 text-sm">Validation Passed</span>
+                              </div>
+                              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                                All Requirements Satisfied
+                              </span>
+                            </div>
+                            <p className="text-xs text-emerald-800">
+                              {preValidationResult.summaryMessage || 'All collateral, customer, capacity, and regulatory document requirements are satisfied. The transaction can now be submitted for standard checker authorization.'}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {preValidationResult.checks.map((c, i) => (
+                                <span key={i} className="px-2 py-0.5 bg-emerald-100/70 border border-emerald-200 text-emerald-800 rounded text-[10px] font-semibold flex items-center gap-1">
+                                  ✓ {c.ruleName}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={`p-4 rounded-xl border space-y-3 ${preValidationResult.hasHardBlock ? 'bg-red-50/80 border-red-300' : 'bg-amber-50/80 border-amber-300'}`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <AlertTriangle className={`w-5 h-5 ${preValidationResult.hasHardBlock ? 'text-red-600' : 'text-amber-600'}`} />
+                                <span className={`font-bold text-sm ${preValidationResult.hasHardBlock ? 'text-red-900' : 'text-amber-900'}`}>
+                                  ⚠ Mandatory requirement(s) not satisfied
+                                </span>
+                              </div>
+                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${preValidationResult.hasHardBlock ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
+                                {preValidationResult.hasHardBlock ? 'Hard System Block' : 'Overrideable with Exception Approval'}
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-slate-700">
+                              {preValidationResult.summaryMessage}
+                            </p>
+
+                            {/* Detailed list of failed checks */}
+                            <div className="space-y-1.5 pt-1">
+                              {preValidationResult.checks.filter((c) => !c.passed).map((c, i) => (
+                                <div key={i} className="flex items-start justify-between gap-2 p-2.5 bg-white/90 border border-slate-200 rounded text-xs shadow-2xs">
+                                  <div className="space-y-0.5">
+                                    <div className="font-bold text-[#102E4A] flex items-center gap-1.5">
+                                      <span className="text-red-600">•</span>
+                                      <span>{c.ruleName}</span>
+                                      <span className="text-[10px] text-slate-500 font-normal">({c.category})</span>
+                                    </div>
+                                    <div className="text-[#5B6472] pl-2">{c.message}</div>
+                                  </div>
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${
+                                      c.overrideable
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        : 'bg-red-100 text-red-800 border border-red-200'
+                                    }`}
+                                  >
+                                    {c.overrideable ? 'Overrideable' : 'Hard Block'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Action Buttons for RO */}
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setWizardStep(6)}
+                                  className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 rounded font-semibold text-xs flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                                >
+                                  <Upload className="w-3.5 h-3.5 text-[#1F4E7A]" />
+                                  Upload Missing Document
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={runPreValidation}
+                                  className="px-2.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-xs flex items-center gap-1 cursor-pointer"
+                                  title="Re-run validation checks"
+                                >
+                                  <RefreshCw className={`w-3.5 h-3.5 ${isValidating ? 'animate-spin' : ''}`} />
+                                  Re-evaluate
+                                </button>
+                              </div>
+
+                              {preValidationResult.canSubmitAsException && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenExceptionModal()}
+                                  className="px-4 py-1.5 bg-[#F59E0B] hover:bg-[#D97706] text-white rounded font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                >
+                                  <Shield className="w-4 h-4" />
+                                  Submit as Exception
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="cims-card p-4 space-y-2">
+                      <h5 className="font-bold text-[#101828] border-b border-[#E2E8F0] pb-1">Customer & Facility Relationship</h5>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Customer Selected:</span>
+                        <strong className="text-[#102E4A]">✓ {selectedCustomer?.name} ({selectedCustomer?.cif})</strong>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Customer Isolation Check:</span>
+                        <strong className="text-emerald-700">✓ Verified (All Facilities Belong to Customer)</strong>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Selected Facilities:</span>
+                        <strong>{selectedFacilityIds.length} Linked Facility(ies)</strong>
+                      </div>
+                    </div>
+
+                    <div className="cims-card p-4 space-y-2">
+                      <h5 className="font-bold text-[#101828] border-b border-[#E2E8F0] pb-1">Collateral & Ownership Status</h5>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Category & Type:</span>
+                        <strong>{newCol.category} ({newCol.type})</strong>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Ownership Type:</span>
+                        <strong>{ownerDetails.ownershipType}</strong>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Ownership Verification Status:</span>
+                        <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-bold text-[10px]">
+                          Recorded (Pending Future Verification)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="cims-card p-4 space-y-2">
+                      <h5 className="font-bold text-[#101828] border-b border-[#E2E8F0] pb-1">Financial & Capacity Allocation</h5>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Market Valuation:</span>
+                        <strong className="font-mono text-[#102E4A]">ETB {Number(newCol.valuationAmount || 0).toLocaleString()}</strong>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Net Collateral Value:</span>
+                        <strong className="font-mono text-emerald-700">ETB {netCollateralValue.toLocaleString()}</strong>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Allocated Security:</span>
+                        <strong className="font-mono text-blue-800">ETB {totalAllocatedAmount.toLocaleString()}</strong>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Allocation Capacity Status:</span>
+                        <strong className="text-emerald-700">✓ Valid Capacity (No Overflow)</strong>
+                      </div>
+                    </div>
+
+                    <div className="cims-card p-4 space-y-2">
+                      <h5 className="font-bold text-[#101828] border-b border-[#E2E8F0] pb-1">Document Ingestion Summary</h5>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Mandatory Documents:</span>
+                        <strong className={missingMandatoryDocs.length === 0 ? "text-emerald-700" : "text-amber-700"}>
+                          {mandatoryRulesList.length - missingMandatoryDocs.length} / {mandatoryRulesList.length} Uploaded {missingMandatoryDocs.length === 0 ? '✓' : '⚠'}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Additional Supporting Docs:</span>
+                        <strong>{wizardDocuments.filter((d) => !d.isMandatory && d.fileContent).length} File(s)</strong>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#5B6472]">Document Verification Status:</span>
+                        <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold text-[10px]">
+                          Uploaded / Pending Verification
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* -------------------------------------------------------------------
+                  STEP 8: SUBMISSION & MAKER-CHECKER ROUTING
+                  ------------------------------------------------------------------- */}
+              {wizardStep === 8 && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold text-[#101828] text-sm flex items-center gap-1.5">
+                      <Send className="w-4 h-4 text-[#1F4E7A]" />
+                      Step 8: Maker Submission &amp; Checker Routing
+                    </h4>
+                    <p className="text-[#5B6472] text-[11px]">
+                      Under the Four-Eyes Principle, this collateral registration will be submitted in <strong>Pending Approval</strong> state to the Branch Manager inbox.
+                    </p>
+                  </div>
+
+                  {preValidationResult && !preValidationResult.valid && (
+                    <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-lg text-amber-900 text-xs flex items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-2.5">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                        <div>
+                          <div className="font-bold text-sm">Mandatory Requirements Not Satisfied</div>
+                          <div className="text-[11px] text-amber-800">
+                            Standard checker submission is blocked ({preValidationResult.summaryMessage}). You can submit this transaction as an authorized Exception for management approval.
+                          </div>
+                        </div>
+                      </div>
+                      {preValidationResult.canSubmitAsException && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenExceptionModal()}
+                          className="px-3.5 py-1.5 bg-[#F59E0B] hover:bg-[#D97706] text-white rounded font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer shrink-0"
+                        >
+                          <Shield className="w-3.5 h-3.5" />
+                          Submit as Exception
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="p-4 bg-[#EFF5FB] border border-[#B9D3EB] rounded-lg space-y-3">
+                    <div className="font-bold text-[#102E4A] border-b border-[#B9D3EB] pb-1 flex justify-between items-center">
+                      <span>Registration Workflow Summary</span>
+                      <span className="text-[11px] font-mono font-bold text-[#102E4A]">{newCol.code}</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div><span className="text-[#5B6472] block">Maker User:</span> <strong>{currentUser.username} ({currentUser.role})</strong></div>
+                      <div><span className="text-[#5B6472] block">Submission Target:</span> <strong>Branch Manager / Checker Queue</strong></div>
+                      <div><span className="text-[#5B6472] block">Initial Status:</span> <strong className="text-amber-700">Pending Approval</strong></div>
+                      <div><span className="text-[#5B6472] block">Next State (Post-Approval):</span> <strong className="text-emerald-700">Active (Eligible for Insurance)</strong></div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded text-blue-900 text-xs flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-blue-700 flex-shrink-0" />
+                    <span>
+                      Completing submission will atomically persist the collateral, legal ownership record, multi-facility allocation links, and digital DMS documents.
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Wizard Navigation Footer */}
+            <div className="p-4 bg-slate-50 border-t border-[#E2E8F0] flex justify-between items-center text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  if (wizardStep > 1) setWizardStep((wizardStep - 1) as any);
+                  else setShowRegisterWizard(false);
+                }}
+                className="btn-secondary"
+              >
+                {wizardStep === 1 ? 'Cancel' : 'Back'}
+              </button>
+
+              <div className="flex gap-2">
+                {wizardStep < 8 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (wizardStep === 1) {
+                        const errs = getStep1Errors();
+                        if (errs.length > 0) {
+                          alert('Cannot proceed to Step 2:\n\n• ' + errs.join('\n• '));
+                          return;
+                        }
+                      }
+                      if (wizardStep === 2) {
+                        const errs = getStep2Errors();
+                        if (errs.length > 0) {
+                          alert('Notice:\n\n• ' + errs.join('\n• '));
+                        }
+                      }
+                      if (wizardStep === 3) {
+                        const errs = getStep3Errors();
+                        if (errs.length > 0) {
+                          alert('Cannot proceed to Step 4:\n\n• ' + errs.join('\n• '));
+                          return;
+                        }
+                      }
+                      if (wizardStep === 4) {
+                        const errs = getStep4Errors();
+                        if (errs.length > 0) {
+                          alert('Cannot proceed to Step 5:\n\n• ' + errs.join('\n• '));
+                          return;
+                        }
+                      }
+                      if (wizardStep === 5) {
+                        const errs = getStep5Errors();
+                        if (errs.length > 0) {
+                          alert('Cannot proceed to Step 6:\n\n• ' + errs.join('\n• '));
+                          return;
+                        }
+                      }
+                      // Step 6: Advance cleanly to Step 7 without hard-blocking alert
+                      setWizardStep((wizardStep + 1) as any);
+                    }}
+                    className="btn-primary"
+                  >
+                    {wizardStep === 6 ? 'Continue to Validation & Exception Review →' : wizardStep === 7 ? 'Continue to Review & Submit →' : 'Continue'}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {preValidationResult && preValidationResult.canSubmitAsException && (
+                      <button
+                        type="button"
+                        disabled={exceptionSubmitting}
+                        onClick={() => handleOpenExceptionModal()}
+                        className="btn-primary bg-[#F59E0B] hover:bg-[#D97706] text-white flex items-center gap-1.5 shadow-sm font-bold cursor-pointer"
+                        title="Submit transaction as an authorized exception for management approval"
+                      >
+                        <Shield className="w-3.5 h-3.5" />
+                        Submit as Exception
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={
+                        wizardRegistering ||
+                        Boolean(preValidationResult && !preValidationResult.valid)
+                      }
+                      onClick={handleFinishWizard}
+                      className="btn-primary bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 flex items-center gap-1.5"
+                      title={
+                        preValidationResult && !preValidationResult.valid
+                          ? 'Submission blocked: Mandatory requirements not satisfied. Either upload missing documents or submit as an exception.'
+                          : 'Submit for Checker Authorization'
+                      }
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      {wizardRegistering ? 'Submitting to Checker…' : 'Submit for Checker Authorization'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exception Request Submission Modal */}
+      {showExceptionModal && (
+        <div className="fixed inset-0 bg-[#102E4A]/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-2xl max-w-lg w-full overflow-hidden text-xs">
+            {/* Header */}
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-amber-400" />
+                <div>
+                  <h3 className="text-sm font-bold">Collateral Exception Details</h3>
+                  <p className="text-[11px] text-blue-200">
+                    Request Authorized Management Override &amp; Approval
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExceptionModal(false)}
+                className="text-white hover:text-gray-300 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Form */}
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs">
+                <strong>Controlled Validation Override:</strong> Bank credit policy allows temporary waiver of specific collateral registration requirements subject to authorized management review and full audit logging.
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">
+                  Exception Type <span className="text-red-600">*</span>
+                </label>
+                <select
+                  value={exceptionForm.exceptionType}
+                  onChange={(e) => setExceptionForm({ ...exceptionForm, exceptionType: e.target.value })}
+                  className="w-full p-2 border border-[#E2E8F0] rounded bg-white text-xs font-semibold"
+                >
+                  <option value="Missing Mandatory Document">Missing Mandatory Document</option>
+                  <option value="Valuation Date Expired">Valuation Date Expired</option>
+                  <option value="Haircut Exemption">Haircut Exemption</option>
+                  <option value="Customer KYC Verification Pending">Customer KYC Verification Pending</option>
+                  <option value="Other Exception">Other Collateral Exception</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">
+                  Failed Requirement
+                </label>
+                <input
+                  type="text"
+                  value={exceptionForm.failedRequirement}
+                  onChange={(e) => setExceptionForm({ ...exceptionForm, failedRequirement: e.target.value })}
+                  placeholder="e.g. Title Deed / Property Ownership Certificate"
+                  className="w-full p-2 border border-[#E2E8F0] rounded bg-slate-50 text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">
+                  Reason / Justification <span className="text-red-600">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={exceptionForm.reason}
+                  onChange={(e) => setExceptionForm({ ...exceptionForm, reason: e.target.value })}
+                  placeholder="Provide detailed business justification, credit memo sanction reference, or temporary waiver rationale..."
+                  className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">
+                  Supporting Document / Evidence (Optional)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    id="col-exception-evidence-file"
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.jpg,.png"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        const file = e.target.files[0];
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setExceptionForm({
+                            ...exceptionForm,
+                            evidenceDocument: file.name,
+                            evidenceFileContent: reader.result as string,
+                          });
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <label
+                    htmlFor="col-exception-evidence-file"
+                    className="cursor-pointer py-1.5 px-3 bg-white border border-slate-300 hover:bg-slate-50 rounded text-xs font-semibold flex items-center gap-1.5 shadow-2xs"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5 text-[#1F4E7A]" />
+                    {exceptionForm.evidenceDocument ? 'Replace Evidence File' : 'Attach Supporting Memo'}
+                  </label>
+                  {exceptionForm.evidenceDocument && (
+                    <span className="text-emerald-700 font-mono text-xs flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      {exceptionForm.evidenceDocument}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">
+                  Exception Comments <span className="text-red-600">*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={exceptionForm.comments}
+                  onChange={(e) => setExceptionForm({ ...exceptionForm, comments: e.target.value })}
+                  placeholder="Additional operational remarks or conditions for the assigned approval authority..."
+                  className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
+                />
+              </div>
+
+              <div className="p-2.5 bg-blue-50 border border-blue-200 rounded text-[11px] text-blue-900 space-y-1">
+                <div className="font-semibold flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-700" />
+                  Approval Hierarchy Routing:
+                </div>
+                <div>
+                  This request will be dynamically assigned to the configured approver according to Exception Type + Business Segment + Branch Hierarchy. Once approved, the transaction automatically resumes in the normal workflow without requiring re-entry.
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-[#E2E8F0] flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowExceptionModal(false)}
+                className="btn-secondary"
+                disabled={exceptionSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitCollateralExceptionRequest}
+                disabled={exceptionSubmitting}
+                className="btn-primary bg-[#F59E0B] hover:bg-[#D97706] text-white flex items-center gap-1.5 font-bold cursor-pointer"
+              >
+                {exceptionSubmitting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Submitting Exception…
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-3.5 h-3.5" />
+                    Submit Exception Request
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Verify Collateral Owner Modal */}
+      {showVerifyOwnerModal && verifyingOwner && selectedCol && (
+        <div className="fixed inset-0 bg-[#102E4A]/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg border border-[#E2E8F0] shadow-xl max-w-md w-full overflow-hidden text-xs">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold">Owner Legal Verification</h3>
+                <p className="text-[11px] text-blue-200">
+                  {verifyingOwner.name} — Four-Eyes Identity &amp; Title Verification
+                </p>
+              </div>
+              <button onClick={() => setShowVerifyOwnerModal(false)} className="text-white hover:text-gray-300">
+                ✕
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Owner Legal Name</label>
+                <input
+                  type="text"
+                  disabled
+                  value={verifyingOwner.name}
+                  className="w-full p-2 border border-[#E2E8F0] rounded bg-slate-100 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">National ID / Business Reg No</label>
+                <input
+                  type="text"
+                  disabled
+                  value={verifyingOwner.businessRegNo || verifyingOwner.idNumber || '—'}
+                  className="w-full p-2 border border-[#E2E8F0] rounded bg-slate-100 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Verification Status</label>
+                <select
+                  value={verifyStatus}
+                  onChange={(e) => setVerifyStatus(e.target.value)}
+                  className="w-full p-2 border border-[#E2E8F0] rounded"
+                >
+                  <option value="Verified">Verified (Satisfied / Authenticated)</option>
+                  <option value="Pending Documentation">Pending Documentation</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Verifying Officer</label>
+                <input
+                  type="text"
+                  disabled
+                  value={currentUser.name || currentUser.username || 'CRO_USER'}
+                  className="w-full p-2 border border-[#E2E8F0] rounded bg-slate-100"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Verification Remarks / Notes</label>
+                <textarea
+                  rows={3}
+                  value={verifyComments}
+                  onChange={(e) => setVerifyComments(e.target.value)}
+                  placeholder="e.g. Identity and ownership documents verified against original register and registry portal..."
+                  className="w-full p-2 border border-[#E2E8F0] rounded"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
+                <button onClick={() => setShowVerifyOwnerModal(false)} className="btn-secondary">
+                  Cancel
+                </button>
+                <button
+                  disabled={verifySubmitting}
+                  onClick={handleVerifyOwnerSubmit}
+                  className="btn-primary disabled:opacity-60"
+                >
+                  {verifySubmitting ? 'Saving…' : 'Record Verification'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Document Modal (in 360 view) */}
+      {showUploadDocModal && selectedCol && (
+        <div className="fixed inset-0 bg-[#102E4A]/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg border border-[#E2E8F0] shadow-xl max-w-md w-full overflow-hidden text-xs">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold">Upload Document (DMS)</h3>
+                <p className="text-[11px] text-blue-200">{selectedCol.code} — Attach to Repository</p>
+              </div>
+              <button onClick={() => setShowUploadDocModal(false)} className="text-white hover:text-gray-300">
+                ✕
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Document Title (M)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Title Deed Certificate"
+                  value={uploadDocName}
+                  onChange={(e) => setUploadDocName(e.target.value)}
+                  className="w-full p-2 border border-[#E2E8F0] rounded"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Document Type</label>
+                <select
+                  value={uploadDocType}
+                  onChange={(e) => setUploadDocType(e.target.value)}
+                  className="w-full p-2 border border-[#E2E8F0] rounded"
+                >
+                  <option value="Title Deed / Property Ownership Certificate">Title Deed / Property Ownership Certificate</option>
+                  <option value="Approved Building Plan">Approved Building Plan</option>
+                  <option value="Valuation Report">Valuation Report</option>
+                  <option value="Vehicle Registration / Logbook">Vehicle Registration / Logbook</option>
+                  <option value="Machinery Ownership Certificate">Machinery Ownership Certificate</option>
+                  <option value="Commercial Registration / Trade License">Commercial Registration / Trade License</option>
+                  <option value="Guarantee Contract / Agreement">Guarantee Contract / Agreement</option>
+                  <option value="Other Ownership / Supporting Document">Other Ownership / Supporting Document</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Expiry Date (Optional)</label>
+                <input
+                  type="date"
+                  value={uploadDocExpiry}
+                  onChange={(e) => setUploadDocExpiry(e.target.value)}
+                  className="w-full p-2 border border-[#E2E8F0] rounded"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
+                <button onClick={() => setShowUploadDocModal(false)} className="btn-secondary">
+                  Cancel
+                </button>
+                <button disabled={uploadingDoc} onClick={handleUploadDocSubmit} className="btn-primary disabled:opacity-60">
+                  {uploadingDoc ? 'Uploading…' : 'Upload File'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Maintain Collateral Modal */}
+      {showMaintainModal && selectedCol && (
+        <div className="fixed inset-0 bg-[#102E4A]/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg border border-[#E2E8F0] shadow-xl max-w-md w-full overflow-hidden text-xs">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold">Maintain Collateral Details</h3>
+                <p className="text-[11px] text-blue-200">{selectedCol.code} — Maker Amendment</p>
+              </div>
+              <button onClick={() => setShowMaintainModal(false)} className="text-white hover:text-gray-300">
+                ✕
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {maintainError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{maintainError}</span>
+                </div>
+              )}
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Market Valuation Amount (ETB)</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={maintainFields.valuationAmount || ''}
+                  onChange={(e) => setMaintainFields({ ...maintainFields, valuationAmount: Number(e.target.value) })}
+                  className="w-full p-2 border border-[#E2E8F0] rounded font-bold tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Haircut Percentage (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="90"
+                  value={maintainFields.haircut ?? 20}
+                  onChange={(e) => setMaintainFields({ ...maintainFields, haircut: Number(e.target.value) })}
+                  className="w-full p-2 border border-[#E2E8F0] rounded font-bold tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Review Date</label>
+                <input
+                  type="date"
+                  value={maintainFields.reviewDate || ''}
+                  onChange={(e) => setMaintainFields({ ...maintainFields, reviewDate: e.target.value })}
+                  className="w-full p-2 border border-[#E2E8F0] rounded"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
+                <button onClick={() => setShowMaintainModal(false)} className="btn-secondary">
+                  Cancel
+                </button>
+                <button
+                  disabled={maintainSubmitting}
+                  onClick={async () => {
+                    if (onMaintainCollateral) {
+                      setMaintainSubmitting(true);
+                      setMaintainError(null);
+                      try {
+                        await onMaintainCollateral(selectedCol.id, maintainFields);
+                        alert('Collateral changes submitted for checker approval.');
+                        setShowMaintainModal(false);
+                      } catch (err: any) {
+                        setMaintainError(err.message || 'Failed to submit changes');
+                      } finally {
+                        setMaintainSubmitting(false);
+                      }
+                    }
+                  }}
+                  className="btn-primary disabled:opacity-60"
+                >
+                  {maintainSubmitting ? 'Submitting…' : 'Submit for Approval'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Segment Modal */}
+      {showTransferModal && selectedCol && (
+        <div className="fixed inset-0 bg-[#102E4A]/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg border border-[#E2E8F0] shadow-xl max-w-md w-full overflow-hidden text-xs">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold">Transfer Collateral Segment</h3>
+                <p className="text-[11px] text-blue-200">{selectedCol.code} — Ownership Segment Transfer</p>
+              </div>
+              <button onClick={() => setShowTransferModal(false)} className="text-white hover:text-gray-300">
+                ✕
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <span className="text-[#5B6472] block mb-1">Current Segment:</span>
+                <strong className="text-[#102E4A] text-sm">{selectedCol.owningSegment}</strong>
+              </div>
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Destination Segment (M)</label>
+                <select
+                  value={destSegment}
+                  onChange={(e) => setDestSegment(e.target.value)}
+                  className="w-full p-2 border border-[#E2E8F0] rounded"
+                >
+                  {(segments.length > 0 ? segments : [{ id: '1', name: 'Retail Banking' }, { id: '2', name: 'MSME Banking' }])
+                    .filter((s) => s.name !== selectedCol.owningSegment)
+                    .map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="block font-semibold text-[#101828] mb-1">Transfer Reason (M)</label>
+                <textarea
+                  rows={3}
+                  placeholder="Reason for segment re-alignment..."
+                  value={transferReason}
+                  onChange={(e) => setTransferReason(e.target.value)}
+                  className="w-full p-2 border border-[#E2E8F0] rounded"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
+                <button onClick={() => setShowTransferModal(false)} className="btn-secondary">
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!transferReason.trim()) {
+                      alert('Please provide a reason for transfer.');
+                      return;
+                    }
+                    await onInitiateTransfer(selectedCol.id, destSegment, transferReason);
+                    alert('Ownership transfer initiated and routed for HODEPT approval.');
+                    setShowTransferModal(false);
+                    setShowDetailModal(false);
+                  }}
+                  className="btn-primary"
+                >
+                  Initiate Transfer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Release Collateral Modal */}
+      {showReleaseModal && selectedCol && releaseCheck && (
+        <div className="fixed inset-0 bg-[#102E4A]/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg border border-[#E2E8F0] shadow-xl max-w-md w-full overflow-hidden text-xs">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold">Release Security Obligation</h3>
+                <p className="text-[11px] text-blue-200">{selectedCol.code} — Settlement & Release Engine</p>
+              </div>
+              <button onClick={() => setShowReleaseModal(false)} className="text-white hover:text-gray-300">
+                ✕
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className={`p-4 rounded-lg border ${releaseCheck.canRelease ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
+                <div className="font-bold flex items-center gap-2">
+                  {releaseCheck.canRelease ? <CheckCircle className="w-5 h-5 text-emerald-600" /> : <AlertTriangle className="w-5 h-5 text-red-600" />}
+                  <span>{releaseCheck.message}</span>
+                </div>
+                {!releaseCheck.canRelease && (
+                  <div className="mt-2 text-[11px] text-red-700">
+                    Active Outstanding Loans: <strong>{releaseCheck.activeLoans.join(', ')}</strong>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
+                <button onClick={() => setShowReleaseModal(false)} className="btn-secondary">
+                  Close
+                </button>
+                {releaseCheck.canRelease && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await cimsApi.requestCollateralRelease(selectedCol.id, 'Facility fully settled', currentUser.username);
+                        alert('Collateral release requested and submitted for Checker approval.');
+                        setShowReleaseModal(false);
+                        setShowDetailModal(false);
+                        window.location.reload();
+                      } catch (e: any) {
+                        alert(`Release request failed: ${e?.message || e}`);
+                      }
+                    }}
+                    className="btn-primary bg-emerald-700 hover:bg-emerald-800"
+                  >
+                    Request Release
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ownership Change Modal */}
+      {showOwnershipChangeModal && selectedCol && (
+        <div className="fixed inset-0 bg-[#102E4A]/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-2xl max-w-lg w-full overflow-hidden text-xs">
+            <div className="p-4 bg-[#102E4A] text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold flex items-center gap-1.5">
+                  <UserCheck className="w-4 h-4 text-blue-300" />
+                  Initiate Collateral Ownership Change
+                </h3>
+                <p className="text-[11px] text-blue-200">
+                  {selectedCol.code} — Historical ownership will be preserved in audit trail.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowOwnershipChangeModal(false)}
+                className="text-white hover:text-gray-300"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!ownershipChangeForm.newOwnerName.trim()) {
+                  setOwnershipChangeError('New Owner Name is mandatory.');
+                  return;
+                }
+                if (!ownershipChangeForm.changeReason.trim()) {
+                  setOwnershipChangeError('Reason for Ownership Change is mandatory.');
+                  return;
+                }
+                if (!ownershipChangeForm.supportingDocument.trim()) {
+                  setOwnershipChangeError('Supporting Document reference is mandatory.');
+                  return;
+                }
+                if (ownershipChangeForm.newOwnershipType === 'Third-party-owned') {
+                  if (!ownershipChangeForm.relationshipToBorrower || !ownershipChangeForm.relationshipToBorrower.trim()) {
+                    setOwnershipChangeError('Documented Relationship to Borrower is mandatory for third-party ownership.');
+                    return;
+                  }
+                  if (!ownershipChangeForm.idNumber?.trim() && !ownershipChangeForm.tin?.trim()) {
+                    setOwnershipChangeError('Legal Owner Identity (National ID / Business Reg No / TIN) is mandatory for third-party ownership.');
+                    return;
+                  }
+                }
+                setSubmittingOwnershipChange(true);
+                setOwnershipChangeError(null);
+                try {
+                  await cimsApi.changeCollateralOwnership(
+                    selectedCol.id,
+                    ownershipChangeForm,
+                    currentUser.username
+                  );
+                  alert('Ownership change successfully processed. Previous owner retained in audit history.');
+                  setShowOwnershipChangeModal(false);
+                  setShowDetailModal(false);
+                  window.location.reload();
+                } catch (err: any) {
+                  setOwnershipChangeError(err?.message || 'Failed to submit ownership change');
+                } finally {
+                  setSubmittingOwnershipChange(false);
+                }
+              }}
+              className="p-5 space-y-3.5 max-h-[80vh] overflow-y-auto"
+            >
+              {ownershipChangeError && (
+                <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 rounded text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{ownershipChangeError}</span>
+                </div>
+              )}
+
+              {/* Current Active Owner Display */}
+              <div className="p-3 bg-slate-50 border border-[#E2E8F0] rounded-lg">
+                <span className="text-[10px] text-[#5B6472] uppercase font-bold tracking-wider block">Current Effective Owner</span>
+                <div className="text-sm font-bold text-[#102E4A] mt-0.5">
+                  {selectedCol.owners?.find(o => !o.supersededDate)?.name || customers.find(c => c.id === selectedCol.customerId || c.cif === selectedCol.customerId)?.name || selectedCol.customerId}
+                </div>
+                <div className="text-[11px] text-[#5B6472]">
+                  Type: {selectedCol.ownerType || 'Borrower-owned'} • Will be archived as historical record upon transfer
+                </div>
+              </div>
+
+              {/* New Owner Details */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                    New Owner Full Legal Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Legal individual or business name"
+                    value={ownershipChangeForm.newOwnerName}
+                    onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, newOwnerName: e.target.value })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded text-xs font-semibold"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#101828] mb-1">New Ownership Type</label>
+                  <select
+                    value={ownershipChangeForm.newOwnershipType}
+                    onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, newOwnershipType: e.target.value })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded text-xs bg-white font-semibold"
+                  >
+                    <option value="Borrower-owned">Borrower-owned</option>
+                    <option value="Third-party-owned">Third-party-owned</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#101828] mb-1">Ownership Share (%)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={ownershipChangeForm.percentage}
+                    onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, percentage: Number(e.target.value) })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded text-xs font-bold tabular-nums"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                    Relationship to Borrower {ownershipChangeForm.newOwnershipType === 'Third-party-owned' && <span className="text-red-500">*</span>}
+                  </label>
+                  <select
+                    value={ownershipChangeForm.relationshipToBorrower || ''}
+                    onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, relationshipToBorrower: e.target.value })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded text-xs bg-white font-semibold"
+                    required={ownershipChangeForm.newOwnershipType === 'Third-party-owned'}
+                  >
+                    <option value="">-- Select Relationship to Borrower --</option>
+                    <option value="Shareholder">Shareholder</option>
+                    <option value="Parent Company">Parent Company</option>
+                    <option value="Director">Director</option>
+                    <option value="Guarantor">Guarantor</option>
+                    <option value="Spouse">Spouse</option>
+                    <option value="Family Member">Family Member</option>
+                    <option value="Business Partner">Business Partner</option>
+                    <option value="Other">Other Documented Relationship</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#101828] mb-1">Ownership Effective Date <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    value={ownershipChangeForm.effectiveDate}
+                    onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, effectiveDate: e.target.value })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                    National ID / Business Reg No {ownershipChangeForm.newOwnershipType === 'Third-party-owned' && <span className="text-red-500">*</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={ownershipChangeForm.idNumber}
+                    onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, idNumber: e.target.value })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded text-xs font-mono"
+                    required={ownershipChangeForm.newOwnershipType === 'Third-party-owned' && !ownershipChangeForm.tin}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#101828] mb-1">TIN Number</label>
+                  <input
+                    type="text"
+                    value={ownershipChangeForm.tin}
+                    onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, tin: e.target.value })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#101828] mb-1">Contact Phone</label>
+                  <input
+                    type="text"
+                    placeholder="+251 9..."
+                    value={ownershipChangeForm.phone}
+                    onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, phone: e.target.value })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#101828] mb-1">Contact Address</label>
+                  <input
+                    type="text"
+                    placeholder="Address / Location"
+                    value={ownershipChangeForm.contactInfo}
+                    onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, contactInfo: e.target.value })}
+                    className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Reason & Supporting Documentation */}
+              <div>
+                <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                  Reason for Ownership Change <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Asset sale, Court order transfer, Corporate restructuring"
+                  value={ownershipChangeForm.changeReason}
+                  onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, changeReason: e.target.value })}
+                  className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-[#101828] mb-1">
+                  Supporting Legal Document Reference <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Title Deed Amendment Cert #TD-9921 / Notarized Sale Contract"
+                  value={ownershipChangeForm.supportingDocument}
+                  onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, supportingDocument: e.target.value })}
+                  className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-[#101828] mb-1">Ownership Change Remarks</label>
+                <textarea
+                  rows={2}
+                  placeholder="Additional governance notes"
+                  value={ownershipChangeForm.remarks}
+                  onChange={(e) => setOwnershipChangeForm({ ...ownershipChangeForm, remarks: e.target.value })}
+                  className="w-full p-2 border border-[#E2E8F0] rounded text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
+                <button
+                  type="button"
+                  onClick={() => setShowOwnershipChangeModal(false)}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingOwnershipChange}
+                  className="btn-primary flex items-center gap-1.5"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  {submittingOwnershipChange ? 'Processing Change…' : 'Execute Ownership Change'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Embedded Document Preview Modal */}
+      {showDocPreviewModal && docPreviewTarget && (
+        <DocumentPreviewModal
+          document={docPreviewTarget}
+          isOpen={showDocPreviewModal}
+          collaterals={collaterals}
+          onClose={() => {
+            setShowDocPreviewModal(false);
+            setDocPreviewTarget(null);
+          }}
+          onDownload={(doc) => {
+            if (doc.fileContent && doc.fileContent.startsWith('data:') && !doc.fileContent.includes('dummyContent')) {
+              const link = document.createElement('a');
+              link.href = doc.fileContent;
+              link.download = doc.fileName || `${doc.name}.pdf`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            } else {
+              const link = document.createElement('a');
+              link.href = `/api/documents/${encodeURIComponent(doc.id)}/download`;
+              link.download = doc.fileName || `${doc.name}.pdf`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }
+          }}
+        />
+      )}
+
+      {/* Module 3: Relationship & Allocation Modals */}
+      {showM3LinkModal && (
+        <CollateralFacilityLinkModal
+          isOpen={showM3LinkModal}
+          onClose={() => {
+            setShowM3LinkModal(false);
+            setM3LinkToEdit(null);
+          }}
+          onSuccess={() => {
+            if (selectedCol) {
+              loadM3SecuredFacilities(selectedCol.id);
+              loadCollateral360(selectedCol.id);
+              loadExposureSummary(selectedCol.id);
+            }
+          }}
+          currentUser={currentUser}
+          mode={m3LinkModalMode}
+          existingLink={m3LinkToEdit}
+          preselectedCollateralId={selectedCol?.id}
+        />
+      )}
+
+      {showM3HistoryModal && (
+        <RelationshipHistoryModal
+          isOpen={showM3HistoryModal}
+          onClose={() => setShowM3HistoryModal(false)}
+          linkId={m3HistoryLinkId}
+          collateralCode={selectedCol?.code}
+          loanReference={m3HistoryRef}
+        />
+      )}
+
+      {showM3ReconcileModal && (
+        <CbsRelationshipReconcileModal
+          isOpen={showM3ReconcileModal}
+          onClose={() => setShowM3ReconcileModal(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+// Helper for facility matching
+function facIdOrRef(f: LoanAccount): string {
+  return f.id;
+}

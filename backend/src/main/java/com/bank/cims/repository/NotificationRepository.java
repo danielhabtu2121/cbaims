@@ -11,4 +11,10 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
     List<Notification> findByRecipientOrderBySentAtDesc(String recipient);
     List<Notification> findAllByOrderBySentAtDesc();
     List<Notification> findTop500ByOrderBySentAtDesc();
+    List<Notification> findByChannelOrderBySentAtDesc(String channel);
+    List<Notification> findByStatusOrderBySentAtDesc(String status);
+    List<Notification> findByReadStatusOrderBySentAtDesc(String readStatus);
+    long countByReadStatus(String readStatus);
+    long countByStatus(String status);
+    long countByChannel(String channel);
 }

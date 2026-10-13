@@ -46,8 +46,11 @@ import { EnterpriseScopeHeader } from './components/EnterpriseScopeHeader';
 import { FiveTierKpiStrip } from './components/FiveTierKpiStrip';
 import { OperationalHotspotsV2 } from './components/OperationalHotspotsV2';
 import { HistoricalSnapshotTrend } from './components/HistoricalSnapshotTrend';
+import { EnterprisePortfolioAnalytics } from './components/EnterprisePortfolioAnalytics';
 import { PaginatedPortfolioGrid } from './components/PaginatedPortfolioGrid';
 import { KpiWhyModal } from './components/KpiWhyModal';
+import { EnterpriseGlobalSearchBar } from './components/EnterpriseGlobalSearchBar';
+import { EnterpriseRiskConcentrationSuite } from './components/EnterpriseRiskConcentrationSuite';
 
 export type DrillLevel =
   | 'BANK'
@@ -62,21 +65,27 @@ export type DrillLevel =
 
 interface HierarchicalDashboardProps {
   currentUser: UserSession;
+  selectedSegment?: string;
+  onSelectSegment?: (segment: string) => void;
   segments?: BusinessSegment[];
   branches?: Branch[];
   onNavigate?: (screen: string, params?: any) => void;
+  onRefreshTelemetry?: () => void;
 }
 
 export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
   currentUser,
+  selectedSegment: propSelectedSegment,
+  onSelectSegment,
   segments = [],
   branches = [],
   onNavigate,
+  onRefreshTelemetry,
 }) => {
   // Determine initial drill level based on role and organizational metadata (no hardcoded fallbacks)
   const initialSetup = useMemo(() => {
     const role = currentUser.role;
-    const defaultSegment = currentUser.segment || (segments[0]?.name || '');
+    const defaultSegment = propSelectedSegment || currentUser.segment || (segments[0]?.name || '');
     const defaultDistrict = currentUser.branch || (branches[0]?.parentDistrictId || '');
     const defaultBranch = currentUser.branch || (branches[0]?.name || '');
 
@@ -102,6 +111,16 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
   const [selectedFacilityId, setSelectedFacilityId] = useState<string>('');
   const [selectedCollateralId, setSelectedCollateralId] = useState<string>('');
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
+
+  // Synchronize when parent changes selectedSegment
+  useEffect(() => {
+    if (propSelectedSegment && propSelectedSegment !== selectedSegment) {
+      setSelectedSegment(propSelectedSegment);
+      if (currentLevel === 'BANK' && propSelectedSegment !== 'ALL') {
+        setCurrentLevel('SEGMENT');
+      }
+    }
+  }, [propSelectedSegment]);
 
   // Why Modal State for Deterministic Explanations
   const [whyModalKey, setWhyModalKey] = useState<string | null>(null);
@@ -131,6 +150,17 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState<string>('');
+  const [portfolioStatusFilter, setPortfolioStatusFilter] = useState<string>('ALL');
+
+  const handleActionDrillDown = useCallback((_filterType: string, filterValue: string, _label: string) => {
+    setPortfolioStatusFilter(filterValue);
+    setTimeout(() => {
+      const el = document.getElementById('portfolio-grid-section');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 100);
+  }, []);
 
   // Load data progressively based on current level
   const loadLevelData = useCallback(async () => {
@@ -198,6 +228,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
   const drillToSegment = (seg: string) => {
     setSelectedSegment(seg);
     setCurrentLevel('SEGMENT');
+    if (onSelectSegment) onSelectSegment(seg);
   };
 
   const drillToDistrict = (dist: string) => {
@@ -434,72 +465,132 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
     if (!items) return null;
     return (
       <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <Layers className="w-5 h-5 text-indigo-600" />
             <div>
-              <h4 className="font-bold text-sm text-[#101828]">Cross-Segment Shared Collateral Assets</h4>
-              <p className="text-xs text-[#5B6472]">Securing credit facilities across multiple segments without double counting valuation</p>
+              <h4 className="font-bold text-sm text-[#101828]">Shared Collateral Analytics (§26)</h4>
+              <p className="text-xs text-[#5B6472]">Cross-facility and cross-segment collateral assets with single-counted market valuation</p>
             </div>
           </div>
           <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200">
-            {items.length} Assets
+            {items.length} Shared Assets
           </span>
         </div>
 
         {items.length === 0 ? (
           <div className="p-6 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-center">
-            <div className="text-xs font-semibold text-[#5B6472]">No cross-segment shared collateral assets identified in this scope.</div>
+            <div className="text-xs font-semibold text-[#5B6472]">No shared collateral assets identified in this authorized scope.</div>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 border-b border-[#E2E8F0] text-[#5B6472] uppercase text-[10px]">
                 <tr>
-                  <th className="p-3">Collateral Code</th>
-                  <th className="p-3">Description</th>
-                  <th className="p-3">Category</th>
-                  <th className="p-3">Borrower</th>
-                  <th className="p-3">Owning Segment</th>
-                  <th className="p-3">Linked Segments</th>
-                  <th className="p-3">Facilities</th>
+                  <th className="p-3">Collateral ID</th>
+                  <th className="p-3">Type</th>
                   <th className="p-3">Market Value</th>
+                  <th className="p-3">Linked Facilities</th>
+                  <th className="p-3">Secured Exposure</th>
+                  <th className="p-3">Allocated Security</th>
+                  <th className="p-3">Business Segments</th>
+                  <th className="p-3">Branches</th>
+                  <th className="p-3">Active Insurance</th>
+                  <th className="p-3">Requirement</th>
+                  <th className="p-3">Deficit Gap</th>
+                  <th className="p-3">Coverage %</th>
+                  <th className="p-3">Relationship Flags</th>
                   <th className="p-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
-                {items.map((sc: any) => (
-                  <tr key={sc.collateralId} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-3 font-mono font-bold text-[#1F4E7A]">{sc.collateralCode}</td>
-                    <td className="p-3 font-semibold text-[#101828]">{sc.description}</td>
-                    <td className="p-3">{sc.category}</td>
-                    <td className="p-3">{sc.customerName}</td>
-                    <td className="p-3">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
-                        {sc.owningSegment}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <div className="flex flex-wrap gap-1">
-                        {sc.linkedSegments?.map((seg: string) => (
-                          <span key={seg} className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-100 text-slate-800 border border-slate-300">
-                            {seg}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="p-3 font-bold">{sc.facilityCount} facilities</td>
-                    <td className="p-3 font-bold text-[#101828]">ETB {Number(sc.marketValue ?? 0).toLocaleString()}</td>
-                    <td className="p-3 text-right">
-                      <button
-                        onClick={() => drillToCollateral(sc.collateralId)}
-                        className="px-2.5 py-1 bg-[#EFF5FB] hover:bg-[#DCE9F5] text-[#1F4E7A] font-bold rounded border border-[#B9D3EB] text-xs transition-colors"
-                      >
-                        View Asset
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {items.map((sc: any) => {
+                  const cov = sc.coveragePct ?? 0;
+                  const covColor =
+                    cov >= 100
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : cov > 0
+                      ? 'bg-amber-100 text-amber-800 border-amber-300'
+                      : 'bg-red-100 text-red-800 border-red-300';
+
+                  return (
+                    <tr key={sc.collateralId} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3 font-mono font-bold text-[#1F4E7A]">
+                        {sc.collateralCode || sc.collateralId}
+                      </td>
+                      <td className="p-3 font-medium text-slate-700">{sc.collateralType || sc.category}</td>
+                      <td className="p-3 font-bold text-[#101828]">
+                        ETB {Number(sc.marketValue ?? 0).toLocaleString()}
+                        <div className="text-[10px] text-slate-400 font-normal">Single-counted</div>
+                      </td>
+                      <td className="p-3">
+                        <span className="font-bold text-slate-800">{sc.linkedFacilitiesCount || sc.facilityCount || 1} facilities</span>
+                        <div className="flex flex-wrap gap-1 mt-0.5 max-w-[140px]">
+                          {sc.linkedFacilities?.map((f: any, i: number) => (
+                            <span key={i} className="text-[9px] bg-slate-100 px-1 py-0.5 rounded text-slate-600 font-mono">
+                              {f.facilityRef || f.facilityId}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-3 font-semibold text-slate-800">
+                        ETB {Number(sc.aggregateSecuredExposure ?? 0).toLocaleString()}
+                      </td>
+                      <td className="p-3 font-semibold text-slate-800">
+                        ETB {Number(sc.allocatedSecurity ?? sc.totalAllocatedSecurity ?? 0).toLocaleString()}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex flex-wrap gap-1 max-w-[160px]">
+                          {(sc.businessSegments || sc.linkedSegments || [sc.owningSegment]).filter(Boolean).map((seg: string, i: number) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-800 border border-blue-200">
+                              {seg}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        {Array.isArray(sc.branches) && sc.branches.length > 0 ? sc.branches.join(', ') : (sc.branch || '—')}
+                      </td>
+                      <td className="p-3 font-bold text-emerald-700">
+                        ETB {Number(sc.activeInsurance ?? 0).toLocaleString()}
+                      </td>
+                      <td className="p-3 font-bold text-slate-800">
+                        ETB {Number(sc.insuranceRequirement ?? 0).toLocaleString()}
+                      </td>
+                      <td className="p-3 font-bold text-rose-700">
+                        ETB {Number(sc.insuranceGap ?? 0).toLocaleString()}
+                      </td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${covColor}`}>
+                          {cov}%
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex flex-col gap-1">
+                          {sc.sharedAcrossFacilities && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-50 text-purple-800 border border-purple-200">
+                              Multi-Facility
+                            </span>
+                          )}
+                          {sc.sharedAcrossSegments && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                              Cross-Segment
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => drillToCollateral(sc.collateralId)}
+                          className="px-2.5 py-1 bg-[#EFF5FB] hover:bg-[#DCE9F5] text-[#1F4E7A] font-bold rounded border border-[#B9D3EB] text-xs transition-colors whitespace-nowrap"
+                          title="View Collateral and Relationship Hierarchy"
+                        >
+                          View Relationship
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -527,9 +618,16 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
             : `${currentLevel} View`
         }
         authorizedRole={currentUser.role}
-        asOfDate={data?.asOfDate || new Date().toISOString().split('T')[0]}
-        lastRefresh={data?.lastRefreshed || new Date().toLocaleTimeString()}
-        onRefresh={loadLevelData}
+        asOfDate={data?.asOfDate || data?.scopeBanner?.asOfDate || data?.summary?.scopeBanner?.asOfDate || data?.summary?.systemDate || new Date().toISOString().split('T')[0]}
+        lastRefresh={data?.lastRefreshed || data?.scopeBanner?.lastRefresh || data?.summary?.scopeBanner?.lastRefresh || data?.summary?.lastRefreshTimestamp || new Date().toLocaleTimeString()}
+        cbsSyncStatus={data?.cbsSyncStatus || data?.scopeBanner?.cbsSyncStatus || data?.summary?.scopeBanner?.cbsSyncStatus || 'Not Available'}
+        cbsLastSyncedAt={data?.cbsLastSyncedAt || data?.scopeBanner?.cbsLastSyncedAt || data?.summary?.scopeBanner?.cbsLastSyncedAt}
+        cbsFreshnessMessage={data?.scopeBanner?.cbsFreshnessMessage || data?.summary?.scopeBanner?.cbsFreshnessMessage}
+        onRefresh={async () => {
+          cimsApi.invalidateState();
+          await loadLevelData();
+          if (onRefreshTelemetry) onRefreshTelemetry();
+        }}
         isLoading={isLoading}
       />
 
@@ -581,6 +679,17 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
         </div>
       </div>
 
+      {/* Enterprise Global Search Bar (Omnisearch with Hotkey / or Ctrl+K) */}
+      <EnterpriseGlobalSearchBar
+        userId={currentUser.userId || currentUser.username}
+        segment={selectedSegment && selectedSegment !== 'ALL' ? selectedSegment : undefined}
+        district={selectedDistrict && selectedDistrict !== 'ALL' ? selectedDistrict : undefined}
+        branch={selectedBranch && selectedBranch !== 'ALL' ? selectedBranch : undefined}
+        onDrillToCustomer={drillToCustomer}
+        onDrillToFacility={drillToFacility}
+        onDrillToCollateral={drillToCollateral}
+      />
+
       {/* Loading & Error State */}
       {isLoading && (
         <div className="p-12 bg-white border border-[#E2E8F0] rounded-xl text-center space-y-3 shadow-xs">
@@ -616,14 +725,25 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <FiveTierKpiStrip
                   summary={data.summary}
                   onWhyClick={handleWhyClick}
+                  onActionDrillDown={handleActionDrillDown}
                 />
               )}
 
-              {/* Genuine Longitudinal Trend Analysis */}
-              <HistoricalSnapshotTrend
+              {/* Enterprise Portfolio Longitudinal Analytics & Velocity Suite */}
+              <EnterprisePortfolioAnalytics
+                portfolioTimeline={data.portfolioTimeline}
+                summary={data.summary}
                 scopeLevel="BANK"
                 scopeId="ALL"
                 userId={currentUser.userId || currentUser.username}
+              />
+
+              {/* Enterprise Risk Concentration & Debtor Groups Suite */}
+              <EnterpriseRiskConcentrationSuite
+                userId={currentUser.userId || currentUser.username}
+                onDrillToCustomer={drillToCustomer}
+                onDrillToFacility={drillToFacility}
+                onDrillToCollateral={drillToCollateral}
               />
 
               {/* 4 Business Segments Comparison Cards (Click to Drill Down) */}
@@ -642,9 +762,9 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                   {data.segments?.map((seg: any) => {
                     const comp = seg.compliancePct ?? 0;
                     const compBadge =
-                      comp >= 90
+                      comp >= 100
                         ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                        : comp >= 70
+                        : comp > 0
                         ? 'bg-amber-100 text-amber-800 border-amber-300'
                         : 'bg-red-100 text-red-800 border-red-300';
 
@@ -702,14 +822,59 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Bank Visual Analytics: Exposure vs Coverage & Collateral Category Mix */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Exposure vs Active Coverage Bar Chart */}
-                <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs">
-                  <div className="flex items-center justify-between mb-4">
+              {/* SECTION 4 & 5: Portfolio & Insurance Overview + Adequacy Distribution (§14 & §15) */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Chart 1: Insurance Adequacy Distribution Donut (§14: Adequate, Underinsured, Uninsured) */}
+                <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <PieChartIcon className="w-4 h-4 text-[#2C6295]" />
+                      <h4 className="font-bold text-sm text-[#101828]">Insurance Adequacy Distribution (§14)</h4>
+                    </div>
+                    <span className="text-[10px] text-[#5B6472]">Adequacy Split</span>
+                  </div>
+                  <div className="h-60 w-full relative flex items-center justify-center">
+                    {data.complianceDonut && data.complianceDonut.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={data.complianceDonut}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={55}
+                            outerRadius={80}
+                            paddingAngle={4}
+                            dataKey="value"
+                          >
+                            {data.complianceDonut.map((entry: any, index: number) => (
+                              <Cell
+                                key={`cell-${index}`}
+                                fill={entry.color || (entry.name === 'Adequate' ? '#059669' : entry.name === 'Underinsured' ? '#D97706' : '#DC2626')}
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={((val: any, name: any) => [`${val} Collaterals`, name]) as any}
+                            contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="text-xs text-[#5B6472] text-center">No adequacy data available</div>
+                    )}
+                  </div>
+                  <div className="text-center text-[11px] text-slate-500 font-semibold pt-1 border-t border-slate-100">
+                    Total Monitored Collateral Assets: {data.summary?.totalCollateralsCount ?? data.summary?.activeCollateralsCount ?? 0}
+                  </div>
+                </div>
+
+                {/* Chart 2: Exposure vs Insurance Protection Grouped Bar (§15: Outstanding Exposure, Requirement, Active Insurance, Gap) */}
+                <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs lg:col-span-2">
+                  <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <BarChart3 className="w-4 h-4 text-[#2C6295]" />
-                      <h4 className="font-bold text-sm text-[#101828]">Segment Exposure vs Active Insurance</h4>
+                      <h4 className="font-bold text-sm text-[#101828]">Exposure vs Insurance Protection (§15)</h4>
                     </div>
                     <span className="text-[11px] text-[#5B6472]">ETB Millions</span>
                   </div>
@@ -718,7 +883,9 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                       <BarChart
                         data={data.segments?.map((s: any) => ({
                           name: s.segmentName?.replace(' Banking', '').replace(' (IFB)', ''),
+                          fullName: s.segmentName,
                           exposure: Number(((s.exposure ?? 0) / 1e6).toFixed(2)),
+                          insuranceRequired: Number(((s.insuranceRequired ?? 0) / 1e6).toFixed(2)),
                           activeInsurance: Number(((s.activeInsurance ?? 0) / 1e6).toFixed(2)),
                           gap: Number(((s.insuranceGap ?? 0) / 1e6).toFixed(2)),
                         })) || []}
@@ -728,32 +895,143 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
                         <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                         <Tooltip
-                          formatter={((value: any, name: any) => [
-                            `ETB ${Number(value).toLocaleString()}M`,
-                            name === 'exposure' ? 'Exposure' : name === 'activeInsurance' ? 'Active Insurance' : 'Protection Gap',
-                          ]) as any}
+                          formatter={((value: any, name: any) => [`ETB ${Number(value).toLocaleString()}M`, name]) as any}
+                          labelFormatter={(label, payload) => `Segment: ${payload?.[0]?.payload?.fullName || label}`}
                           contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                         />
                         <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                        <Bar dataKey="exposure" name="Outstanding Exposure" fill="#1e40af" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="activeInsurance" name="Active Insurance" fill="#059669" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="gap" name="Protection Gap" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="exposure" name="Outstanding Exposure" fill="#1F4E7A" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="insuranceRequired" name="Insurance Requirement" fill="#D97706" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="activeInsurance" name="Active Valid Insurance" fill="#059669" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="gap" name="Insurance Gap" fill="#DC2626" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
+              </div>
 
-                {/* Collateral Category Breakdown Donut */}
+              {/* SECTION 6: Expiry & Renewal Pipeline (§17 Chart 4) */}
+              <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-[#2C6295]" />
+                    <h4 className="font-bold text-sm text-[#101828]">Policy Expiry & Renewal Pipeline (§17)</h4>
+                  </div>
+                  <span className="text-[11px] text-[#5B6472]">Authoritative Effective Policy Lifecycle</span>
+                </div>
+                <div className="h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={data.expiryPipeline || []}
+                      margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="bucket" stroke="#64748b" fontSize={11} tickLine={false} />
+                      <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+                      <Tooltip
+                        formatter={((val: any) => [`${val} Policies`, 'Policy Count']) as any}
+                        contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
+                      />
+                      <Bar dataKey="count" name="Policy Count" radius={[4, 4, 0, 0]}>
+                        {(data.expiryPipeline || []).map((entry: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={entry.color || '#2C6295'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* SECTION 7: Insurance Company Exposure (§18 Chart 5 & §36) */}
+              {data.insurerExposure && data.insurerExposure.length > 0 && (
+                <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-[#1F4E7A]" />
+                      <h4 className="font-bold text-sm text-[#101828]">Insurance Company Exposure & Concentration (§18 & §36)</h4>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-500">
+                      Configured Concentration Limit: {data.insurerExposure[0]?.configuredLimit ?? 30}%
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Horizontal Bar: Active Insurance by Insurer */}
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          layout="vertical"
+                          data={data.insurerExposure.slice(0, 6)}
+                          margin={{ top: 5, right: 20, left: 40, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                          <XAxis type="number" stroke="#64748b" fontSize={10} tickFormatter={(v) => `ETB ${(v / 1e6).toFixed(0)}M`} />
+                          <YAxis dataKey="insurer" type="category" stroke="#64748b" fontSize={10} width={100} />
+                          <Tooltip
+                            formatter={((val: any) => [`ETB ${Number(val).toLocaleString()}`, 'Active Insurance']) as any}
+                            contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
+                          />
+                          <Bar dataKey="activeInsurance" name="Active Insurance" fill="#1F4E7A" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Insurer Exposure Table */}
+                    <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-50 border-b border-[#E2E8F0] text-[#5B6472] uppercase text-[10px] sticky top-0">
+                          <tr>
+                            <th className="p-2.5">Insurer</th>
+                            <th className="p-2.5 text-right">Active Cover</th>
+                            <th className="p-2.5 text-right">Share %</th>
+                            <th className="p-2.5 text-center">Policies</th>
+                            <th className="p-2.5 text-center">Expiring 30d</th>
+                            <th className="p-2.5 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#E2E8F0]">
+                          {data.insurerExposure.map((ins: any, idx: number) => (
+                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                              <td className="p-2.5 font-bold text-[#101828] truncate max-w-[140px]">{ins.insurer}</td>
+                              <td className="p-2.5 text-right font-mono font-semibold text-emerald-700">
+                                ETB {((ins.activeInsurance ?? 0) / 1e6).toFixed(1)}M
+                              </td>
+                              <td className="p-2.5 text-right font-bold text-slate-800">{ins.portfolioSharePct}%</td>
+                              <td className="p-2.5 text-center font-semibold text-slate-700">{ins.policyCount}</td>
+                              <td className="p-2.5 text-center font-semibold text-amber-700">{ins.expiringPolicyCount}</td>
+                              <td className="p-2.5 text-center">
+                                {ins.isConcentrationRisk ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                    Over Limit
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    Within Limit
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 8: Collateral Category & Type Exposure (§19 & §20) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Category Mix */}
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <PieChartIcon className="w-4 h-4 text-[#2C6295]" />
-                      <h4 className="font-bold text-sm text-[#101828]">Collateral Portfolio Composition</h4>
+                      <h4 className="font-bold text-sm text-[#101828]">Collateral Category Distribution (§19)</h4>
                     </div>
-                    <span className="text-[11px] text-[#5B6472]">By Asset Class</span>
+                    <span className="text-[11px] text-[#5B6472]">Taxonomy Assets</span>
                   </div>
-                  <div className="h-64 w-full flex items-center justify-center">
-                    {data.categoryDistribution && data.categoryDistribution.some((c: any) => c.value > 0 || c.count > 0) ? (
+                  <div className="h-60 w-full flex items-center justify-center">
+                    {data.categoryDistribution && data.categoryDistribution.some((c: any) => (c.value ?? c.count ?? 0) > 0) ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
@@ -763,8 +1041,8 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                             }))}
                             cx="50%"
                             cy="50%"
-                            innerRadius={55}
-                            outerRadius={80}
+                            innerRadius={50}
+                            outerRadius={75}
                             paddingAngle={4}
                             dataKey="value"
                           >
@@ -773,22 +1051,132 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                             ))}
                           </Pie>
                           <Tooltip
-                            formatter={((val: any) => [`${val} ${data.categoryDistribution[0]?.value ? 'ETB M' : 'Assets'}`, 'Volume']) as any}
+                            formatter={((val: any, name: any) => [`${val} ETB M / Assets`, name]) as any}
                             contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                           />
                           <Legend wrapperStyle={{ fontSize: '10px' }} layout="horizontal" verticalAlign="bottom" />
                         </PieChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div className="text-xs text-[#5B6472] text-center">No category distribution data available</div>
+                      <div className="text-xs text-[#5B6472] text-center">No category data available</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Collateral Type Exposure (§20 Chart 7) */}
+                <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-[#2C6295]" />
+                      <h4 className="font-bold text-sm text-[#101828]">Collateral Type Exposure (§20)</h4>
+                    </div>
+                    <span className="text-[11px] text-[#5B6472]">Secured Exposure by Asset Type</span>
+                  </div>
+                  <div className="h-60 w-full">
+                    {data.collateralTypeExposure && data.collateralTypeExposure.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          layout="vertical"
+                          data={data.collateralTypeExposure.slice(0, 5)}
+                          margin={{ top: 5, right: 20, left: 30, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                          <XAxis type="number" stroke="#64748b" fontSize={10} tickFormatter={(v) => `ETB ${(v / 1e6).toFixed(0)}M`} />
+                          <YAxis dataKey="type" type="category" stroke="#64748b" fontSize={10} width={90} />
+                          <Tooltip
+                            formatter={((val: any) => [`ETB ${Number(val).toLocaleString()}`, 'Secured Exposure']) as any}
+                            contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
+                          />
+                          <Bar dataKey="exposure" name="Secured Exposure" fill="#0D9488" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="text-xs text-[#5B6472] text-center pt-24">No collateral type exposure data</div>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Segment Comparison Breakdown Table */}
+              {/* SECTION 9: Policy Ageing & Documentation Health (§21 & §25) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Policy Ageing (§21 Chart 8: currentDate - effectiveDate in days) */}
+                <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-[#2C6295]" />
+                      <h4 className="font-bold text-sm text-[#101828]">Policy Ageing Analysis (§21)</h4>
+                    </div>
+                    <span className="text-[11px] text-[#5B6472]">Age since Effective Date</span>
+                  </div>
+                  <div className="h-56 w-full">
+                    {data.policyAgeing && data.policyAgeing.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={data.policyAgeing}
+                          margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                          <XAxis dataKey="ageBucket" stroke="#64748b" fontSize={11} tickLine={false} />
+                          <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+                          <Tooltip
+                            formatter={((val: any) => [`${val} Policies`, 'Policy Count']) as any}
+                            contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
+                          />
+                          <Bar dataKey="policyCount" name="Policies in Bracket" fill="#6366F1" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="text-xs text-[#5B6472] text-center pt-20">No policy ageing data available</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Documentation Health (§25 Chart 12 & §33) */}
+                <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <FileCheck className="w-4 h-4 text-[#2C6295]" />
+                      <h4 className="font-bold text-sm text-[#101828]">Documentation Integrity Health (§25)</h4>
+                    </div>
+                    <span className="text-[11px] text-[#5B6472]">Mandatory Rule Satisfaction</span>
+                  </div>
+                  <div className="h-56 w-full flex items-center justify-center">
+                    {data.documentationHealth && data.documentationHealth.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={data.documentationHealth}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={50}
+                            outerRadius={75}
+                            paddingAngle={4}
+                            dataKey="value"
+                          >
+                            {data.documentationHealth.map((entry: any, index: number) => (
+                              <Cell key={`cell-${index}`} fill={entry.color || PIE_COLORS[index % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={((val: any, name: any) => [`${val} Items`, name]) as any}
+                            contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '10px' }} layout="horizontal" verticalAlign="bottom" />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="text-xs text-[#5B6472] text-center">No document health records</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 10: Segment Comparison Breakdown Table (§22) */}
               <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs">
-                <h4 className="font-bold text-sm text-[#101828] mb-3">Bank-Wide Cross-Segment Performance Matrix</h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-bold text-sm text-[#101828]">Bank-Wide Cross-Segment Performance Matrix (§22)</h4>
+                  <span className="text-xs text-slate-500 font-medium">Click row to drill into segment</span>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead className="bg-slate-50 border-b border-[#E2E8F0] text-[#5B6472] uppercase text-[10px]">
@@ -799,6 +1187,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         <th className="p-3">Collaterals</th>
                         <th className="p-3">Market Value</th>
                         <th className="p-3">Exposure</th>
+                        <th className="p-3">Requirement</th>
                         <th className="p-3">Active Cover</th>
                         <th className="p-3">Gap</th>
                         <th className="p-3">Compliance</th>
@@ -806,43 +1195,118 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E2E8F0]">
-                      {data.segments?.map((seg: any) => (
-                        <tr key={seg.segmentName} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-3 font-bold text-[#101828] flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-[#2C6295]" />
-                            {seg.segmentName}
-                          </td>
-                          <td className="p-3 font-semibold">{seg.customerCount ?? 0}</td>
-                          <td className="p-3 font-semibold">{seg.facilityCount ?? 0}</td>
-                          <td className="p-3 font-semibold">{seg.collateralCount ?? 0}</td>
-                          <td className="p-3 font-bold">ETB {((seg.collateralValue ?? 0) / 1e6).toFixed(2)}M</td>
-                          <td className="p-3 font-bold text-[#1F4E7A]">ETB {((seg.exposure ?? 0) / 1e6).toFixed(2)}M</td>
-                          <td className="p-3 font-bold text-emerald-700">ETB {((seg.activeInsurance ?? 0) / 1e6).toFixed(2)}M</td>
-                          <td className="p-3 font-bold text-red-600">ETB {((seg.insuranceGap ?? 0) / 1e6).toFixed(2)}M</td>
-                          <td className="p-3">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
-                              {seg.compliancePct ?? 0}%
-                            </span>
-                          </td>
-                          <td className="p-3 text-right">
-                            <button
-                              onClick={() => drillToSegment(seg.segmentName)}
-                              className="px-2.5 py-1 bg-[#EFF5FB] hover:bg-[#DCE9F5] text-[#1F4E7A] text-xs font-bold rounded border border-[#B9D3EB] transition-colors"
-                            >
-                              Explore
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {data.segments?.map((seg: any) => {
+                        const comp = seg.compliancePct ?? 0;
+                        const badgeColor =
+                          comp >= 100
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : comp > 0
+                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                            : 'bg-red-100 text-red-800 border-red-300';
+
+                        return (
+                          <tr key={seg.segmentName} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-3 font-bold text-[#101828] flex items-center gap-2">
+                              <Building2 className="w-4 h-4 text-[#2C6295]" />
+                              {seg.segmentName}
+                            </td>
+                            <td className="p-3 font-semibold">{seg.customerCount ?? 0}</td>
+                            <td className="p-3 font-semibold">{seg.facilityCount ?? 0}</td>
+                            <td className="p-3 font-semibold">{seg.collateralCount ?? 0}</td>
+                            <td className="p-3 font-bold">ETB {((seg.collateralValue ?? 0) / 1e6).toFixed(2)}M</td>
+                            <td className="p-3 font-bold text-[#1F4E7A]">ETB {((seg.exposure ?? 0) / 1e6).toFixed(2)}M</td>
+                            <td className="p-3 font-bold text-slate-800">ETB {((seg.insuranceRequired ?? 0) / 1e6).toFixed(2)}M</td>
+                            <td className="p-3 font-bold text-emerald-700">ETB {((seg.activeInsurance ?? 0) / 1e6).toFixed(2)}M</td>
+                            <td className="p-3 font-bold text-red-600">ETB {((seg.insuranceGap ?? 0) / 1e6).toFixed(2)}M</td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeColor}`}>
+                                {comp}%
+                              </span>
+                            </td>
+                            <td className="p-3 text-right">
+                              <button
+                                onClick={() => drillToSegment(seg.segmentName)}
+                                className="px-2.5 py-1 bg-[#EFF5FB] hover:bg-[#DCE9F5] text-[#1F4E7A] text-xs font-bold rounded border border-[#B9D3EB] transition-colors"
+                              >
+                                Explore
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              {/* Cross-Segment Shared Collateral Assets (Single Count Valuation) */}
+              {/* SECTION 11: RM Compliance Analysis (§23 Chart 10) */}
+              {data.rmCompliance && data.rmCompliance.length > 0 && (
+                <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-[#2C6295]" />
+                      <h4 className="font-bold text-sm text-[#101828]">Relationship Manager Portfolio Compliance (§23)</h4>
+                    </div>
+                    <span className="text-[11px] text-[#5B6472]">{data.rmCompliance.length} Officers Monitored</span>
+                  </div>
+                  <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 border-b border-[#E2E8F0] text-[#5B6472] uppercase text-[10px] sticky top-0">
+                        <tr>
+                          <th className="p-2.5">RM Officer</th>
+                          <th className="p-2.5 text-center">Customers</th>
+                          <th className="p-2.5 text-center">Collaterals</th>
+                          <th className="p-2.5 text-right">Exposure</th>
+                          <th className="p-2.5 text-right">Requirement</th>
+                          <th className="p-2.5 text-right">Active Cover</th>
+                          <th className="p-2.5 text-right">Deficit Gap</th>
+                          <th className="p-2.5 text-center">Coverage %</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E2E8F0]">
+                        {data.rmCompliance.slice(0, 10).map((rm: any, idx: number) => {
+                          const cov = rm.coveragePct ?? 0;
+                          const covBadge =
+                            cov >= 100
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : cov > 0
+                              ? 'bg-amber-100 text-amber-800 border-amber-300'
+                              : 'bg-red-100 text-red-800 border-red-300';
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                              <td className="p-2.5 font-bold text-[#101828]">{rm.rmName || rm.officer}</td>
+                              <td className="p-2.5 text-center font-semibold">{rm.customerCount}</td>
+                              <td className="p-2.5 text-center font-semibold">{rm.collateralCount}</td>
+                              <td className="p-2.5 text-right font-semibold text-[#1F4E7A]">
+                                ETB {((rm.exposure ?? 0) / 1e6).toFixed(1)}M
+                              </td>
+                              <td className="p-2.5 text-right font-semibold text-slate-800">
+                                ETB {((rm.insuranceRequired ?? 0) / 1e6).toFixed(1)}M
+                              </td>
+                              <td className="p-2.5 text-right font-bold text-emerald-700">
+                                ETB {((rm.activeInsurance ?? 0) / 1e6).toFixed(1)}M
+                              </td>
+                              <td className="p-2.5 text-right font-bold text-rose-700">
+                                ETB {((rm.insuranceGap ?? 0) / 1e6).toFixed(1)}M
+                              </td>
+                              <td className="p-2.5 text-center">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${covBadge}`}>
+                                  {cov}%
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 12: Shared Collateral Analytics Table (§26) */}
               {renderSharedCollaterals(data.sharedCollaterals)}
 
-              {/* Action-Oriented Operational Hotspots */}
+              {/* SECTION 13: Action-Oriented Operational Hotspots */}
               <OperationalHotspotsV2
                 items={data.requiresAttention}
                 onDrillToCollateral={drillToCollateral}
@@ -851,12 +1315,17 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 onNavigate={onNavigate}
               />
 
+              {/* SECTION 15: Universal Portfolio Table (§30: Server-Side Paginated Grid) */}
+
               {/* Bank-Wide Scoped Paginated Portfolio Grid */}
-              <PaginatedPortfolioGrid
-                userId={currentUser.userId || currentUser.username}
-                onDrillToCollateral={drillToCollateral}
-                onDrillToCustomer={drillToCustomer}
-              />
+              <div id="portfolio-grid-section">
+                <PaginatedPortfolioGrid
+                  userId={currentUser.userId || currentUser.username}
+                  initialStatus={portfolioStatusFilter}
+                  onDrillToCollateral={drillToCollateral}
+                  onDrillToCustomer={drillToCustomer}
+                />
+              </div>
             </div>
           )}
 
@@ -868,14 +1337,26 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <FiveTierKpiStrip
                   summary={data.summary}
                   onWhyClick={handleWhyClick}
+                  onActionDrillDown={handleActionDrillDown}
                 />
               )}
 
-              {/* Segment Longitudinal Trend Analysis */}
-              <HistoricalSnapshotTrend
+              {/* Segment Longitudinal Portfolio Analytics & Velocity Suite */}
+              <EnterprisePortfolioAnalytics
+                portfolioTimeline={data.portfolioTimeline}
+                summary={data.summary}
                 scopeLevel="SEGMENT"
                 scopeId={data.segmentName || selectedSegment}
                 userId={currentUser.userId || currentUser.username}
+              />
+
+              {/* Segment-Level Enterprise Risk Concentration & Debtor Groups Suite */}
+              <EnterpriseRiskConcentrationSuite
+                userId={currentUser.userId || currentUser.username}
+                segment={data.segmentName || selectedSegment}
+                onDrillToCustomer={drillToCustomer}
+                onDrillToFacility={drillToFacility}
+                onDrillToCollateral={drillToCollateral}
               />
 
               {/* Segment Visual Analytics: District Breakdown & Compliance Ranking */}
@@ -894,6 +1375,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                       <BarChart
                         data={data.districts?.map((d: any) => ({
                           name: d.districtName?.replace(' District', ''),
+                          fullName: d.districtName,
                           exposure: Number(((d.exposure ?? 0) / 1e6).toFixed(2)),
                           activeInsurance: Number(((d.activeInsurance ?? 0) / 1e6).toFixed(2)),
                           gap: Number(((d.insuranceGap ?? 0) / 1e6).toFixed(2)),
@@ -904,10 +1386,18 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
                         <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                         <Tooltip
-                          formatter={((value: any, name: any) => [
-                            `ETB ${Number(value).toLocaleString()}M`,
-                            name === 'exposure' ? 'Exposure' : name === 'activeInsurance' ? 'Active Insurance' : 'Gap',
-                          ]) as any}
+                          formatter={((value: any, name: any, item: any) => {
+                            const valStr = `ETB ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`;
+                            const key = item?.dataKey || name;
+                            if (key === 'exposure' || name === 'Exposure') return [valStr, 'Outstanding Exposure'];
+                            if (key === 'activeInsurance' || name === 'Active Cover' || name === 'Active Insurance') return [valStr, 'Active Insurance Cover'];
+                            if (key === 'gap' || name === 'Gap') return [valStr, 'Protection Deficit (Gap)'];
+                            return [valStr, name];
+                          }) as any}
+                          labelFormatter={(label, payload) => {
+                            const fullName = payload?.[0]?.payload?.fullName || label;
+                            return `District: ${fullName}`;
+                          }}
                           contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                         />
                         <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -928,7 +1418,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                   <div className="space-y-3.5 my-auto overflow-y-auto max-h-60 pr-1">
                     {data.districts?.map((d: any) => {
                       const comp = d.compliancePct ?? 0;
-                      const barColor = comp >= 90 ? 'bg-emerald-500' : comp >= 70 ? 'bg-amber-500' : 'bg-red-500';
+                      const barColor = comp >= 100 ? 'bg-emerald-500' : comp > 0 ? 'bg-amber-500' : 'bg-red-500';
                       return (
                         <div key={d.districtName} className="space-y-1">
                           <div className="flex items-center justify-between text-xs">
@@ -1025,12 +1515,15 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
               />
 
               {/* Segment-Scoped Paginated Portfolio Grid */}
-              <PaginatedPortfolioGrid
-                userId={currentUser.userId || currentUser.username}
-                segment={data.segmentName || selectedSegment}
-                onDrillToCollateral={drillToCollateral}
-                onDrillToCustomer={drillToCustomer}
-              />
+              <div id="portfolio-grid-section">
+                <PaginatedPortfolioGrid
+                  userId={currentUser.userId || currentUser.username}
+                  segment={data.segmentName || selectedSegment}
+                  initialStatus={portfolioStatusFilter}
+                  onDrillToCollateral={drillToCollateral}
+                  onDrillToCustomer={drillToCustomer}
+                />
+              </div>
             </div>
           )}
 
@@ -1054,7 +1547,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                   </div>
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
                     <div className="text-[#5B6472]">Compliance</div>
-                    <div className="text-base font-bold text-emerald-700">{data.summary?.insuranceCoveragePct ?? 0}%</div>
+                    <div className="text-base font-bold text-emerald-700">{data.summary?.insuranceComplianceRate ?? data.summary?.insuranceCoveragePct ?? 0}%</div>
                   </div>
                 </div>
               </div>
@@ -1064,8 +1557,28 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <FiveTierKpiStrip
                   summary={data.summary}
                   onWhyClick={handleWhyClick}
+                  onActionDrillDown={handleActionDrillDown}
                 />
               )}
+
+              {/* District Longitudinal Portfolio Analytics & Velocity Suite */}
+              <EnterprisePortfolioAnalytics
+                portfolioTimeline={data.portfolioTimeline}
+                summary={data.summary}
+                scopeLevel="DISTRICT"
+                scopeId={data.districtName || selectedDistrict}
+                userId={currentUser.userId || currentUser.username}
+              />
+
+              {/* District-Level Enterprise Risk Concentration & Debtor Groups Suite */}
+              <EnterpriseRiskConcentrationSuite
+                userId={currentUser.userId || currentUser.username}
+                district={data.districtName || selectedDistrict}
+                segment={data.segmentName || selectedSegment}
+                onDrillToCustomer={drillToCustomer}
+                onDrillToFacility={drillToFacility}
+                onDrillToCollateral={drillToCollateral}
+              />
 
               {/* District Visual Analytics: Branch Exposure & Protection */}
               {data.branches && data.branches.length > 0 && (
@@ -1082,6 +1595,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                       <BarChart
                         data={data.branches.map((b: any) => ({
                           name: b.branchName?.replace(' Branch', '').replace(' Corporate Center', ''),
+                          fullName: b.branchName,
                           exposure: Number(((b.exposure ?? 0) / 1e6).toFixed(2)),
                           activeInsurance: Number(((b.activeInsurance ?? 0) / 1e6).toFixed(2)),
                           gap: Number(((b.insuranceGap ?? 0) / 1e6).toFixed(2)),
@@ -1092,10 +1606,18 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
                         <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                         <Tooltip
-                          formatter={((value: any, name: any) => [
-                            `ETB ${Number(value).toLocaleString()}M`,
-                            name === 'exposure' ? 'Exposure' : name === 'activeInsurance' ? 'Active Cover' : 'Protection Gap',
-                          ]) as any}
+                          formatter={((value: any, name: any, item: any) => {
+                            const valStr = `ETB ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`;
+                            const key = item?.dataKey || name;
+                            if (key === 'exposure' || name === 'Exposure') return [valStr, 'Outstanding Exposure'];
+                            if (key === 'activeInsurance' || name === 'Active Cover' || name === 'Active Insurance') return [valStr, 'Active Insurance Cover'];
+                            if (key === 'gap' || name === 'Gap') return [valStr, 'Protection Deficit (Gap)'];
+                            return [valStr, name];
+                          }) as any}
+                          labelFormatter={(label, payload) => {
+                            const fullName = payload?.[0]?.payload?.fullName || label;
+                            return `Branch: ${fullName}`;
+                          }}
                           contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                         />
                         <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -1175,13 +1697,16 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
               />
 
               {/* District-Scoped Paginated Portfolio Grid */}
-              <PaginatedPortfolioGrid
-                userId={currentUser.userId || currentUser.username}
-                district={data.districtName || selectedDistrict}
-                segment={selectedSegment}
-                onDrillToCollateral={drillToCollateral}
-                onDrillToCustomer={drillToCustomer}
-              />
+              <div id="portfolio-grid-section">
+                <PaginatedPortfolioGrid
+                  userId={currentUser.userId || currentUser.username}
+                  district={data.districtName || selectedDistrict}
+                  segment={selectedSegment}
+                  initialStatus={portfolioStatusFilter}
+                  onDrillToCollateral={drillToCollateral}
+                  onDrillToCustomer={drillToCustomer}
+                />
+              </div>
             </div>
           )}
 
@@ -1213,9 +1738,9 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                     </div>
                   </div>
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center min-w-[100px]">
-                    <div className="text-[#5B6472]">Coverage</div>
+                    <div className="text-[#5B6472]">Compliance</div>
                     <div className="text-base font-bold text-slate-800">
-                      {data.summary?.insuranceCoveragePct ?? 0}%
+                      {data.summary?.insuranceComplianceRate ?? data.summary?.insuranceCoveragePct ?? 0}%
                     </div>
                   </div>
                 </div>
@@ -1226,6 +1751,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <FiveTierKpiStrip
                   summary={data.summary}
                   onWhyClick={handleWhyClick}
+                  onActionDrillDown={handleActionDrillDown}
                 />
               )}
 
@@ -1246,6 +1772,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         <BarChart
                           data={data.branches.map((b: any) => ({
                             name: b.branchName?.replace(' Branch', '').replace(' Corporate Center', ''),
+                            fullName: b.branchName,
                             exposure: Number(((b.exposure ?? 0) / 1e6).toFixed(2)),
                             activeInsurance: Number(((b.activeInsurance ?? 0) / 1e6).toFixed(2)),
                             gap: Number(((b.insuranceGap ?? 0) / 1e6).toFixed(2)),
@@ -1256,10 +1783,18 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                           <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} />
                           <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
                           <Tooltip
-                            formatter={((value: any, name: any) => [
-                              `ETB ${Number(value).toLocaleString()}M`,
-                              name === 'exposure' ? 'Exposure' : name === 'activeInsurance' ? 'Active Insurance' : 'Gap',
-                            ]) as any}
+                            formatter={((value: any, name: any, item: any) => {
+                              const valStr = `ETB ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`;
+                              const key = item?.dataKey || name;
+                              if (key === 'exposure' || name === 'Exposure') return [valStr, 'Outstanding Exposure'];
+                              if (key === 'activeInsurance' || name === 'Active Cover' || name === 'Active Insurance') return [valStr, 'Active Insurance Cover'];
+                              if (key === 'gap' || name === 'Gap') return [valStr, 'Protection Deficit (Gap)'];
+                              return [valStr, name];
+                            }) as any}
+                            labelFormatter={(label, payload) => {
+                              const fullName = payload?.[0]?.payload?.fullName || label;
+                              return `Branch: ${fullName}`;
+                            }}
                             contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                           />
                           <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -1457,8 +1992,28 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <FiveTierKpiStrip
                   summary={data.summary}
                   onWhyClick={handleWhyClick}
+                  onActionDrillDown={handleActionDrillDown}
                 />
               )}
+
+              {/* Branch Longitudinal Portfolio Analytics & Velocity Suite */}
+              <EnterprisePortfolioAnalytics
+                portfolioTimeline={data.portfolioTimeline}
+                summary={data.summary}
+                scopeLevel="BRANCH"
+                scopeId={data.branchName || selectedBranch}
+                userId={currentUser.userId || currentUser.username}
+              />
+
+              {/* Branch-Level Enterprise Risk Concentration & Debtor Groups Suite */}
+              <EnterpriseRiskConcentrationSuite
+                userId={currentUser.userId || currentUser.username}
+                branch={data.branchName || selectedBranch}
+                segment={selectedSegment}
+                onDrillToCustomer={drillToCustomer}
+                onDrillToFacility={drillToFacility}
+                onDrillToCollateral={drillToCollateral}
+              />
 
               {/* Branch Multi-Segment Distribution & Collateral Mix */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1491,7 +2046,13 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                               <Cell key={`seg-cell-${idx}`} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }} />
+                          <Tooltip
+                            formatter={((val: any, name: any, item: any) => [
+                              `${Number(val).toLocaleString()} Facilities`,
+                              item?.payload?.name || name || 'Segment',
+                            ]) as any}
+                            contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
+                          />
                           <Legend wrapperStyle={{ fontSize: '10px' }} />
                         </PieChart>
                       </ResponsiveContainer>
@@ -1516,6 +2077,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         <BarChart
                           data={data.categoryDistribution.map((item: any) => ({
                             name: (item.name || item.category || '').substring(0, 14),
+                            fullName: item.name || item.category,
                             count: item.count ?? 1,
                           }))}
                           margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
@@ -1523,7 +2085,14 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                           <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} />
                           <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
-                          <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }} />
+                          <Tooltip
+                            formatter={((val: any) => [`${Number(val).toLocaleString()} Pledged Assets`, 'Asset Volume']) as any}
+                            labelFormatter={(label, payload) => {
+                              const fullName = payload?.[0]?.payload?.fullName || label;
+                              return `Asset Category: ${fullName}`;
+                            }}
+                            contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
+                          />
                           <Bar dataKey="count" name="Asset Count" fill="#0891b2" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -1533,6 +2102,58 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Branch Policy Expiry Pipeline & Insurers */}
+              {data.expiryPipeline && data.expiryPipeline.length > 0 && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-[#2C6295]" />
+                        <h4 className="font-bold text-sm text-[#101828]">Branch Policy Expiry Pipeline</h4>
+                      </div>
+                      <span className="text-[11px] text-[#5B6472]">Expiring Policies</span>
+                    </div>
+                    <div className="h-56 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={data.expiryPipeline} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                          <XAxis dataKey="bucket" stroke="#64748b" fontSize={10} tickLine={false} />
+                          <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+                          <Tooltip formatter={((val: any) => [`${val} Policies`, 'Policy Count']) as any} />
+                          <Bar dataKey="count" name="Policy Count" radius={[4, 4, 0, 0]}>
+                            {data.expiryPipeline.map((entry: any, index: number) => (
+                              <Cell key={`cell-${index}`} fill={entry.color || '#2C6295'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Branch Insurer Breakdown */}
+                  <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-[#1F4E7A]" />
+                        <h4 className="font-bold text-sm text-[#101828]">Branch Insurers & Underwriters</h4>
+                      </div>
+                      <span className="text-[11px] text-[#5B6472]">Underwriter Cover</span>
+                    </div>
+                    <div className="h-56 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart layout="vertical" data={(data.insurerExposure || []).slice(0, 5)} margin={{ top: 5, right: 20, left: 30, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                          <XAxis type="number" stroke="#64748b" fontSize={10} tickFormatter={(v) => `ETB ${(v / 1e6).toFixed(0)}M`} />
+                          <YAxis dataKey="insurer" type="category" stroke="#64748b" fontSize={10} width={90} />
+                          <Tooltip formatter={((val: any) => [`ETB ${Number(val).toLocaleString()}`, 'Active Insurance']) as any} />
+                          <Bar dataKey="activeInsurance" name="Active Insurance" fill="#1F4E7A" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Customer List in this Branch */}
               <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-xs">
@@ -1639,13 +2260,16 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
               />
 
               {/* Branch-Scoped Paginated Portfolio Grid */}
-              <PaginatedPortfolioGrid
-                userId={currentUser.userId || currentUser.username}
-                branch={data.branchName || selectedBranch}
-                segment={selectedSegment}
-                onDrillToCollateral={drillToCollateral}
-                onDrillToCustomer={drillToCustomer}
-              />
+              <div id="portfolio-grid-section">
+                <PaginatedPortfolioGrid
+                  userId={currentUser.userId || currentUser.username}
+                  branch={data.branchName || selectedBranch}
+                  segment={selectedSegment}
+                  initialStatus={portfolioStatusFilter}
+                  onDrillToCollateral={drillToCollateral}
+                  onDrillToCustomer={drillToCustomer}
+                />
+              </div>
             </div>
           )}
 

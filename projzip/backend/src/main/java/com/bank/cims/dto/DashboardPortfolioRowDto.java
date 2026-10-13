@@ -14,6 +14,8 @@ public class DashboardPortfolioRowDto {
     private String facilityId;
     private String facilityRef;
     private String facilityType;
+    private BigDecimal facilityOutstandingExposure;
+    private BigDecimal allocatedExposure;
     private BigDecimal outstandingExposure;
     private String collateralId;
     private String collateralCode;
@@ -65,6 +67,10 @@ public class DashboardPortfolioRowDto {
     public void setFacilityRef(String facilityRef) { this.facilityRef = facilityRef; }
     public String getFacilityType() { return facilityType; }
     public void setFacilityType(String facilityType) { this.facilityType = facilityType; }
+    public BigDecimal getFacilityOutstandingExposure() { return facilityOutstandingExposure; }
+    public void setFacilityOutstandingExposure(BigDecimal facilityOutstandingExposure) { this.facilityOutstandingExposure = facilityOutstandingExposure; }
+    public BigDecimal getAllocatedExposure() { return allocatedExposure; }
+    public void setAllocatedExposure(BigDecimal allocatedExposure) { this.allocatedExposure = allocatedExposure; }
     public BigDecimal getOutstandingExposure() { return outstandingExposure; }
     public void setOutstandingExposure(BigDecimal outstandingExposure) { this.outstandingExposure = outstandingExposure; }
     public String getCollateralId() { return collateralId; }

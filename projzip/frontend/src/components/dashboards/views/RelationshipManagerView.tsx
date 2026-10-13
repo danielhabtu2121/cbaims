@@ -89,9 +89,9 @@ export const RelationshipManagerView: React.FC<RelationshipManagerViewProps> = (
             </div>
           </div>
           <div style={{ textAlign: 'right', borderLeft: '1px solid #1B4580', paddingLeft: '16px' }}>
-            <div style={{ fontSize: '11px', color: '#B9D3EB' }}>Portfolio Coverage</div>
-            <div style={{ fontSize: '20px', fontWeight: 800, color: summary.insuranceCoveragePct >= 100 ? '#4ADE80' : '#FBBF24' }}>
-              {summary.insuranceCoveragePct}%
+            <div style={{ fontSize: '11px', color: '#B9D3EB' }}>Insurance Compliance Rate</div>
+            <div style={{ fontSize: '20px', fontWeight: 800, color: (summary.insuranceComplianceRate ?? summary.insuranceCoveragePct) >= 100 ? '#4ADE80' : '#FBBF24' }}>
+              {(summary.insuranceComplianceRate ?? summary.insuranceCoveragePct)}%
             </div>
           </div>
         </div>

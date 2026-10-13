@@ -93,9 +93,9 @@ export const SegmentDirectorDashboardView: React.FC<SegmentDirectorDashboardView
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '11px', color: '#B9D3EB' }}>Coverage Adequacy</div>
-            <div style={{ fontSize: '22px', fontWeight: 800, color: summary.insuranceCoveragePct >= 100 ? '#4ADE80' : '#FBBF24' }}>
-              {summary.insuranceCoveragePct}%
+            <div style={{ fontSize: '11px', color: '#B9D3EB' }}>Insurance Compliance Rate</div>
+            <div style={{ fontSize: '22px', fontWeight: 800, color: (summary.insuranceComplianceRate ?? summary.insuranceCoveragePct) >= 100 ? '#4ADE80' : '#FBBF24' }}>
+              {(summary.insuranceComplianceRate ?? summary.insuranceCoveragePct)}%
             </div>
           </div>
           <div style={{ textAlign: 'right', borderLeft: '1px solid #1B4580', paddingLeft: '20px' }}>

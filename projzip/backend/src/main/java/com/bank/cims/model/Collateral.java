@@ -30,7 +30,18 @@ public class Collateral {
     private double haircut = 0;
     
     @Column(name = "limit_contribution")
-    private double limitContribution;
+    private Double limitContribution = 0.0;
+
+    @Column(name = "nsv")
+    private Double nsv;
+
+    @Column(name = "charge_type")
+    private String chargeType = "Mortgage";
+
+    private boolean secured = true;
+
+    @Column(name = "cbs_last_updated")
+    private String cbsLastUpdated;
     
     @Column(name = "start_date")
     private String startDate;
@@ -39,10 +50,10 @@ public class Collateral {
     private String reviewDate;
     
     @Column(name = "current_allocation")
-    private double currentAllocation;
+    private double currentAllocation = 0.0;
     
     @Column(name = "utilization_percentage")
-    private double utilizationPercentage;
+    private Double utilizationPercentage = 0.0;
     
     private String status = "Uninsured";
     
@@ -65,6 +76,12 @@ public class Collateral {
     
     @Column(name = "gps_coordinates")
     private String gpsCoordinates;
+
+    @Column(name = "valuation_date")
+    private String valuationDate;
+
+    @Column(name = "valuation_method")
+    private String valuationMethod;
     
     private String branch;
     
@@ -146,16 +163,16 @@ public class Collateral {
     public void setValuationAmount(double valuationAmount) { this.valuationAmount = valuationAmount; }
     public double getHaircut() { return haircut; }
     public void setHaircut(double haircut) { this.haircut = haircut; }
-    public double getLimitContribution() { return limitContribution; }
-    public void setLimitContribution(double limitContribution) { this.limitContribution = limitContribution; }
+    public double getLimitContribution() { return limitContribution != null ? limitContribution : 0.0; }
+    public void setLimitContribution(Double limitContribution) { this.limitContribution = limitContribution != null ? limitContribution : 0.0; }
     public String getStartDate() { return startDate; }
     public void setStartDate(String startDate) { this.startDate = startDate; }
     public String getReviewDate() { return reviewDate; }
     public void setReviewDate(String reviewDate) { this.reviewDate = reviewDate; }
     public double getCurrentAllocation() { return currentAllocation; }
     public void setCurrentAllocation(double currentAllocation) { this.currentAllocation = currentAllocation; }
-    public double getUtilizationPercentage() { return utilizationPercentage; }
-    public void setUtilizationPercentage(double utilizationPercentage) { this.utilizationPercentage = utilizationPercentage; }
+    public double getUtilizationPercentage() { return utilizationPercentage != null ? utilizationPercentage : 0.0; }
+    public void setUtilizationPercentage(Double utilizationPercentage) { this.utilizationPercentage = utilizationPercentage != null ? utilizationPercentage : 0.0; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public String getOwnerType() { return ownerType; }
@@ -213,4 +230,17 @@ public class Collateral {
     public List<OwnershipDocument> getDocuments() { return documents; }
     public void setDocuments(List<OwnershipDocument> documents) { this.documents = documents; }
     public String getOwnershipType() { return ownerType; }
+    public String getValuationDate() { return valuationDate; }
+    public void setValuationDate(String valuationDate) { this.valuationDate = valuationDate; }
+    public String getChargeType() { return chargeType; }
+    public void setChargeType(String chargeType) { this.chargeType = chargeType; }
+    public double getNsv() { 
+        if (nsv != null) return nsv;
+        return Math.round(valuationAmount * (1.0 - (haircut / 100.0)) * 100.0) / 100.0;
+    }
+    public void setNsv(Double nsv) { this.nsv = nsv; }
+    public boolean isSecured() { return secured; }
+    public void setSecured(boolean secured) { this.secured = secured; }
+    public String getCbsLastUpdated() { return cbsLastUpdated; }
+    public void setCbsLastUpdated(String cbsLastUpdated) { this.cbsLastUpdated = cbsLastUpdated; }
 }

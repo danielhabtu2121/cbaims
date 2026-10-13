@@ -41,6 +41,13 @@ public class CbsSyncController {
         return ResponseEntity.ok(cbsSyncService.syncFacilityFromCbs(loanRef, userId));
     }
 
+    @PostMapping("/sync/collateral/{collateralCode}")
+    public ResponseEntity<Map<String, Object>> syncCollateral(
+            @PathVariable String collateralCode,
+            @RequestHeader(value = "X-User-Id", defaultValue = "SYSTEM") String userId) {
+        return ResponseEntity.ok(cbsSyncService.syncCollateralFromCbs(collateralCode, userId));
+    }
+
     @GetMapping("/sync/logs")
     public ResponseEntity<List<CbsSyncLog>> getSyncLogs() {
         return ResponseEntity.ok(cbsSyncService.getCbsSyncLogs());

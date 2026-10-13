@@ -21,6 +21,7 @@ interface PaginatedPortfolioGridProps {
   segment?: string;
   district?: string;
   branch?: string;
+  initialStatus?: string;
   onDrillToCollateral?: (collateralId: string) => void;
   onDrillToCustomer?: (cif: string) => void;
   className?: string;
@@ -31,6 +32,7 @@ export const PaginatedPortfolioGrid: React.FC<PaginatedPortfolioGridProps> = ({
   segment,
   district,
   branch,
+  initialStatus,
   onDrillToCollateral,
   onDrillToCustomer,
   className = '',
@@ -46,11 +48,18 @@ export const PaginatedPortfolioGrid: React.FC<PaginatedPortfolioGridProps> = ({
   const [search, setSearch] = useState<string>('');
   const [searchInput, setSearchInput] = useState<string>('');
   const [category, setCategory] = useState<string>('ALL');
-  const [status, setStatus] = useState<string>('ALL');
+  const [status, setStatus] = useState<string>(initialStatus || 'ALL');
   const [page, setPage] = useState<number>(0);
   const [pageSize, setPageSize] = useState<number>(15);
   const [sortField, setSortField] = useState<string>('collateralCode');
   const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('ASC');
+
+  useEffect(() => {
+    if (initialStatus !== undefined) {
+      setStatus(initialStatus);
+      setPage(0);
+    }
+  }, [initialStatus]);
 
   const fetchPortfolio = useCallback(async () => {
     setIsLoading(true);
@@ -275,7 +284,7 @@ export const PaginatedPortfolioGrid: React.FC<PaginatedPortfolioGridProps> = ({
                 className="p-3 cursor-pointer hover:text-blue-600"
               >
                 <div className="flex items-center gap-1">
-                  <span>Loan Exposure</span>
+                  <span>Allocated Secured Exposure</span>
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
@@ -345,7 +354,7 @@ export const PaginatedPortfolioGrid: React.FC<PaginatedPortfolioGridProps> = ({
                       {formatCurrency(row.marketValue)}
                     </td>
                     <td className="p-3 font-bold text-blue-900 whitespace-nowrap">
-                      {formatCurrency(row.outstandingExposure)}
+                      {formatCurrency(row.allocatedExposure ?? row.outstandingExposure)}
                     </td>
                     <td className="p-3 font-semibold text-slate-700 whitespace-nowrap">
                       {formatCurrency(row.insuranceRequired)}

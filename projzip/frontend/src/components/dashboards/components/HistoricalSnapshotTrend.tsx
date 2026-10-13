@@ -147,11 +147,11 @@ export const HistoricalSnapshotTrend: React.FC<HistoricalSnapshotTrendProps> = (
           </div>
           <div>
             <div className="text-sm font-bold text-slate-800">
-              Insufficient Point-in-Time History ({snapshots.length} of 2 required)
+              Historical data unavailable ({snapshots.length} of 2 required genuine snapshots)
             </div>
             <p className="text-xs text-slate-500 max-w-lg mx-auto mt-1">
               {message ||
-                'In accordance with CIMS banking governance, historical trend lines require at least 2 distinct point-in-time records. No simulated or artificial trends are rendered.'}
+                'In accordance with CIMS banking governance, historical trend lines require at least 2 distinct stored snapshots. No simulated or artificial trends are rendered.'}
             </p>
           </div>
           <div className="pt-2">
@@ -245,10 +245,14 @@ export const HistoricalSnapshotTrend: React.FC<HistoricalSnapshotTrendProps> = (
                   <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
                   <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                   <Tooltip
-                    formatter={((val: any, name: any) => [
-                      `ETB ${Number(val).toLocaleString()}M`,
-                      name === 'exposureM' ? 'Outstanding Exposure' : 'Active Insurance',
-                    ]) as any}
+                    formatter={((val: any, name: any, item: any) => {
+                      const valStr = `ETB ${Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`;
+                      const key = item?.dataKey || name;
+                      if (key === 'exposureM' || name === 'Outstanding Exposure') return [valStr, 'Outstanding Exposure'];
+                      if (key === 'activeCoverM' || name === 'Active Insurance') return [valStr, 'Active Insurance Cover'];
+                      return [valStr, name];
+                    }) as any}
+                    labelFormatter={(label) => `Snapshot Date: ${label}`}
                     contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                   />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -283,7 +287,8 @@ export const HistoricalSnapshotTrend: React.FC<HistoricalSnapshotTrendProps> = (
                   <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
                   <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                   <Tooltip
-                    formatter={((val: any) => [`ETB ${Number(val).toLocaleString()}M`, 'Protection Deficit (Gap)']) as any}
+                    formatter={((val: any) => [`ETB ${Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`, 'Protection Deficit (Gap)']) as any}
+                    labelFormatter={(label) => `Snapshot Date: ${label}`}
                     contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                   />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -303,7 +308,8 @@ export const HistoricalSnapshotTrend: React.FC<HistoricalSnapshotTrendProps> = (
                   <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
                   <YAxis stroke="#64748b" fontSize={11} tickLine={false} domain={[0, 'auto']} />
                   <Tooltip
-                    formatter={((val: any) => [`${val}%`, 'Insurance Coverage %']) as any}
+                    formatter={((val: any) => [`${Number(val).toFixed(1)}%`, 'Insurance Coverage %']) as any}
+                    labelFormatter={(label) => `Snapshot Date: ${label}`}
                     contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                   />
                   <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />

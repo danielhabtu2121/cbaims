@@ -14,6 +14,12 @@ public class NotificationTemplate {
     @Column(nullable = false)
     private String type;
 
+    @Column(name = "event_type")
+    private String eventType = "Expiry Reminder";
+
+    @Column(name = "channel")
+    private String channel = "Email";
+
     @Column(name = "trigger_days_before", nullable = false)
     private int triggerDaysBefore;
 
@@ -30,6 +36,8 @@ public class NotificationTemplate {
         this.id = id;
         this.name = name;
         this.type = type;
+        this.channel = (type != null && type.toUpperCase().contains("SMS")) ? "SMS" : "Email";
+        this.eventType = "Expiry Reminder";
         this.triggerDaysBefore = triggerDaysBefore;
         this.subject = subject;
         this.body = body;
@@ -42,6 +50,10 @@ public class NotificationTemplate {
     public void setName(String name) { this.name = name; }
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
+    public String getEventType() { return eventType; }
+    public void setEventType(String eventType) { this.eventType = eventType; }
+    public String getChannel() { return channel; }
+    public void setChannel(String channel) { this.channel = channel; }
     public int getTriggerDaysBefore() { return triggerDaysBefore; }
     public void setTriggerDaysBefore(int triggerDaysBefore) { this.triggerDaysBefore = triggerDaysBefore; }
     public String getSubject() { return subject; }

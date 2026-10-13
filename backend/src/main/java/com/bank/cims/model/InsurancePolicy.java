@@ -57,6 +57,12 @@ public class InsurancePolicy {
     @Column(name = "reopening_reason", columnDefinition = "TEXT")
     private String reopeningReason;
 
+    @Column(name = "amendment_reason", columnDefinition = "TEXT")
+    private String amendmentReason;
+
+    @Column(name = "loan_account_id")
+    private String loanAccountId;
+
     @Column(name = "endorsement_count")
     private int endorsementCount = 0;
 
@@ -160,6 +166,10 @@ public class InsurancePolicy {
     public void setAuthStat(String authStat) { this.authStat = authStat; }
     public int getModNo() { return modNo; }
     public void setModNo(int modNo) { this.modNo = modNo; }
+    public String getAmendmentReason() { return amendmentReason; }
+    public void setAmendmentReason(String amendmentReason) { this.amendmentReason = amendmentReason; }
+    public String getLoanAccountId() { return loanAccountId; }
+    public void setLoanAccountId(String loanAccountId) { this.loanAccountId = loanAccountId; }
     public String getOnceAuth() { return onceAuth; }
     public void setOnceAuth(String onceAuth) { this.onceAuth = onceAuth; }
 }

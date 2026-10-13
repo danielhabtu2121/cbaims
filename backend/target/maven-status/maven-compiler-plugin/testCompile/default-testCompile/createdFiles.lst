@@ -1,4 +1,12 @@
+com\bank\cims\CimsBusinessLogicIntegrationTest.class
+com\bank\cims\ThirdPartyCollateralRemediationIntegrationTest.class
+com\bank\cims\CollateralFacilityRelationshipIntegrationTest.class
+com\bank\cims\Module1RelationshipComprehensiveIntegrationTest.class
+com\bank\cims\CollateralModule2IntegrationTest.class
+com\bank\cims\ExceptionManagementIntegrationTest.class
+com\bank\cims\DocumentVersionControlIntegrationTest.class
+com\bank\cims\InsurancePolicyModule3IntegrationTest.class
 com\bank\cims\PolicyLifecycleIntegrationTest.class
 com\bank\cims\DashboardAuthorizationIntegrationTest.class
-com\bank\cims\CimsBusinessLogicIntegrationTest.class
+com\bank\cims\service\cbs\CbsModule1IntegrationTest.class
 com\bank\cims\HierarchicalDashboardIntegrationTest.class

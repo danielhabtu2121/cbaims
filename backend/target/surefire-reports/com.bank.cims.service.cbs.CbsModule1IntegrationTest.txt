@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.bank.cims.service.cbs.CbsModule1IntegrationTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.248 s -- in com.bank.cims.service.cbs.CbsModule1IntegrationTest
