@@ -1095,29 +1095,17 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
               {/* Conditional fields based on Customer Type */}
               {newCust.customerType === 'Individual' ? (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-[#101828] mb-1">Date of Birth</label>
-                      <input
-                        type="date"
-                        value={newCust.dobOrIncorp || ''}
-                        onChange={(e) => setNewCust({ ...newCust, dobOrIncorp: e.target.value })}
-                        className="w-full p-2 border border-[#E2E8F0] rounded"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-[#101828] mb-1">Gender</label>
-                      <select
-                        value={newCust.gender || ''}
-                        onChange={(e) => setNewCust({ ...newCust, gender: e.target.value })}
-                        className="w-full p-2 border border-[#E2E8F0] rounded"
-                      >
-                        <option value="">Select Gender</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Other">Other</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label className="block font-semibold text-[#101828] mb-1">Gender</label>
+                    <select
+                      value={newCust.gender || ''}
+                      onChange={(e) => setNewCust({ ...newCust, gender: e.target.value })}
+                      className="w-full p-2 border border-[#E2E8F0] rounded"
+                    >
+                      <option value="">Select Gender</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>

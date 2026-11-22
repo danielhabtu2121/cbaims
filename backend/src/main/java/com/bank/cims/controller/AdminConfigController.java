@@ -316,15 +316,27 @@ public class AdminConfigController {
         if (permission.getRoleCode() == null || permission.getRoleCode().isBlank()) throw new IllegalArgumentException("Role code is mandatory.");
         if (permission.getScreenName() == null || permission.getScreenName().isBlank()) throw new IllegalArgumentException("Screen name is mandatory.");
 
-        if (permission.getId() == null || permission.getId().isBlank()) {
-            List<RolePermission> existing = rolePermissionRepository.findByRoleCodeAndScreenName(permission.getRoleCode(), permission.getScreenName());
-            if (!existing.isEmpty()) {
-                permission.setId(existing.get(0).getId());
-            } else {
-                permission.setId("perm-" + permission.getRoleCode().toLowerCase() + "-" + permission.getScreenName().toLowerCase().replaceAll("\\s+", ""));
+        String roleCode = permission.getRoleCode().trim();
+        String screenName = permission.getScreenName().trim();
+        java.util.Optional<RolePermission> existingOpt = rolePermissionRepository.findFirstByRoleCodeIgnoreCaseAndScreenNameIgnoreCase(roleCode, screenName);
+        RolePermission target;
+        if (existingOpt.isPresent()) {
+            target = existingOpt.get();
+            target.setCanView(permission.isCanView());
+            target.setCanCreate(permission.isCanCreate());
+            target.setCanEdit(permission.isCanEdit());
+            target.setCanApprove(permission.isCanApprove());
+            target.setCanDelete(permission.isCanDelete());
+            target.setActive(permission.isActive());
+        } else {
+            target = permission;
+            target.setRoleCode(roleCode);
+            target.setScreenName(screenName);
+            if (target.getId() == null || target.getId().isBlank()) {
+                target.setId("perm-" + roleCode.toLowerCase() + "-" + screenName.toLowerCase().replaceAll("\\s+", ""));
             }
         }
-        RolePermission saved = rolePermissionRepository.save(permission);
+        RolePermission saved = rolePermissionRepository.saveAndFlush(target);
         cimsService.logAudit(actor, "SYSADMIN", "SAVE_ROLE_PERMISSION", "RolePermission", saved.getId(), "Permission", "Old", saved.getRoleCode() + ":" + saved.getScreenName(), "Updated role permission");
         return ResponseEntity.ok(saved);
     }
@@ -335,17 +347,32 @@ public class AdminConfigController {
             @RequestHeader(value = "X-User-Id", required = false) String headerUserId,
             @RequestParam(required = false) String adminUserId) {
         String actor = resolveAndVerifyAdminUser(headerUserId, adminUserId);
+        java.util.List<RolePermission> toSave = new java.util.ArrayList<>();
         for (RolePermission p : permissions) {
-            if (p.getId() == null || p.getId().isBlank()) {
-                List<RolePermission> existing = rolePermissionRepository.findByRoleCodeAndScreenName(p.getRoleCode(), p.getScreenName());
-                if (!existing.isEmpty()) {
-                    p.setId(existing.get(0).getId());
-                } else {
-                    p.setId("perm-" + p.getRoleCode().toLowerCase() + "-" + p.getScreenName().toLowerCase().replaceAll("\\s+", ""));
+            if (p.getRoleCode() == null || p.getScreenName() == null) continue;
+            String roleCode = p.getRoleCode().trim();
+            String screenName = p.getScreenName().trim();
+            java.util.Optional<RolePermission> existingOpt = rolePermissionRepository.findFirstByRoleCodeIgnoreCaseAndScreenNameIgnoreCase(roleCode, screenName);
+            RolePermission target;
+            if (existingOpt.isPresent()) {
+                target = existingOpt.get();
+                target.setCanView(p.isCanView());
+                target.setCanCreate(p.isCanCreate());
+                target.setCanEdit(p.isCanEdit());
+                target.setCanApprove(p.isCanApprove());
+                target.setCanDelete(p.isCanDelete());
+                target.setActive(p.isActive());
+            } else {
+                target = p;
+                target.setRoleCode(roleCode);
+                target.setScreenName(screenName);
+                if (target.getId() == null || target.getId().isBlank()) {
+                    target.setId("perm-" + roleCode.toLowerCase() + "-" + screenName.toLowerCase().replaceAll("\\s+", ""));
                 }
             }
+            toSave.add(target);
         }
-        List<RolePermission> saved = rolePermissionRepository.saveAll(permissions);
+        List<RolePermission> saved = rolePermissionRepository.saveAllAndFlush(toSave);
         cimsService.logAudit(actor, "SYSADMIN", "SAVE_ROLE_PERMISSIONS_BATCH", "RolePermission", "BATCH", "Permissions", "Old", "Count: " + saved.size(), "Batch updated " + saved.size() + " role permissions");
         return ResponseEntity.ok(saved);
     }

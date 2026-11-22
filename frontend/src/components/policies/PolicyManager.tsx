@@ -56,6 +56,7 @@ import { StatusChip } from '../layout/StatusChip';
 import { CircularProgress } from '../layout/CircularProgress';
 import { cimsApi } from '../../api/cimsApi';
 import { DocumentPreviewModal } from '../documents/DocumentPreviewModal';
+import { FileUploadPreviewModal, FilePreviewData } from '../common/FileUploadPreviewModal';
 
 interface WizardDocItem {
   id: string;
@@ -91,6 +92,8 @@ const DocumentAttachmentZone: React.FC<DocumentAttachmentZoneProps> = ({
   maxFiles = 3,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<FilePreviewData | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
   const inputId = `file-input-${defaultDocType.replace(/\s+/g, '-').toLowerCase()}-${Math.random().toString(36).slice(2, 7)}`;
 
   const handleFiles = (fileList: FileList | null) => {
@@ -216,6 +219,25 @@ const DocumentAttachmentZone: React.FC<DocumentAttachmentZoneProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1">
+                  {(doc.fileContent) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewDoc({
+                          fileName: doc.fileName || doc.name,
+                          fileSize: doc.fileSize,
+                          fileContent: doc.fileContent,
+                          fileUrl: doc.fileContent,
+                          fileType: doc.contentType || (isPdf ? 'PDF' : isImg ? 'Image' : 'Document'),
+                        });
+                        setShowPreview(true);
+                      }}
+                      className="p-1 text-blue-600 hover:text-blue-800 transition-colors rounded hover:bg-blue-50"
+                      title="Preview attached file before submitting policy"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeDoc(doc.id)}
@@ -230,6 +252,16 @@ const DocumentAttachmentZone: React.FC<DocumentAttachmentZoneProps> = ({
           })}
         </div>
       )}
+
+      {/* Pre-Upload File Preview Modal */}
+      <FileUploadPreviewModal
+        isOpen={showPreview}
+        onClose={() => {
+          setShowPreview(false);
+          setPreviewDoc(null);
+        }}
+        fileData={previewDoc}
+      />
     </div>
   );
 };
@@ -289,6 +321,8 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
   const [selectedPolicy, setSelectedPolicy] = useState<InsurancePolicy | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [activeDetailTab, setActiveDetailTab] = useState<'financials' | 'endorsements' | 'documents' | 'history'>('financials');
+  const [wizardPreviewDoc, setWizardPreviewDoc] = useState<FilePreviewData | null>(null);
+  const [showWizardPreviewModal, setShowWizardPreviewModal] = useState<boolean>(false);
   const handledInitialPolicyIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -2958,6 +2992,24 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => {
+                                        setWizardPreviewDoc({
+                                          fileName: doc.fileName || doc.name,
+                                          fileSize: doc.fileSize,
+                                          fileContent: doc.fileContent,
+                                          fileUrl: doc.fileContent,
+                                          fileType: doc.type,
+                                        });
+                                        setShowWizardPreviewModal(true);
+                                      }}
+                                      className="px-2 py-0.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-[11px] font-bold flex items-center gap-1 transition"
+                                      title="Preview file before submitting policy"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                      Preview
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
                                         const updated = [...wizardDocuments];
                                         updated[idx].fileName = '';
                                         updated[idx].fileContent = '';
@@ -4432,6 +4484,16 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
           }}
         />
       )}
+
+      {/* Pre-Upload File Preview Modal for Wizard */}
+      <FileUploadPreviewModal
+        isOpen={showWizardPreviewModal}
+        onClose={() => {
+          setShowWizardPreviewModal(false);
+          setWizardPreviewDoc(null);
+        }}
+        fileData={wizardPreviewDoc}
+      />
     </div>
   );
 };

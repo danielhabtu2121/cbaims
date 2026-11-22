@@ -11,6 +11,8 @@ import java.util.Optional;
 public interface RolePermissionRepository extends JpaRepository<RolePermission, String> {
     List<RolePermission> findByRoleCode(String roleCode);
     List<RolePermission> findByRoleCodeAndScreenName(String roleCode, String screenName);
+    Optional<RolePermission> findFirstByRoleCodeAndScreenName(String roleCode, String screenName);
     List<RolePermission> findByRoleCodeIgnoreCaseAndScreenNameIgnoreCase(String roleCode, String screenName);
+    Optional<RolePermission> findFirstByRoleCodeIgnoreCaseAndScreenNameIgnoreCase(String roleCode, String screenName);
     List<RolePermission> findByRoleCodeIgnoreCase(String roleCode);
 }

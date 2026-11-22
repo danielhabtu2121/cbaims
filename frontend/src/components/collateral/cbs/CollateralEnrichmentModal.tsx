@@ -40,6 +40,7 @@ import {
   UserSession,
 } from '../../../types';
 import { authenticatedFetch, cimsApi } from '../../../api/cimsApi';
+import { FileUploadPreviewModal, FilePreviewData } from '../../common/FileUploadPreviewModal';
 
 interface CollateralEnrichmentModalProps {
   collateral: Collateral;
@@ -80,6 +81,9 @@ export const CollateralEnrichmentModal: React.FC<CollateralEnrichmentModalProps>
   const [selectedFileName, setSelectedFileName] = useState('');
   const [selectedFileSize, setSelectedFileSize] = useState<number | undefined>(undefined);
   const [selectedFileContent, setSelectedFileContent] = useState('');
+  const [selectedFileDataUrl, setSelectedFileDataUrl] = useState('');
+  const [preUploadPreview, setPreUploadPreview] = useState<FilePreviewData | null>(null);
+  const [showPreUploadModal, setShowPreUploadModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
   // Exception Request Modal State
@@ -214,8 +218,10 @@ export const CollateralEnrichmentModal: React.FC<CollateralEnrichmentModalProps>
 
     const reader = new FileReader();
     reader.onload = () => {
-      const base64 = (reader.result as string).split(',')[1] || '';
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(',')[1] || '';
       setSelectedFileContent(base64);
+      setSelectedFileDataUrl(dataUrl);
     };
     reader.readAsDataURL(file);
   };
@@ -1658,9 +1664,30 @@ export const CollateralEnrichmentModal: React.FC<CollateralEnrichmentModalProps>
                   className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[11px] file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />
                 {selectedFileName && (
-                  <p className="text-[11px] text-emerald-600 font-medium">
-                    Selected: {selectedFileName} ({Math.round((selectedFileSize || 0) / 1024)} KB)
-                  </p>
+                  <div className="flex items-center justify-between p-2 bg-white border border-slate-200 rounded-lg text-xs">
+                    <div>
+                      <span className="font-semibold text-slate-800">{selectedFileName}</span>
+                      <span className="text-[10px] text-slate-500 ml-2 font-mono">
+                        ({Math.round((selectedFileSize || 0) / 1024)} KB)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreUploadPreview({
+                          fileName: selectedFileName,
+                          fileSize: selectedFileSize,
+                          fileContent: selectedFileContent,
+                          fileUrl: selectedFileDataUrl,
+                        });
+                        setShowPreUploadModal(true);
+                      }}
+                      className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-xs font-bold flex items-center gap-1 transition"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      Preview File
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1852,6 +1879,16 @@ export const CollateralEnrichmentModal: React.FC<CollateralEnrichmentModalProps>
           </div>
         </div>
       )}
+
+      {/* Pre-Upload File Preview Modal (Preview before submit) */}
+      <FileUploadPreviewModal
+        isOpen={showPreUploadModal}
+        onClose={() => {
+          setShowPreUploadModal(false);
+          setPreUploadPreview(null);
+        }}
+        fileData={preUploadPreview}
+      />
     </div>
   );
 };

@@ -49,6 +49,7 @@ import {
   CollateralOwner,
 } from '../../../types';
 import { authenticatedFetch } from '../../../api/cimsApi';
+import { FileUploadPreviewModal, FilePreviewData } from '../../common/FileUploadPreviewModal';
 
 export interface CollateralRegistrationWizardProps {
   currentUser: UserSession;
@@ -70,6 +71,7 @@ export interface WizardDocItem {
   fileName?: string;
   fileSize?: number;
   fileContent?: string;
+  fileUrl?: string;
   referenceNumber?: string;
   documentDate?: string;
   expiryDate?: string;
@@ -88,6 +90,7 @@ export interface SupportingDocItem {
   fileName?: string;
   fileSize?: number;
   fileContent?: string;
+  fileUrl?: string;
   referenceNumber?: string;
   documentDate?: string;
   expiryDate?: string;
@@ -367,6 +370,8 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
   const [documentsList, setDocumentsList] = useState<WizardDocItem[]>([]);
   const [supportingDocumentsList, setSupportingDocumentsList] = useState<SupportingDocItem[]>([]);
   const [showAddSupportingDocModal, setShowAddSupportingDocModal] = useState<boolean>(false);
+  const [preUploadPreview, setPreUploadPreview] = useState<FilePreviewData | null>(null);
+  const [showPreUploadModal, setShowPreUploadModal] = useState<boolean>(false);
   const [supportingDocForm, setSupportingDocForm] = useState<Partial<SupportingDocItem>>({
     name: '',
     type: 'Valuation Report',
@@ -1015,7 +1020,8 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
 
     const reader = new FileReader();
     reader.onload = () => {
-      const base64 = (reader.result as string).split(',')[1] || '';
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(',')[1] || '';
       setDocumentsList((prev) => {
         const copy = [...prev];
         copy[docIndex] = {
@@ -1023,6 +1029,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           fileName: file.name,
           fileSize: file.size,
           fileContent: base64,
+          fileUrl: dataUrl,
           verificationStatus: 'Pending Verification',
         };
         return copy;
@@ -2838,6 +2845,28 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                             </td>
                             <td className="p-2.5 text-right">
                               <div className="flex items-center justify-end gap-1.5">
+                                {/* Preview Button if attached */}
+                                {(doc.fileName || doc.fileContent) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPreUploadPreview({
+                                        fileName: doc.fileName || doc.name || doc.type,
+                                        fileSize: doc.fileSize,
+                                        fileContent: doc.fileContent,
+                                        fileUrl: doc.fileUrl,
+                                        fileType: doc.type,
+                                      });
+                                      setShowPreUploadModal(true);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-[11px] font-bold transition shadow-xs"
+                                    title="Preview attached document before submit"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    <span>Preview</span>
+                                  </button>
+                                )}
+
                                 {/* Upload / Replace button */}
                                 <label className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1 bg-[#00205B] text-white rounded text-[11px] font-bold hover:bg-[#00205B] transition shadow-xs">
                                   <Upload className="w-3 h-3" />
@@ -3005,15 +3034,37 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                             </span>
                           </td>
                           <td className="p-2.5 text-right">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSupportingDocumentsList((prev) => prev.filter((_, idx) => idx !== sIdx));
-                              }}
-                              className="px-2 py-1 border border-red-300 text-red-700 rounded text-[11px] font-semibold hover:bg-red-50"
-                            >
-                              Remove
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              {(sDoc.fileName || sDoc.fileContent) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPreUploadPreview({
+                                      fileName: sDoc.fileName || sDoc.name,
+                                      fileSize: sDoc.fileSize,
+                                      fileContent: sDoc.fileContent,
+                                      fileUrl: sDoc.fileUrl,
+                                      fileType: sDoc.type,
+                                    });
+                                    setShowPreUploadModal(true);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-[11px] font-bold transition shadow-xs"
+                                  title="Preview document before submit"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  <span>Preview</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSupportingDocumentsList((prev) => prev.filter((_, idx) => idx !== sIdx));
+                                }}
+                                className="px-2 py-1 border border-red-300 text-red-700 rounded text-[11px] font-semibold hover:bg-red-50"
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -4136,12 +4187,14 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       if (!file) return;
                       const reader = new FileReader();
                       reader.onload = () => {
-                        const base64 = (reader.result as string).split(',')[1] || '';
+                        const dataUrl = reader.result as string;
+                        const base64 = dataUrl.split(',')[1] || '';
                         setSupportingDocForm((prev) => ({
                           ...prev,
                           fileName: file.name,
                           fileSize: file.size,
                           fileContent: base64,
+                          fileUrl: dataUrl,
                           verificationStatus: 'Pending Verification',
                         }));
                       };
@@ -4150,9 +4203,30 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                     className="w-full p-1.5 border border-slate-300 rounded text-xs"
                   />
                   {supportingDocForm.fileName && (
-                    <p className="text-[10px] text-emerald-600 font-mono mt-1">
-                      Selected: {supportingDocForm.fileName} ({(Number(supportingDocForm.fileSize || 0) / 1024).toFixed(1)} KB)
-                    </p>
+                    <div className="flex items-center justify-between mt-2 p-2 bg-slate-50 border border-slate-200 rounded text-xs">
+                      <div>
+                        <span className="font-semibold text-slate-800">{supportingDocForm.fileName}</span>
+                        <span className="text-[10px] text-slate-500 ml-2 font-mono">
+                          ({(Number(supportingDocForm.fileSize || 0) / 1024).toFixed(1)} KB)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreUploadPreview({
+                            fileName: supportingDocForm.fileName || 'Supporting Document',
+                            fileSize: supportingDocForm.fileSize,
+                            fileContent: supportingDocForm.fileContent,
+                            fileUrl: supportingDocForm.fileUrl,
+                          });
+                          setShowPreUploadModal(true);
+                        }}
+                        className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-xs font-bold flex items-center gap-1 transition"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        Preview File
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -4334,6 +4408,15 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
             </div>
           </div>
         )}
+        {/* Pre-Upload File Preview Modal (Preview before submit) */}
+        <FileUploadPreviewModal
+          isOpen={showPreUploadModal}
+          onClose={() => {
+            setShowPreUploadModal(false);
+            setPreUploadPreview(null);
+          }}
+          fileData={preUploadPreview}
+        />
       </div>
     </div>
   );

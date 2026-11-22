@@ -34,6 +34,7 @@ import { StatusChip } from '../layout/StatusChip';
 import { cimsApi } from '../../api/cimsApi';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
 import { DocumentVersionHistoryModal } from './DocumentVersionHistoryModal';
+import { FileUploadPreviewModal, FilePreviewData } from '../common/FileUploadPreviewModal';
 
 export const CONTROLLED_DOCUMENT_TYPES: string[] = [
   'Title Deed / Property Ownership Certificate',
@@ -173,6 +174,10 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
 
   // Document chain version list
   const [docVersions, setDocVersions] = useState<OwnershipDocument[]>([]);
+
+  // Pre-upload preview modal state
+  const [preUploadPreview, setPreUploadPreview] = useState<FilePreviewData | null>(null);
+  const [showPreUploadModal, setShowPreUploadModal] = useState<boolean>(false);
   const [loadingVersions, setLoadingVersions] = useState(false);
 
   const getDocumentVersionCount = (doc: OwnershipDocument) => {
@@ -1366,11 +1371,55 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                   accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.tif,.tiff"
                 />
                 {selectedFile ? (
-                  <div className="flex items-center justify-center gap-3">
-                    <FileCheck className="w-8 h-8 text-emerald-600 shrink-0" />
-                    <div className="text-left">
-                      <div className="font-bold text-[#101828]">{selectedFile.name}</div>
-                      <div className="text-[11px] text-[#5B6472]">{formatFileSize(selectedFile.size)} • {selectedFile.type || 'Document'}</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-3 bg-white border border-[#E2E8F0] rounded-lg text-left">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {fileDataUrl && fileDataUrl.startsWith('data:image/') ? (
+                          <img src={fileDataUrl} alt="Preview" className="w-12 h-12 object-cover rounded border border-slate-200 shrink-0" />
+                        ) : (
+                          <FileCheck className="w-8 h-8 text-emerald-600 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="font-bold text-[#101828] text-xs truncate max-w-[200px]" title={selectedFile.name}>{selectedFile.name}</div>
+                          <div className="text-[11px] text-[#5B6472]">{formatFileSize(selectedFile.size)} • {selectedFile.type || 'Document'}</div>
+                          <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                            Ready to Submit
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreUploadPreview({
+                              fileName: selectedFile.name,
+                              fileSize: selectedFile.size,
+                              fileType: selectedFile.type,
+                              fileUrl: fileDataUrl,
+                            });
+                            setShowPreUploadModal(true);
+                          }}
+                          className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-xs font-bold flex items-center gap-1.5 transition"
+                          title="Preview full file before uploading"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          Preview File
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedFile(null);
+                            setFileDataUrl('');
+                            if (fileInputRef.current) fileInputRef.current.value = '';
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-red-50"
+                          title="Remove file"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -1661,11 +1710,49 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
                   accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.tif,.tiff"
                 />
                 {versionFile ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <FileCheck className="w-6 h-6 text-emerald-600 shrink-0" />
-                    <div className="text-left">
-                      <div className="font-bold text-[#101828]">{versionFile.name}</div>
-                      <div className="text-[11px] text-[#5B6472]">{formatFileSize(versionFile.size)}</div>
+                  <div className="flex items-center justify-between p-2.5 bg-white border border-[#E2E8F0] rounded-lg text-left">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {versionDataUrl && versionDataUrl.startsWith('data:image/') ? (
+                        <img src={versionDataUrl} alt="Preview" className="w-10 h-10 object-cover rounded border shrink-0" />
+                      ) : (
+                        <FileCheck className="w-6 h-6 text-emerald-600 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="font-bold text-[#101828] text-xs truncate max-w-[180px]" title={versionFile.name}>{versionFile.name}</div>
+                        <div className="text-[11px] text-[#5B6472]">{formatFileSize(versionFile.size)}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreUploadPreview({
+                            fileName: versionFile.name,
+                            fileSize: versionFile.size,
+                            fileType: versionFile.type,
+                            fileUrl: versionDataUrl,
+                          });
+                          setShowPreUploadModal(true);
+                        }}
+                        className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-xs font-bold flex items-center gap-1 transition"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        Preview
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVersionFile(null);
+                          setVersionDataUrl('');
+                          if (versionFileInputRef.current) versionFileInputRef.current.value = '';
+                        }}
+                        className="p-1 text-slate-400 hover:text-red-600 rounded"
+                        title="Remove file"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 ) : (
@@ -1759,6 +1846,16 @@ export const DocumentRepository: React.FC<DocumentRepositoryProps> = ({
           setVersionExpiryDate(doc.expiryDate || '2031-12-31');
           setShowNewVersionModal(true);
         }}
+      />
+
+      {/* Pre-Upload File Preview Modal (Preview before submit) */}
+      <FileUploadPreviewModal
+        isOpen={showPreUploadModal}
+        onClose={() => {
+          setShowPreUploadModal(false);
+          setPreUploadPreview(null);
+        }}
+        fileData={preUploadPreview}
       />
     </div>
   );
