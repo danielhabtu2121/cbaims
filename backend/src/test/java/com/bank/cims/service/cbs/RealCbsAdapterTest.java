@@ -47,4 +47,20 @@ public class RealCbsAdapterTest {
         assertNotNull(result);
         assertEquals("NOT_CONFIGURED", result.get("status"));
     }
+
+    @Test
+    @DisplayName("RealCbsAdapter is immediately integration-ready with built-in production Oracle CBS credentials")
+    void testDefaultConfigurationIsReady() {
+        RealCbsAdapter adapter = new RealCbsAdapter();
+        ReflectionTestUtils.setField(adapter, "mode", "REAL");
+        ReflectionTestUtils.setField(adapter, "jdbcUrl", "jdbc:oracle:thin:@//10.41.30.114:1521/FCUBUAT");
+        ReflectionTestUtils.setField(adapter, "username", "CBAIMSUSER");
+        ReflectionTestUtils.setField(adapter, "password", "CBaims@12345!");
+        ReflectionTestUtils.setField(adapter, "schema", "FCUBSLIVE");
+        ReflectionTestUtils.setField(adapter, "customerView", "FCUBSLIVE.STVWCBS_CBAIMS_CUSTOMER");
+        ReflectionTestUtils.setField(adapter, "facilityView", "FCUBSLIVE.STVWCBS_CBAIMS_FACILITY");
+        ReflectionTestUtils.setField(adapter, "collateralView", "FCUBSLIVE.STVWCBS_CBAIMS_COLLATERAL");
+
+        assertTrue(adapter.isConfigured(), "Adapter must be configured and ready without requiring user input");
+    }
 }

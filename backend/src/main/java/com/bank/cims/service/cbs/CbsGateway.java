@@ -20,18 +20,18 @@ public class CbsGateway {
     @Qualifier("realCbsAdapter")
     private CbsAdapter realAdapter;
 
-    @Value("${cims.cbs.mode:SIMULATOR}")
+    @Value("${cims.cbs.mode:REAL}")
     private String cbsMode;
 
     public String getMode() {
-        return cbsMode != null ? cbsMode.trim().toUpperCase() : "SIMULATOR";
+        return (cbsMode != null && !cbsMode.isBlank()) ? cbsMode.trim().toUpperCase() : "REAL";
     }
 
     public CbsAdapter getActiveAdapter() {
-        if ("REAL".equalsIgnoreCase(cbsMode)) {
-            return realAdapter;
+        if ("SIMULATOR".equalsIgnoreCase(cbsMode)) {
+            return simulatorAdapter;
         }
-        return simulatorAdapter;
+        return realAdapter;
     }
 
     public List<CbsCustomer> fetchCustomers() {

@@ -13,6 +13,7 @@ import {
   Settings,
   History,
   Cpu,
+  Database,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -139,7 +140,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'audit', label: 'Audit Trail', icon: History, section: 'Analytics', allowedRoles: allRoles },
     { id: 'notifications', label: 'Notifications', icon: Bell, section: 'System', allowedRoles: allRoles },
     { id: 'admin', label: 'Administration', icon: Settings, section: 'System', allowedRoles: ['SYSADMIN'] },
-    { id: 'cbs-sim', label: 'CBS Simulator', icon: Cpu, section: 'System', allowedRoles: ['SYSADMIN', 'AUDITOR'] },
+    { id: 'cbs-sim', label: 'CBS Integration', icon: Database, section: 'System', allowedRoles: ['SYSADMIN', 'AUDITOR'] },
   ];
 
   const isPageAllowed = (item: NavItemDef): boolean => {

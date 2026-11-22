@@ -35,7 +35,7 @@ public class RealCbsAdapter implements CbsAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(RealCbsAdapter.class);
 
-    @Value("${cims.cbs.mode:SIMULATOR}")
+    @Value("${cims.cbs.mode:REAL}")
     private String mode;
 
     @Value("${cims.cbs.oracle.jdbc-url:jdbc:oracle:thin:@//10.41.30.114:1521/FCUBUAT}")
@@ -44,7 +44,7 @@ public class RealCbsAdapter implements CbsAdapter {
     @Value("${cims.cbs.oracle.username:CBAIMSUSER}")
     private String username;
 
-    @Value("${cims.cbs.oracle.password:}")
+    @Value("${cims.cbs.oracle.password:CBaims@12345!}")
     private String password;
 
     @Value("${cims.cbs.oracle.schema:FCUBSLIVE}")

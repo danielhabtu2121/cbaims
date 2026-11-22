@@ -30,7 +30,7 @@ cims:
     sync-mode: MANUAL
     scheduled-interval-ms: 3600000
     real:
-      enabled: ${CIMS_CBS_REAL_ENABLED:false}
+      enabled: ${CIMS_CBS_REAL_ENABLED:true}
       base-url: ""
       connect-timeout-ms: 5000
       read-timeout-ms: 10000
