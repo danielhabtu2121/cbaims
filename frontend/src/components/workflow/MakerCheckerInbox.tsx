@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   CheckSquare,
@@ -460,7 +461,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
           title: 'Insurance Coverage Sufficiency Check',
           category: 'Coverage',
           checked: 'Policy Sum Insured evaluated against the collateral valuation / outstanding credit requirement.',
-          found: `Sum Insured: ETB ${sumInsured.toLocaleString()} vs Benchmark Requirement: ETB ${benchmarkValue.toLocaleString()}. Shortfall: ETB ${Math.abs(shortfallOrSurplus).toLocaleString()} (Coverage: ${coverageRatio}%).`,
+          found: `Sum Insured: ETB ${formatEtbNumber(sumInsured)} vs Benchmark Requirement: ETB ${formatEtbNumber(benchmarkValue)}. Shortfall: ETB ${formatEtbNumber(Math.abs(shortfallOrSurplus))} (Coverage: ${coverageRatio}%).`,
           result: coverageRatio < 80 ? 'FAILED' : 'WARNING',
           nextStep:
             coverageRatio < 80
@@ -472,7 +473,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
           title: 'Insurance Coverage Sufficiency Check',
           category: 'Coverage',
           checked: 'Policy Sum Insured evaluated against collateral market value requirement.',
-          found: `Sum Insured: ETB ${sumInsured.toLocaleString()} vs Collateral Value: ETB ${benchmarkValue.toLocaleString()}. Surplus: +ETB ${shortfallOrSurplus.toLocaleString()} (Coverage: ${coverageRatio}%).`,
+          found: `Sum Insured: ETB ${formatEtbNumber(sumInsured)} vs Collateral Value: ETB ${formatEtbNumber(benchmarkValue)}. Surplus: +ETB ${formatEtbNumber(shortfallOrSurplus)} (Coverage: ${coverageRatio}%).`,
           result: 'PASSED',
           nextStep: 'Adequate coverage verified. Meets prudential collateral security guidelines.',
         });
@@ -568,7 +569,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
           title: 'Secured Obligations Discharge Check',
           category: 'Exposure',
           checked: 'Verification that all secured loan obligations and contingent facilities are fully liquidated prior to release/closure.',
-          found: `Total outstanding balance across ${ctx.taskFacilities.length} linked facility account(s): ETB ${outstandingExposure.toLocaleString()}.`,
+          found: `Total outstanding balance across ${ctx.taskFacilities.length} linked facility account(s): ETB ${formatEtbNumber(outstandingExposure)}.`,
           result: 'FAILED',
           nextStep: 'Hard-Stop: Collateral/Policy cannot be released or closed while credit facilities maintain an outstanding active balance unless a substitution has been sanctioned.',
         });
@@ -620,7 +621,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
           title: 'Collateral Allocation & Capacity Check',
           category: 'Allocation',
           checked: 'Verification that total allocated security does not exceed Net Collateral Value (NSV).',
-          found: `Total allocations (ETB ${totalProposed.toLocaleString()}) exceed Net Security Value (ETB ${colNsv.toLocaleString()}) by ETB ${(totalProposed - colNsv).toLocaleString()}.`,
+          found: `Total allocations (ETB ${formatEtbNumber(totalProposed)}) exceed Net Security Value (ETB ${formatEtbNumber(colNsv)}) by ETB ${formatEtbNumber((totalProposed - colNsv))}.`,
           result: 'FAILED',
           nextStep: 'Hard-Stop: Proposed allocation exceeds collateral available unallocated capacity. Re-balance allocations or link supplementary collateral.',
         });
@@ -629,7 +630,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
           title: 'Collateral Allocation & Capacity Check',
           category: 'Allocation',
           checked: 'Verification that total allocated security remains within Net Collateral Value (NSV).',
-          found: `Net Collateral Value: ETB ${colNsv.toLocaleString()} | Active Allocations: ETB ${existingAllocations.toLocaleString()} | Proposed: ETB ${proposedAlloc.toLocaleString()} | Remaining Capacity: ETB ${Math.max(0, colNsv - totalProposed).toLocaleString()}.`,
+          found: `Net Collateral Value: ETB ${formatEtbNumber(colNsv)} | Active Allocations: ETB ${formatEtbNumber(existingAllocations)} | Proposed: ETB ${formatEtbNumber(proposedAlloc)} | Remaining Capacity: ETB ${formatEtbNumber(Math.max(0, colNsv - totalProposed))}.`,
           result: 'PASSED',
           nextStep: 'Adequate unallocated collateral capacity verified. Allocation permitted.',
         });
@@ -1220,7 +1221,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                                   {ctx.taskFacilities[0].loanReference || ctx.taskFacilities[0].lineCode || ctx.taskFacilities[0].id}
                                 </div>
                                 <div className="text-[10px] text-slate-500">
-                                  ETB {Number(ctx.taskFacilities[0].outstandingBalance || 0).toLocaleString()}
+                                  ETB {formatEtbNumber(Number(ctx.taskFacilities[0].outstandingBalance || 0))}
                                 </div>
                               </div>
                             ) : (
@@ -1616,18 +1617,18 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                       <div>
                         <span className="text-slate-500">Sanctioned Limit:</span>{' '}
                         <span className="font-semibold text-slate-800">
-                          ETB {Number(selectedContext.taskFacilities[0].approvedLimit || 0).toLocaleString()}
+                          ETB {formatEtbNumber(Number(selectedContext.taskFacilities[0].approvedLimit || 0))}
                         </span>
                       </div>
                       <div>
                         <span className="text-slate-500">Outstanding Balance:</span>{' '}
                         <span className="font-bold text-rose-700">
-                          ETB {Number(selectedContext.taskFacilities[0].outstandingBalance || 0).toLocaleString()}
+                          ETB {formatEtbNumber(Number(selectedContext.taskFacilities[0].outstandingBalance || 0))}
                         </span>
                       </div>
                       {selectedContext.taskFacilities.length > 1 && (
                         <div className="pt-1 text-[11px] text-slate-500 border-t border-slate-100">
-                          Total Aggregate Exposure: <strong className="text-rose-700">ETB {selectedContext.taskFacilities.reduce((sum, f) => sum + Number(f.outstandingBalance || 0), 0).toLocaleString()}</strong>
+                          Total Aggregate Exposure: <strong className="text-rose-700">ETB {formatEtbNumber(selectedContext.taskFacilities.reduce((sum, f) => sum + Number(f.outstandingBalance || 0), 0))}</strong>
                         </div>
                       )}
                     </div>
@@ -1672,10 +1673,10 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                       <div>
                         <span className="text-slate-500">Market Value / NSV:</span>{' '}
                         <span className="font-bold text-[#00205B]">
-                          ETB {Number(selectedContext.collateral.valuationAmount || (selectedContext.collateral as any).marketValue || 0).toLocaleString()}
+                          ETB {formatEtbNumber(Number(selectedContext.collateral.valuationAmount || (selectedContext.collateral as any).marketValue || 0))}
                         </span>
                         <span className="text-slate-500 text-[11px] block">
-                          Net Security Value: <strong className="text-emerald-700">ETB {Number(selectedContext.collateral.nsv || (selectedContext.collateral.valuationAmount ? selectedContext.collateral.valuationAmount * (1 - (selectedContext.collateral.haircut || 0)/100) : 0)).toLocaleString()}</strong> (Haircut: {selectedContext.collateral.haircut || 0}%)
+                          Net Security Value: <strong className="text-emerald-700">ETB {formatEtbNumber(Number(selectedContext.collateral.nsv || (selectedContext.collateral.valuationAmount ? selectedContext.collateral.valuationAmount * (1 - (selectedContext.collateral.haircut || 0)/100) : 0)))}</strong> (Haircut: {selectedContext.collateral.haircut || 0}%)
                         </span>
                       </div>
                       <div>
@@ -1739,10 +1740,10 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                           <tr>
                             <td className="p-2.5 font-semibold text-slate-600">Sum Insured</td>
                             <td className="p-2.5 font-semibold text-slate-700">
-                              ETB {Number(selectedContext.payload?.previousSumInsured || selectedContext.previousPolicy?.insuredAmount || selectedContext.policy?.insuredAmount || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(selectedContext.payload?.previousSumInsured || selectedContext.previousPolicy?.insuredAmount || selectedContext.policy?.insuredAmount || 0))}
                             </td>
                             <td className="p-2.5 font-bold text-[#00205B]">
-                              ETB {Number(selectedContext.payload?.newSumInsured || selectedContext.payload?.sumInsured || selectedContext.policy?.insuredAmount || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(selectedContext.payload?.newSumInsured || selectedContext.payload?.sumInsured || selectedContext.policy?.insuredAmount || 0))}
                             </td>
                             <td className="p-2.5 text-slate-700">
                               {Number(selectedContext.payload?.newSumInsured || selectedContext.payload?.sumInsured || selectedContext.policy?.insuredAmount || 0) >=
@@ -1754,10 +1755,10 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                           <tr>
                             <td className="p-2.5 font-semibold text-slate-600">Annual Premium</td>
                             <td className="p-2.5 text-slate-700">
-                              ETB {Number(selectedContext.payload?.previousPremium || selectedContext.previousPolicy?.premium || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(selectedContext.payload?.previousPremium || selectedContext.previousPolicy?.premium || 0))}
                             </td>
                             <td className="p-2.5 font-bold text-[#00205B]">
-                              ETB {Number(selectedContext.payload?.newPremium || selectedContext.payload?.premium || selectedContext.policy?.premium || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(selectedContext.payload?.newPremium || selectedContext.payload?.premium || selectedContext.policy?.premium || 0))}
                             </td>
                             <td className="p-2.5 text-slate-700">Standard Scheduled</td>
                           </tr>
@@ -1807,10 +1808,10 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                           <tr>
                             <td className="p-2.5 font-semibold text-slate-600">Sum Insured</td>
                             <td className="p-2.5 font-mono text-slate-700">
-                              ETB {Number(selectedContext.payload?.oldSumInsured || selectedContext.policy?.insuredAmount || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(selectedContext.payload?.oldSumInsured || selectedContext.policy?.insuredAmount || 0))}
                             </td>
                             <td className="p-2.5 font-mono font-bold text-emerald-700">
-                              ETB {Number(selectedContext.payload?.newSumInsured || selectedContext.payload?.sumInsured || selectedContext.policy?.insuredAmount || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(selectedContext.payload?.newSumInsured || selectedContext.payload?.sumInsured || selectedContext.policy?.insuredAmount || 0))}
                             </td>
                             <td className="p-2.5 text-slate-700 font-semibold">
                               {Number(selectedContext.payload?.newSumInsured || selectedContext.policy?.insuredAmount || 0) !== Number(selectedContext.payload?.oldSumInsured || selectedContext.policy?.insuredAmount || 0) ? 'Modified' : 'Unchanged'}
@@ -1843,10 +1844,10 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                           <tr>
                             <td className="p-2.5 font-semibold text-slate-600">Annual Premium</td>
                             <td className="p-2.5 font-mono text-slate-700">
-                              ETB {Number(selectedContext.payload?.oldPremium || selectedContext.policy?.premium || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(selectedContext.payload?.oldPremium || selectedContext.policy?.premium || 0))}
                             </td>
                             <td className="p-2.5 font-mono font-bold text-emerald-700">
-                              ETB {Number(selectedContext.payload?.newPremium || selectedContext.payload?.premium || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(selectedContext.payload?.newPremium || selectedContext.payload?.premium || 0))}
                             </td>
                             <td className="p-2.5 text-slate-700">
                               {Number(selectedContext.payload?.newPremium || selectedContext.payload?.premium || 0) !== Number(selectedContext.payload?.oldPremium || selectedContext.policy?.premium || 0) ? 'Premium Adjusted' : 'Unchanged'}
@@ -1925,7 +1926,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                         <div className="text-slate-500">Proposed Allocation</div>
                         <div className="font-bold text-[#00205B] mt-1 text-sm">
-                          ETB {Number(selectedContext.activeLink?.allocatedAmount || selectedContext.payload?.allocatedAmount || selectedContext.payload?.amount || 0).toLocaleString()}
+                          ETB {formatEtbNumber(Number(selectedContext.activeLink?.allocatedAmount || selectedContext.payload?.allocatedAmount || selectedContext.payload?.amount || 0))}
                         </div>
                       </div>
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
@@ -1937,7 +1938,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                         <div className="text-slate-500">Collateral Net Security Value</div>
                         <div className="font-bold text-slate-800 mt-1">
-                          ETB {Number(selectedContext.collateral?.nsv || (selectedContext.collateral?.valuationAmount ? selectedContext.collateral.valuationAmount * (1 - (selectedContext.collateral.haircut || 0)/100) : 0)).toLocaleString()}
+                          ETB {formatEtbNumber(Number(selectedContext.collateral?.nsv || (selectedContext.collateral?.valuationAmount ? selectedContext.collateral.valuationAmount * (1 - (selectedContext.collateral.haircut || 0)/100) : 0)))}
                         </div>
                       </div>
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
@@ -1990,7 +1991,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                         <span>Collateral Legal Release & Lien Discharge Request</span>
                       </div>
                       <div className="text-slate-800">
-                        Collateral Asset: <strong className="text-[#00205B]">{selectedContext.collateral?.code || selectedContext.collateral?.id}</strong> ({selectedContext.collateral?.type}) | Valuation: ETB {Number(selectedContext.collateral?.valuationAmount || 0).toLocaleString()}
+                        Collateral Asset: <strong className="text-[#00205B]">{selectedContext.collateral?.code || selectedContext.collateral?.id}</strong> ({selectedContext.collateral?.type}) | Valuation: ETB {formatEtbNumber(Number(selectedContext.collateral?.valuationAmount || 0))}
                       </div>
                       <div className="text-slate-700 italic bg-white p-2.5 rounded-lg border border-amber-200">
                         Maker Release Reason: "{selectedContext.payload?.reason || selectedTask.remarks || 'Full liquidation of facilities'}"
@@ -2016,7 +2017,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                         <div className="text-slate-500">Market Valuation</div>
                         <div className="font-bold text-[#00205B] mt-1 text-sm">
-                          ETB {Number(selectedContext.collateral?.valuationAmount || 0).toLocaleString()}
+                          ETB {formatEtbNumber(Number(selectedContext.collateral?.valuationAmount || 0))}
                         </div>
                       </div>
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
@@ -2028,7 +2029,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                         <div className="text-slate-500">Net Security Value (NSV)</div>
                         <div className="font-bold text-emerald-700 mt-1 text-sm">
-                          ETB {Number(selectedContext.collateral?.nsv || (selectedContext.collateral?.valuationAmount ? selectedContext.collateral.valuationAmount * (1 - (selectedContext.collateral.haircut || 0)/100) : 0)).toLocaleString()}
+                          ETB {formatEtbNumber(Number(selectedContext.collateral?.nsv || (selectedContext.collateral?.valuationAmount ? selectedContext.collateral.valuationAmount * (1 - (selectedContext.collateral.haircut || 0)/100) : 0)))}
                         </div>
                       </div>
                     </div>
@@ -2167,10 +2168,10 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                           <tr>
                             <td className="p-2.5 font-semibold text-slate-600">Sum Insured</td>
                             <td className="p-2.5 font-semibold text-slate-700">
-                              ETB {Number(selectedContext.previousPolicy?.insuredAmount || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(selectedContext.previousPolicy?.insuredAmount || 0))}
                             </td>
                             <td className="p-2.5 font-bold text-emerald-700">
-                              ETB {Number(selectedContext.policy?.insuredAmount || selectedContext.payload?.insuredAmount || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(selectedContext.policy?.insuredAmount || selectedContext.payload?.insuredAmount || 0))}
                             </td>
                             <td className="p-2.5 text-slate-700 font-semibold">
                               {Number(selectedContext.policy?.insuredAmount || 0) >= Number(selectedContext.previousPolicy?.insuredAmount || 0) ? 'Adequate' : 'Review Sum'}
@@ -2220,7 +2221,7 @@ export const MakerCheckerInbox: React.FC<MakerCheckerInboxProps> = ({
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                         <div className="text-slate-500">Sum Insured</div>
                         <div className="font-bold text-[#00205B] mt-1 text-sm">
-                          ETB {Number(selectedContext.policy?.insuredAmount || selectedContext.payload?.sumInsured || selectedContext.payload?.insuredAmount || 0).toLocaleString()}
+                          ETB {formatEtbNumber(Number(selectedContext.policy?.insuredAmount || selectedContext.payload?.sumInsured || selectedContext.payload?.insuredAmount || 0))}
                         </div>
                       </div>
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">

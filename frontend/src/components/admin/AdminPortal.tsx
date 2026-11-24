@@ -84,6 +84,8 @@ interface AdminPortalProps {
   onSaveInsurer: (insurer: Partial<ApprovedInsurer>) => Promise<void>;
   onSaveTaxonomy: (tax: Partial<CollateralTaxonomy>) => Promise<void>;
   onSaveMandatoryDocRule: (rule: Partial<MandatoryDocumentRule>) => Promise<void>;
+  onDeleteMandatoryDocRule?: (id: string) => Promise<void>;
+  onDeleteAllMandatoryDocRules?: () => Promise<void>;
   onSaveHoliday: (holiday: Partial<HolidayCalendar>) => Promise<void>;
   onDeleteHoliday?: (id: string) => Promise<void>;
 }
@@ -95,18 +97,18 @@ const ALL_ROLES = [
 ];
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({
-  segments,
-  branches,
-  permissions,
-  approvalConfigs,
-  reminderSchedules,
-  scheduledReports,
-  insurers,
-  taxonomies,
-  mandatoryDocRules,
-  holidayCalendars,
-  systemParameters,
-  allUsers,
+  segments = [],
+  branches = [],
+  permissions = [],
+  approvalConfigs = [],
+  reminderSchedules = [],
+  scheduledReports = [],
+  insurers = [],
+  taxonomies = [],
+  mandatoryDocRules = [],
+  holidayCalendars = [],
+  systemParameters = [],
+  allUsers = [],
   currentUser,
   onSaveSegment,
   onToggleSegmentStatus,
@@ -120,6 +122,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onSaveInsurer,
   onSaveTaxonomy,
   onSaveMandatoryDocRule,
+  onDeleteMandatoryDocRule,
+  onDeleteAllMandatoryDocRules,
   onSaveHoliday,
   onDeleteHoliday,
 }) => {
@@ -862,217 +866,565 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {activeTab === 'templates' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between bg-white p-4 rounded-lg border border-[#E2E8F0]">
-            <div><h3 className="text-sm font-bold text-[#00205B]">Notification Templates</h3><p className="text-xs text-[#5B6472]">Templates are validated and consumed when CIMS generates notifications.</p></div>
-            <button onClick={() => setTemplateDraft({ id: '', name: '', type: 'Email', channel: 'Email', triggerDaysBefore: 30, subject: '', body: '', active: true })} className="btn-primary text-xs"><Plus className="w-3.5 h-3.5" /> New Template</button>
+            <div>
+              <h3 className="text-sm font-bold text-[#00205B]">Notification Templates</h3>
+              <p className="text-xs text-[#5B6472]">Templates are linked to Reminder Schedules and dispatched to Staff, Customers, and Insurers with full audience isolation.</p>
+            </div>
+            <button
+              onClick={() => {
+                setModalError(null);
+                setTemplatePreview('');
+                const defaultSched = reminderSchedules.length > 0 ? reminderSchedules[0] : null;
+                setTemplateDraft({
+                  id: '',
+                  name: defaultSched ? `${defaultSched.name || defaultSched.id} (Staff)` : '',
+                  type: 'Email',
+                  channel: 'Email',
+                  eventType: defaultSched?.triggerBasis || 'Expiry Reminder',
+                  triggerDaysBefore: defaultSched?.offsetDays || defaultSched?.daysBeforeExpiry || 30,
+                  scheduleId: defaultSched?.id || '',
+                  audience: 'Staff',
+                  subject: 'Staff Alert: Insurance Expiry Due - {Policy Number}',
+                  body: 'Dear {Staff Name},\n\nPolicy {Policy Number} for collateral {Collateral ID} (Customer: {Customer Name}) is expiring on {Expiry Date}.\nPlease review and initiate required renewal actions.\n\nBranch: {Branch Name}',
+                  active: true
+                });
+              }}
+              className="btn-primary text-xs"
+            >
+              <Plus className="w-3.5 h-3.5" /> New Template
+            </button>
           </div>
+
           <div className="cims-card overflow-x-auto">
-            <table className="w-full text-left text-xs"><thead className="bg-[#EFF5FB] border-b border-[#E2E8F0]"><tr><th className="p-3">Name</th><th className="p-3">Channel</th><th className="p-3">Trigger</th><th className="p-3">Status</th><th className="p-3 text-right">Action</th></tr></thead>
-              <tbody className="divide-y divide-[#E2E8F0]">{templates.map(t => <tr key={t.id} className="hover:bg-[#EFF5FB]"><td className="p-3 font-semibold">{t.name}</td><td className="p-3">{t.type || t.channel}</td><td className="p-3">{t.triggerDaysBefore || 0} working days</td><td className="p-3"><StatusChip label={t.active === false ? 'Inactive' : 'Active'} /></td><td className="p-3 text-right"><button onClick={() => setTemplateDraft(t)} className="text-[#00205B] font-semibold hover:underline">Edit</button></td></tr>)}</tbody></table>
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
+                <tr>
+                  <th className="p-3">Template Name</th>
+                  <th className="p-3">Linked Reminder Schedule</th>
+                  <th className="p-3">Audience</th>
+                  <th className="p-3">Channel</th>
+                  <th className="p-3">Trigger Offset</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E2E8F0]">
+                {templates.map(t => {
+                  const linkedSched = reminderSchedules.find(s => s.id === t.scheduleId);
+                  return (
+                    <tr key={t.id} className="hover:bg-[#EFF5FB]">
+                      <td className="p-3 font-semibold text-[#00205B]">{t.name}</td>
+                      <td className="p-3">
+                        {linkedSched ? (
+                          <div className="font-medium text-[#101828]">
+                            <span className="text-[#00205B] font-bold">{linkedSched.name || linkedSched.id}</span>
+                            <div className="text-[10px] text-[#5B6472]">
+                              T {linkedSched.triggerBasis?.includes('After') ? '+' : '-'} {linkedSched.offsetDays || linkedSched.daysBeforeExpiry} Days ({linkedSched.dayType || 'Working Day'})
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[#5B6472] italic text-[11px]">Standalone / General</span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded font-semibold text-[11px] ${
+                          (t.audience || '').toLowerCase() === 'customer'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                            : (t.audience || '').toLowerCase() === 'insurer'
+                            ? 'bg-purple-100 text-purple-900 border border-purple-200'
+                            : 'bg-blue-100 text-blue-900 border border-blue-200'
+                        }`}>
+                          {t.audience || 'Staff'}
+                        </span>
+                      </td>
+                      <td className="p-3 font-medium">{t.type || t.channel}</td>
+                      <td className="p-3 tabular-nums font-semibold">{t.triggerDaysBefore || 0} working days</td>
+                      <td className="p-3"><StatusChip label={t.active === false ? 'Inactive' : 'Active'} /></td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => {
+                            setModalError(null);
+                            setTemplatePreview('');
+                            setTemplateDraft(t);
+                          }}
+                          className="text-[#00205B] font-semibold hover:underline"
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          {templateDraft && (
-            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl p-6 w-full max-w-2xl shadow-2xl space-y-4">
-                <div className="flex justify-between">
-                  <div>
-                    <h3 className="font-bold text-[#00205B]">{templateDraft.id ? 'Edit' : 'Create'} Notification Template</h3>
-                    <p className="text-xs text-[#5B6472]">Production templates are strictly validated and dispatched by the automated notification engine.</p>
-                  </div>
-                  <button onClick={() => { setTemplateDraft(null); setModalError(null); }}><X className="w-5 h-5 text-[#5B6472] hover:text-[#00205B]" /></button>
-                </div>
 
-                {modalError && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-800 animate-fadeIn">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />
-                    <span>{modalError}</span>
-                  </div>
-                )}
+          {templateDraft && (() => {
+            const currentSched = reminderSchedules.find(s => s.id === templateDraft.scheduleId);
+            const currentAudience = templateDraft.audience || 'Staff';
 
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Template Name *</label>
-                    <input className="input-field w-full" placeholder="e.g. Policy Expiry 30-Day Reminder" value={templateDraft.name} onChange={e => setTemplateDraft({ ...templateDraft, name: e.target.value })} />
+            // Reminder Schedule is the single source of truth for audience. Only
+            // expose template sections for audiences enabled on the linked schedule.
+            const parseScheduleAudiences = (audience?: string): string[] => {
+              const s = (audience || '').toLowerCase();
+              const out: string[] = [];
+              if (s.includes('both') || (s.includes('staff') && s.includes('customer'))) {
+                out.push('Staff', 'Customer');
+              } else if (s.includes('customer')) {
+                out.push('Customer');
+              } else if (s.includes('insurer') || s.includes('insurance')) {
+                out.push('Insurer');
+              } else {
+                out.push('Staff');
+              }
+              if ((s.includes('insurer') || s.includes('insurance')) && !out.includes('Insurer')) {
+                out.push('Insurer');
+              }
+              return out;
+            };
+            const allAudienceSections = [
+              { key: 'Staff', label: 'Staff Notification Template', hint: 'Internal task, review action, portfolio digest' },
+              { key: 'Customer', label: 'Customer Notification Template', hint: 'Formal renewal reminder letter/SMS' },
+              { key: 'Insurer', label: 'Insurance Company Template', hint: 'Partner Underwriter notice' },
+            ];
+            const allowedAudiences = currentSched
+              ? parseScheduleAudiences(currentSched.audience)
+              : allAudienceSections.map(a => a.key);
+            const audienceSections = allAudienceSections.filter(a =>
+              allowedAudiences.some(x => x.toLowerCase() === a.key.toLowerCase())
+            );
+
+            // Distinct placeholder tokens tailored for each audience
+            const audienceTokens: Record<string, string[]> = {
+              Staff: [
+                '{Staff Name}',
+                '{Total Policies}',
+                '{Policy Details}',
+                '{Expiring Count}',
+                '{Branch Name}',
+                '{Current Date}',
+                '{Days Remaining}',
+                '{Summary}',
+                '{Collateral ID}',
+                '{Policy Number}',
+                '{Customer Name}',
+              ],
+              Customer: [
+                '{Customer Name}',
+                '{Policy Number}',
+                '{Collateral ID}',
+                '{Expiry Date}',
+                '{Insurer Name}',
+                '{Branch Name}',
+                '{RM Name}',
+                '{RM Phone}',
+                '{Days Remaining}',
+                '{Days Overdue}',
+                '{Loan Account Number}',
+              ],
+              Insurer: [
+                '{Insurer Name}',
+                '{Policy Number}',
+                '{Collateral ID}',
+                '{Customer Name}',
+                '{Expiry Date}',
+                '{Branch Name}',
+                '{Current Date}',
+              ],
+            };
+
+            const tokens = audienceTokens[currentAudience] || audienceTokens.Staff;
+
+            return (
+              <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl p-6 w-full max-w-3xl shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-bold text-[#00205B] text-base">
+                        {templateDraft.id ? 'Edit' : 'Create'} Notification Template
+                      </h3>
+                      <p className="text-xs text-[#5B6472]">
+                        Production templates are strictly linked to Reminder Schedules and dispatched by the automated notification engine.
+                      </p>
+                    </div>
+                    <button onClick={() => { setTemplateDraft(null); setModalError(null); }}>
+                      <X className="w-5 h-5 text-[#5B6472] hover:text-[#00205B]" />
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Event Type *</label>
-                    <select
-                      className="input-field w-full font-semibold text-[#00205B]"
-                      value={templateDraft.eventType || 'Expiry Reminder'}
-                      onChange={e => setTemplateDraft({ ...templateDraft, eventType: e.target.value })}
-                    >
-                      <option value="Expiry Reminder">Expiry Reminder</option>
-                      <option value="Expired Policy">Expired Policy</option>
-                      <option value="Renewal Requirement">Renewal Requirement</option>
-                      <option value="Approval Request">Approval Request</option>
-                      <option value="Rejected Policy">Rejected Policy</option>
-                      <option value="Missing Documentation">Missing Documentation</option>
-                      <option value="Compliance Exception">Compliance Exception</option>
-                      <option value="Policy Cancellation">Policy Cancellation</option>
-                      <option value="Policy Endorsement">Policy Endorsement</option>
-                      <option value="System Alert">System Alert</option>
-                    </select>
+
+                  {modalError && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-800 animate-fadeIn">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />
+                      <span>{modalError}</span>
+                    </div>
+                  )}
+
+                  {/* Requirement 7: Link Templates directly to Reminder Schedules via dropdown */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">
+                        Linked Reminder Schedule *
+                      </label>
+                      <select
+                        className="input-field w-full font-bold text-[#00205B]"
+                        value={templateDraft.scheduleId || ''}
+                        onChange={(e) => {
+                          const schedId = e.target.value;
+                          const sched = reminderSchedules.find(s => s.id === schedId);
+                          if (sched) {
+                            const nextAllowed = parseScheduleAudiences(sched.audience);
+                            const curAud = templateDraft.audience || 'Staff';
+                            if (!nextAllowed.some(a => a.toLowerCase() === curAud.toLowerCase())) {
+                              const hasContent = Boolean((templateDraft.subject || '').trim() || (templateDraft.body || '').trim());
+                              const ok = window.confirm(
+                                `Reminder schedule "${sched.name || sched.id}" only targets ${nextAllowed.join(' and ')}. ` +
+                                `The current ${curAud} template section will no longer be available.` +
+                                (hasContent ? ' Its existing content will be preserved, not deleted.' : '') +
+                                ` Continue and switch to the ${nextAllowed[0]} section?`
+                              );
+                              if (!ok) return;
+                              const nextAud = nextAllowed[0];
+                              // Prefer an existing template for the target audience so we
+                              // never overwrite it with content from the hidden section.
+                              const existingForAud = templates.find(t =>
+                                t.scheduleId === sched.id &&
+                                (t.audience || '').toLowerCase() === nextAud.toLowerCase()
+                              );
+                              if (existingForAud) {
+                                setTemplateDraft({ ...existingForAud });
+                                return;
+                              }
+                              setTemplateDraft({
+                                ...templateDraft,
+                                scheduleId: sched.id,
+                                triggerDaysBefore: sched.offsetDays || sched.daysBeforeExpiry || 30,
+                                eventType: sched.triggerBasis || 'Expiry Reminder',
+                                audience: nextAud,
+                                name: `${sched.name || sched.id} (${nextAud})`,
+                              });
+                              return;
+                            }
+                            setTemplateDraft({
+                              ...templateDraft,
+                              scheduleId: sched.id,
+                              triggerDaysBefore: sched.offsetDays || sched.daysBeforeExpiry || 30,
+                              eventType: sched.triggerBasis || 'Expiry Reminder',
+                              name: `${sched.name || sched.id} (${currentAudience})`,
+                            });
+                          } else {
+                            setTemplateDraft({
+                              ...templateDraft,
+                              scheduleId: '',
+                            });
+                          }
+                        }}
+                      >
+                        <option value="">-- Standalone / General Template (Not linked to schedule) --</option>
+                        {reminderSchedules.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.name || s.id} (T {s.triggerBasis?.includes('After') ? '+' : '-'} {s.offsetDays || s.daysBeforeExpiry} Days | Audience: {s.audience || 'Staff'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Summary Banner displaying inherited settings */}
+                    {currentSched && (
+                      <div className="p-3.5 bg-[#EFF5FB] border border-[#BBD3EB] rounded-lg text-xs space-y-2 animate-fadeIn">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[#00205B] text-xs">
+                            Inherited from Schedule: {currentSched.name || currentSched.id}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#00205B] text-white">
+                            {currentSched.active ? 'ACTIVE' : 'PAUSED'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] text-[#173F63] pt-1">
+                          <div className="p-2 bg-white rounded border border-[#E2E8F0]">
+                            <span className="text-[#5B6472] block text-[10px]">Trigger Event</span>
+                            <span className="font-bold">{currentSched.triggerBasis || 'Before Expiry'} ({currentSched.dayType || 'Working Day'})</span>
+                          </div>
+                          <div className="p-2 bg-white rounded border border-[#E2E8F0]">
+                            <span className="text-[#5B6472] block text-[10px]">Offset Days</span>
+                            <span className="font-bold">{currentSched.offsetDays || currentSched.daysBeforeExpiry} Days</span>
+                          </div>
+                          <div className="p-2 bg-white rounded border border-[#E2E8F0]">
+                            <span className="text-[#5B6472] block text-[10px]">Recurrence</span>
+                            <span className="font-bold">{currentSched.recurrence || 'One-time'}</span>
+                          </div>
+                          <div className="p-2 bg-white rounded border border-[#E2E8F0]">
+                            <span className="text-[#5B6472] block text-[10px]">Configured Audience</span>
+                            <span className="font-bold">{currentSched.audience || 'Both'}</span>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-[#5B6472] italic">
+                          ✓ Trigger timing ({currentSched.offsetDays || currentSched.daysBeforeExpiry} days) and event type are automatically synchronized from this schedule.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Separate Template Sections for Each Audience */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#5B6472] mb-1.5">
+                        Target Audience Template Section *
+                      </label>
+                      <div className="flex gap-2">
+                        {audienceSections.map(({ key, label, hint }) => {
+                          const isSelected = (templateDraft.audience || 'Staff').toLowerCase() === key.toLowerCase();
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => {
+                                const newAud = key;
+                                // Check if a template already exists for this schedule and audience
+                                const existingForAud = templateDraft.scheduleId
+                                  ? templates.find(t => t.scheduleId === templateDraft.scheduleId && (t.audience || '').toLowerCase() === newAud.toLowerCase())
+                                  : null;
+
+                                if (existingForAud) {
+                                  setTemplateDraft(existingForAud);
+                                } else {
+                                  let newSub = '';
+                                  let newBody = '';
+                                  if (newAud === 'Staff') {
+                                    newSub = 'Staff Alert: Insurance Expiry Due - {Policy Number}';
+                                    newBody = 'Dear {Staff Name},\n\nPolicy {Policy Number} for collateral {Collateral ID} (Customer: {Customer Name}) is expiring on {Expiry Date}.\nPlease review and initiate required renewal actions.\n\nBranch: {Branch Name}';
+                                  } else if (newAud === 'Customer') {
+                                    newSub = 'Dashen Bank Notice: Insurance Policy Renewal - {Policy Number}';
+                                    newBody = 'Dear {Customer Name},\n\nYour insurance policy {Policy Number} securing your loan at Dashen Bank expires on {Expiry Date}.\nPlease submit your renewal policy certificate to avoid loan irregularity.\n\nBranch: {Branch Name}';
+                                  } else {
+                                    newSub = 'Underwriter Notice: Insurance Expiry Reminder - {Policy Number}';
+                                    newBody = 'Dear Partner Underwriter {Insurer Name},\n\nPlease be advised that policy {Policy Number} for collateral {Collateral ID} is expiring on {Expiry Date}.\nPlease coordinate renewal with Dashen Bank.\n\nBranch: {Branch Name}';
+                                  }
+
+                                  setTemplateDraft({
+                                    ...templateDraft,
+                                    id: templateDraft.id && templateDraft.audience === newAud ? templateDraft.id : '',
+                                    audience: newAud,
+                                    name: currentSched ? `${currentSched.name || currentSched.id} (${newAud})` : `${templateDraft.name} (${newAud})`,
+                                    subject: newSub,
+                                    body: newBody,
+                                  });
+                                }
+                              }}
+                              className={`flex-1 p-2.5 rounded-lg border text-left transition-all ${
+                                isSelected
+                                  ? 'bg-[#00205B] text-white border-[#00205B] shadow-sm'
+                                  : 'bg-white text-[#5B6472] border-[#E2E8F0] hover:bg-[#EFF5FB]'
+                              }`}
+                            >
+                              <div className="font-bold text-xs">{label}</div>
+                              <div className={`text-[10px] ${isSelected ? 'text-slate-200' : 'text-[#5B6472]'}`}>{hint}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {currentSched && allowedAudiences.length < allAudienceSections.length && (
+                        <p className="mt-1.5 text-[10px] text-[#5B6472]">
+                          Only the {allowedAudiences.join(' and ')} section(s) are shown because the linked reminder schedule targets {allowedAudiences.join(' and ')}. Existing template content for other audiences is preserved and is not deleted.
+                        </p>
+                      )}
+                      {currentSched && !allowedAudiences.some(a => a.toLowerCase() === currentAudience.toLowerCase()) && (
+                        <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 flex items-center justify-between gap-2">
+                          <span>
+                            The current <strong>{currentAudience}</strong> section is no longer enabled on this schedule. Existing content is preserved.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextAud = allowedAudiences[0];
+                              setTemplateDraft({
+                                ...templateDraft,
+                                audience: nextAud,
+                                name: `${currentSched.name || currentSched.id} (${nextAud})`,
+                              });
+                            }}
+                            className="px-2 py-1 bg-amber-600 text-white rounded font-semibold shrink-0"
+                          >
+                            Switch to {allowedAudiences[0]}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Channel *</label>
-                    <select className="input-field w-full" value={templateDraft.channel || templateDraft.type || 'Email'} onChange={e => setTemplateDraft({ ...templateDraft, type: e.target.value, channel: e.target.value as any })}>
-                      <option value="Email">Email</option>
-                      <option value="SMS">SMS</option>
-                    </select>
+
+                  <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Template Name *</label>
+                      <input
+                        className="input-field w-full font-semibold"
+                        placeholder="e.g. 30 Working Days Notice (Staff)"
+                        value={templateDraft.name}
+                        onChange={e => setTemplateDraft({ ...templateDraft, name: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Channel *</label>
+                      <select
+                        className="input-field w-full font-semibold"
+                        value={templateDraft.channel || templateDraft.type || 'Email'}
+                        onChange={e => setTemplateDraft({ ...templateDraft, type: e.target.value, channel: e.target.value as any })}
+                      >
+                        <option value="Email">Email</option>
+                        <option value="SMS">SMS</option>
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">
+                        Subject Line {(templateDraft.channel || templateDraft.type) === 'Email' ? <span className="text-red-600">* (Mandatory for Email)</span> : <span className="text-slate-400 font-normal">(Optional for SMS)</span>}
+                      </label>
+                      <input
+                        className="input-field w-full font-medium"
+                        placeholder="e.g. Dashen Bank Alert: Policy Expiry Notice for {Policy Number}"
+                        value={templateDraft.subject || ''}
+                        onChange={e => setTemplateDraft({ ...templateDraft, subject: e.target.value })}
+                      />
+                    </div>
                   </div>
+
                   <div>
-                    <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">Trigger (Working Days Before Expiry)</label>
-                    <input className="input-field w-full" type="number" min="0" placeholder="e.g. 30" value={templateDraft.triggerDaysBefore ?? ''} onChange={e => setTemplateDraft({ ...templateDraft, triggerDaysBefore: e.target.value === '' ? ('' as any) : Number(e.target.value) })} />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[11px] font-semibold text-[#5B6472] mb-1">
-                      Email Subject {(templateDraft.channel || templateDraft.type) === 'Email' ? <span className="text-red-600">* (Mandatory for Email)</span> : <span className="text-slate-400 font-normal">(Optional for SMS)</span>}
-                    </label>
-                    <input
-                      className="input-field w-full"
-                      placeholder="e.g. Action Required: Insurance Expiry for {PolicyNumber}"
-                      value={templateDraft.subject || ''}
-                      onChange={e => setTemplateDraft({ ...templateDraft, subject: e.target.value })}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-[11px] font-semibold text-[#5B6472]">
+                        Message Body * (Click placeholder token to insert for {currentAudience})
+                      </label>
+                      <span className="text-[10px] text-[#5B6472]">
+                        Standardized merge tags for {currentAudience}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mb-2 p-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg">
+                      {tokens.map(ph => (
+                        <button
+                          key={ph}
+                          type="button"
+                          onClick={() => setTemplateDraft({ ...templateDraft, body: (templateDraft.body || '') + ph })}
+                          className="px-2 py-0.5 text-[11px] font-mono bg-white border border-[#CBD5E1] rounded hover:border-[#00205B] hover:bg-[#EFF5FB] text-[#00205B] transition-colors"
+                          title={`Insert ${ph}`}
+                        >
+                          + {ph}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      className="input-field w-full font-mono text-xs"
+                      rows={6}
+                      placeholder="Enter template message body with placeholders..."
+                      value={templateDraft.body}
+                      onChange={e => setTemplateDraft({ ...templateDraft, body: e.target.value })}
                     />
                   </div>
-                </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-[11px] font-semibold text-[#5B6472]">Message Body * (Click placeholder token to insert)</label>
-                    <span className="text-[10px] text-[#5B6472]">Standardized tokens supported by backend dispatcher</span>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs flex items-center gap-2 cursor-pointer font-medium text-[#00205B]">
+                      <input
+                        type="checkbox"
+                        checked={templateDraft.active !== false}
+                        onChange={e => setTemplateDraft({ ...templateDraft, active: e.target.checked })}
+                      />
+                      Template Active (Participates in automated schedule dispatch)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setModalError(null);
+                        try {
+                          const r = await cimsApi.previewNotificationTemplate(templateDraft.body, {
+                            'Customer Name': 'Selam Alemayehu',
+                            CustomerName: 'Selam Alemayehu',
+                            'Staff Name': 'Alemayehu Tadesse',
+                            StaffName: 'Alemayehu Tadesse',
+                            'Total Policies': '3',
+                            'Expiring Count': '3',
+                            'Policy Details': '• POL-001 | Collateral: COL-00045 | Expiry: 2026-12-15',
+                            'Summary': '• POL-001 | Collateral: COL-00045 | Expiry: 2026-12-15',
+                            'Policy Number': 'POL-2026-001',
+                            PolicyNumber: 'POL-2026-001',
+                            'Collateral ID': 'COL-00045',
+                            CollateralID: 'COL-00045',
+                            'Expiry Date': '2026-12-15',
+                            ExpiryDate: '2026-12-15',
+                            'Current Date': '2026-11-18',
+                            CurrentDate: '2026-11-18',
+                            'Insurer Name': 'Ethiopian Insurance Corporation',
+                            InsurerName: 'Ethiopian Insurance Corporation',
+                            'Loan Account Number': 'LN-2026-9901',
+                            LoanAccountNumber: 'LN-2026-9901',
+                            'Facility Number': 'FAC-2026-004',
+                            FacilityNumber: 'FAC-2026-004',
+                            'Branch Name': 'Main Corporate Branch',
+                            Branch: 'Main Corporate Branch',
+                            'Days Remaining': 30,
+                            DaysRemaining: 30,
+                            'Days Overdue': 0,
+                            DaysOverdue: 0,
+                            RMName: 'Alemayehu Tadesse',
+                            RMPhone: '+251 91 123 4567',
+                          });
+                          setTemplatePreview(r.preview);
+                        } catch (e: any) {
+                          setModalError(e.message || 'Failed to generate preview with the given placeholders.');
+                        }
+                      }}
+                      className="btn-secondary text-xs"
+                    >
+                      Preview Template
+                    </button>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 mb-2 p-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg">
-                    {[
-                      '{Customer Name}',
-                      '{Policy Number}',
-                      '{Collateral ID}',
-                      '{Expiry Date}',
-                      '{Insurer Name}',
-                      '{Loan Account Number}',
-                      '{Facility Number}',
-                      '{Branch Name}',
-                      '{Current Date}',
-                      '{Days Remaining}',
-                      '{Days Overdue}',
-                      '{CustomerName}',
-                      '{PolicyNumber}',
-                      '{CollateralID}',
-                      '{ExpiryDate}',
-                      '{LoanAccountNumber}',
-                      '{RMName}',
-                      '{RMPhone}',
-                    ].map(ph => (
-                      <button
-                        key={ph}
-                        type="button"
-                        onClick={() => setTemplateDraft({ ...templateDraft, body: (templateDraft.body || '') + ph })}
-                        className="px-2 py-0.5 text-[11px] font-mono bg-white border border-[#CBD5E1] rounded hover:border-[#00205B] hover:bg-[#EFF5FB] text-[#00205B] transition-colors"
-                        title={`Insert ${ph}`}
-                      >
-                        + {ph}
-                      </button>
-                    ))}
+
+                  {templatePreview && (
+                    <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs whitespace-pre-wrap max-h-36 overflow-auto font-mono text-[#334155] animate-fadeIn">
+                      <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Generated Output Preview</div>
+                      {templatePreview}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 pt-2 border-t border-[#E2E8F0]">
+                    <button onClick={() => { setTemplateDraft(null); setModalError(null); }} className="btn-secondary text-xs">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!templateDraft.name || !templateDraft.name.trim()) {
+                          setModalError('Template name is required.');
+                          return;
+                        }
+                        const channel = templateDraft.channel || templateDraft.type || 'Email';
+                        if (channel === 'Email' && (!templateDraft.subject || !templateDraft.subject.trim())) {
+                          setModalError('Email subject is mandatory for Email channel templates.');
+                          return;
+                        }
+                        if (!templateDraft.body || !templateDraft.body.trim()) {
+                          setModalError('Template body is required.');
+                          return;
+                        }
+                        if (currentSched) {
+                          const allowed = parseScheduleAudiences(currentSched.audience);
+                          const aud = templateDraft.audience || '';
+                          if (!aud || !allowed.some(a => a.toLowerCase() === aud.toLowerCase())) {
+                            setModalError(`Select one of the audiences enabled on reminder schedule "${currentSched.name || currentSched.id}": ${allowed.join(', ')}.`);
+                            return;
+                          }
+                        }
+                        executeModalSave(
+                          async () => {
+                            await cimsApi.saveNotificationTemplate(templateDraft, currentUser.userId);
+                            setTemplatePreview('');
+                            await loadRuntimeData();
+                          },
+                          'Notification template saved and linked to reminder schedule successfully!',
+                          () => setTemplateDraft(null)
+                        );
+                      }}
+                      disabled={modalSaving}
+                      className="btn-primary text-xs"
+                    >
+                      {modalSaving ? 'Validating & Saving...' : 'Save Template'}
+                    </button>
                   </div>
-                  <textarea
-                    className="input-field w-full font-mono text-xs"
-                    rows={6}
-                    placeholder="Dear {Customer Name},\n\nYour policy {Policy Number} for collateral {Collateral ID} expires on {Expiry Date}. Please contact {Branch Name} to renew immediately..."
-                    value={templateDraft.body}
-                    onChange={e => setTemplateDraft({ ...templateDraft, body: e.target.value })}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <label className="text-xs flex items-center gap-2 cursor-pointer font-medium text-[#00205B]">
-                    <input type="checkbox" checked={templateDraft.active !== false} onChange={e => setTemplateDraft({ ...templateDraft, active: e.target.checked })} />
-                    Template Active (Participates in automated schedule dispatch)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setModalError(null);
-                      try {
-                        const r = await cimsApi.previewNotificationTemplate(templateDraft.body, {
-                          'Customer Name': 'Selam Alemayehu',
-                          CustomerName: 'Selam Alemayehu',
-                          'Policy Number': 'POL-2026-001',
-                          PolicyNumber: 'POL-2026-001',
-                          'Collateral ID': 'COL-00045',
-                          CollateralID: 'COL-00045',
-                          'Expiry Date': '2026-12-15',
-                          ExpiryDate: '2026-12-15',
-                          'Current Date': '2026-11-18',
-                          CurrentDate: '2026-11-18',
-                          'Insurer Name': 'Ethiopian Insurance Corporation',
-                          InsurerName: 'Ethiopian Insurance Corporation',
-                          'Loan Account Number': 'LN-2026-9901',
-                          LoanAccountNumber: 'LN-2026-9901',
-                          'Facility Number': 'FAC-2026-004',
-                          FacilityNumber: 'FAC-2026-004',
-                          'Branch Name': 'Main Corporate Branch',
-                          Branch: 'Main Corporate Branch',
-                          'Days Remaining': 30,
-                          DaysRemaining: 30,
-                          'Days Overdue': 0,
-                          DaysOverdue: 0,
-                          RMName: 'Alemayehu Tadesse',
-                          RMPhone: '+251 91 123 4567',
-                          Amount: 12500000,
-                          MakerID: 'LOAN_OFFICER_1'
-                        });
-                        setTemplatePreview(r.preview);
-                      } catch (e: any) {
-                        setModalError(e.message || 'Failed to generate preview with the given placeholders.');
-                      }
-                    }}
-                    className="btn-secondary text-xs"
-                  >
-                    Preview Template
-                  </button>
-                </div>
-
-                {templatePreview && (
-                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs whitespace-pre-wrap max-h-36 overflow-auto font-mono text-[#334155]">
-                    <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Generated Output Preview</div>
-                    {templatePreview}
-                  </div>
-                )}
-
-                <div className="flex justify-end gap-2 pt-2 border-t border-[#E2E8F0]">
-                  <button onClick={() => { setTemplateDraft(null); setModalError(null); }} className="btn-secondary text-xs">Cancel</button>
-                  <button
-                    onClick={() => {
-                      if (!templateDraft.name || !templateDraft.name.trim()) {
-                        setModalError('Template name is required.');
-                        return;
-                      }
-                      const channel = templateDraft.channel || templateDraft.type || 'Email';
-                      if (channel === 'Email' && (!templateDraft.subject || !templateDraft.subject.trim())) {
-                        setModalError('Email subject is mandatory for Email channel templates.');
-                        return;
-                      }
-                      if (!templateDraft.body || !templateDraft.body.trim()) {
-                        setModalError('Template body is required.');
-                        return;
-                      }
-                      executeModalSave(
-                        async () => {
-                          await cimsApi.saveNotificationTemplate(templateDraft, currentUser.userId);
-                          setTemplatePreview('');
-                          await loadRuntimeData();
-                        },
-                        'Notification template saved and validated against runtime schema!',
-                        () => setTemplateDraft(null)
-                      );
-                    }}
-                    disabled={modalSaving}
-                    className="btn-primary text-xs"
-                  >
-                    {modalSaving ? 'Validating & Saving...' : 'Save Template'}
-                  </button>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
@@ -1975,6 +2327,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               onClick={() => {
                 setModalError(null);
                 setEditingReminder({
+                  name: '',
                   daysBeforeExpiry: 15,
                   channelsJson: '["Email","SMS"]',
                   recipientRolesJson: '["CRO","BRO","BRMGR"]',
@@ -1998,6 +2351,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <table className="w-full text-left text-xs">
               <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
                 <tr>
+                  <th className="p-3">Reminder Name</th>
                   <th className="p-3">Audience</th>
                   <th className="p-3">Offset & Trigger Basis</th>
                   <th className="p-3">Recurrence / Limit</th>
@@ -2010,6 +2364,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <tbody className="divide-y divide-[#E2E8F0]">
                 {reminderSchedules.map((r) => (
                   <tr key={r.id} className="hover:bg-[#EFF5FB]">
+                    <td className="p-3 font-bold text-[#00205B]">{r.name || r.id}</td>
                     <td className="p-3">
                       <span className={`px-2 py-0.5 rounded font-semibold text-[11px] ${r.audience === 'Customer' ? 'bg-amber-100 text-amber-900' : 'bg-blue-100 text-blue-900'}`}>
                         {r.audience || 'Staff'}
@@ -2019,7 +2374,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       {r.triggerBasis === 'After Expiry' ? `T + ${r.daysBeforeExpiry}` : `T - ${r.daysBeforeExpiry}`} Days ({r.dayType || 'Working Day'})
                     </td>
                     <td className="p-3">
-                      <div>{r.recurrence || 'One-time'}</div>
+                      <div className="font-semibold text-[#101828]">{r.recurrence || 'One-time'}</div>
+                      {r.recurrenceUnit === 'MINUTES' && (
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                          ⚠️ Testing ({r.recurrenceInterval || 1} min)
+                        </span>
+                      )}
                       <div className="text-[10px] text-[#5B6472]">Until: {r.continueUntil || 'Renewed'}</div>
                     </td>
                     <td className="p-3 font-medium">{r.channelsJson}</td>
@@ -2182,17 +2542,37 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <h3 className="text-sm font-bold text-[#101828]">Mandatory Collateral Ownership Document Rules</h3>
               <p className="text-xs text-[#5B6472]">Define document requirements (e.g. Title Deeds, Valuation Reports) by asset category</p>
             </div>
-            <button
-              onClick={() => {
-                setModalError(null);
-                setEditingDocRule({ collateralCategory: 'Immovable Properties', documentType: '', mandatory: true });
-                setShowDocRuleModal(true);
-              }}
-              className="btn-primary py-1.5 px-3 text-xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              + Add Document Rule
-            </button>
+            <div className="flex items-center space-x-2">
+              {onDeleteAllMandatoryDocRules && mandatoryDocRules.length > 0 && (
+                <button
+                  onClick={async () => {
+                    if (window.confirm(`Are you sure you want to remove ALL ${mandatoryDocRules.length} mandatory document rules? This cannot be undone.`)) {
+                      try {
+                        await onDeleteAllMandatoryDocRules();
+                        showToast('All mandatory document rules have been removed.');
+                      } catch (e: any) {
+                        showToast(e?.message || 'Failed to remove all document rules.');
+                      }
+                    }
+                  }}
+                  className="bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 py-1.5 px-3 text-xs font-semibold rounded-md flex items-center gap-1.5 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Remove All Rules
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setModalError(null);
+                  setEditingDocRule({ segment: 'All Segments', collateralCategory: 'All Categories', documentType: '', mandatory: true });
+                  setShowDocRuleModal(true);
+                }}
+                className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                + Add Document Rule
+              </button>
+            </div>
           </div>
 
           <div className="cims-card overflow-x-auto">
@@ -2200,6 +2580,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <thead className="bg-[#EFF5FB] border-b border-[#E2E8F0] text-[#5B6472] font-semibold">
                 <tr>
                   <th className="p-3">Collateral Category</th>
+                  <th className="p-3">Business Segment</th>
                   <th className="p-3">Asset Sub-Type</th>
                   <th className="p-3">Required Document Type</th>
                   <th className="p-3">Ownership Scope</th>
@@ -2213,6 +2594,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 {mandatoryDocRules.map((rule) => (
                   <tr key={rule.id} className="hover:bg-[#EFF5FB]">
                     <td className="p-3 font-bold text-[#00205B]">{rule.collateralCategory}</td>
+                    <td className="p-3 font-medium text-[#00205B]">{rule.segment || 'All Segments'}</td>
                     <td className="p-3 font-medium text-[#00205B]">{rule.collateralType || 'All Sub-Types'}</td>
                     <td className="p-3 font-semibold">{rule.documentType}</td>
                     <td className="p-3">{rule.ownershipCondition || 'Any'}</td>
@@ -2223,7 +2605,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <td className="p-3">
                       <StatusChip label={rule.active !== false ? 'Active' : 'Disabled'} />
                     </td>
-                    <td className="p-3 text-right">
+                    <td className="p-3 text-right space-x-3">
                       <button
                         onClick={() => {
                           setModalError(null);
@@ -2234,6 +2616,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       >
                         Edit
                       </button>
+                      {onDeleteMandatoryDocRule && (
+                        <button
+                          onClick={async () => {
+                            if (window.confirm(`Are you sure you want to delete mandatory document rule "${rule.documentType}" for ${rule.collateralCategory}?`)) {
+                              try {
+                                await onDeleteMandatoryDocRule(rule.id);
+                                showToast(`Document rule "${rule.documentType}" deleted successfully.`);
+                              } catch (e: any) {
+                                showToast(e?.message || 'Failed to delete document rule.');
+                              }
+                            }
+                          }}
+                          className="text-red-600 hover:underline font-semibold"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -3305,6 +3704,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
             )}
             <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Reminder Name *</label>
+                <input
+                  type="text"
+                  value={editingReminder.name || ''}
+                  onChange={(e) => setEditingReminder({ ...editingReminder, name: e.target.value })}
+                  placeholder="e.g. 30 Working Days Pre-Expiry Notice"
+                  className="input-field w-full font-bold"
+                />
+                <p className="mt-1 text-[10px] text-[#5B6472]">
+                  Required and unique. This name is shown in the schedule listing and used when linking notification templates.
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold text-[#5B6472] block mb-1">Target Audience *</label>
@@ -3315,6 +3727,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   >
                     <option value="Staff">Staff (Bank Officers)</option>
                     <option value="Customer">Customer (Borrower / Pledgor)</option>
+                    <option value="Both">Both (Staff & Customer)</option>
+                    <option value="Insurer">Insurer (Insurance Company)</option>
                   </select>
                 </div>
                 <div>
@@ -3337,7 +3751,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     min="1"
                     max="365"
                     value={editingReminder.daysBeforeExpiry ?? ''}
-                    onChange={(e) => setEditingReminder({ ...editingReminder, daysBeforeExpiry: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
+                    onChange={(e) => {
+                      const v = e.target.value === '' ? ('' as any) : Number(e.target.value);
+                      setEditingReminder({ ...editingReminder, daysBeforeExpiry: v, offsetDays: v });
+                    }}
                     className="input-field w-full font-bold text-[#00205B]"
                     disabled={Boolean(editingReminder.id)}
                   />
@@ -3354,31 +3771,88 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </select>
                 </div>
               </div>
+
+              {/* Requirement 6: Recurrence Interval N and Unit Selector */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold text-[#5B6472] block mb-1">Recurrence *</label>
-                  <select
-                    value={editingReminder.recurrence || 'One-time'}
-                    onChange={(e) => setEditingReminder({ ...editingReminder, recurrence: e.target.value as any })}
-                    className="input-field w-full"
-                  >
-                    <option value="One-time">One-time Trigger</option>
-                    <option value="Every N Working Days">Every N Working Days</option>
-                    <option value="Every N Calendar Days">Every N Calendar Days</option>
-                  </select>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Recurrence Interval (N) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 1"
+                    value={editingReminder.recurrenceInterval ?? (editingReminder.recurrence?.includes('15') ? 15 : 1)}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? ('' as any) : Math.max(1, parseInt(e.target.value, 10) || 1);
+                      const unit = editingReminder.recurrenceUnit || (editingReminder.recurrence?.includes('Minute') ? 'MINUTES' : 'DAYS');
+                      let recStr = 'One-time';
+                      if (unit === 'MINUTES') {
+                        recStr = `Every ${val} Minutes (For testing purposes)`;
+                      } else if (unit === 'CALENDAR_DAYS') {
+                        recStr = val === 1 ? 'One-time' : `Every ${val} Calendar Days`;
+                      } else {
+                        recStr = val === 1 ? 'One-time' : `Every ${val} Working Days`;
+                      }
+                      setEditingReminder({
+                        ...editingReminder,
+                        recurrenceInterval: val,
+                        recurrence: recStr,
+                      });
+                    }}
+                    className="input-field w-full font-bold text-[#00205B]"
+                  />
                 </div>
                 <div>
-                  <label className="font-semibold text-[#5B6472] block mb-1">Continue Until *</label>
+                  <label className="font-semibold text-[#5B6472] block mb-1">Recurrence Unit *</label>
                   <select
-                    value={editingReminder.continueUntil || 'Renewed'}
-                    onChange={(e) => setEditingReminder({ ...editingReminder, continueUntil: e.target.value as any })}
-                    className="input-field w-full"
+                    value={editingReminder.recurrenceUnit || (editingReminder.recurrence?.includes('Minute') ? 'MINUTES' : (editingReminder.dayType === 'Calendar Day' ? 'CALENDAR_DAYS' : 'DAYS'))}
+                    onChange={(e) => {
+                      const u = e.target.value;
+                      const interval = editingReminder.recurrenceInterval || 1;
+                      let recStr = 'One-time';
+                      if (u === 'MINUTES') {
+                        recStr = `Every ${interval} Minutes (For testing purposes)`;
+                      } else if (u === 'CALENDAR_DAYS') {
+                        recStr = interval === 1 ? 'One-time' : `Every ${interval} Calendar Days`;
+                      } else {
+                        recStr = interval === 1 ? 'One-time' : `Every ${interval} Working Days`;
+                      }
+                      setEditingReminder({
+                        ...editingReminder,
+                        recurrenceUnit: u,
+                        recurrence: recStr,
+                        dayType: u === 'CALENDAR_DAYS' ? 'Calendar Day' : (u === 'MINUTES' ? (editingReminder.dayType || 'Working Day') : 'Working Day'),
+                      });
+                    }}
+                    className="input-field w-full font-semibold"
                   >
-                    <option value="Renewed">Policy Renewed</option>
-                    <option value="Resolved">Exception Resolved</option>
-                    <option value="Manual Termination">Manual Termination</option>
+                    <option value="DAYS">Days (Working Days)</option>
+                    <option value="CALENDAR_DAYS">Days (Calendar Days)</option>
+                    <option value="MINUTES">Testing Option: Every N Minutes (For testing purposes)</option>
                   </select>
                 </div>
+              </div>
+
+              {editingReminder.recurrenceUnit === 'MINUTES' && (
+                <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-amber-900 text-xs flex items-start gap-2 animate-fadeIn">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">⚠️ Testing Option Active: </span>
+                    <span>This reminder schedule evaluates and triggers every <strong>{editingReminder.recurrenceInterval || 1} minute(s)</strong> at runtime for testing notification workflows.</span>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Continue Until *</label>
+                <select
+                  value={editingReminder.continueUntil || 'Renewed'}
+                  onChange={(e) => setEditingReminder({ ...editingReminder, continueUntil: e.target.value as any })}
+                  className="input-field w-full"
+                >
+                  <option value="Renewed">Policy Renewed</option>
+                  <option value="Resolved">Exception Resolved</option>
+                  <option value="Manual Termination">Manual Termination</option>
+                </select>
               </div>
               <div>
                 <label className="font-semibold text-[#5B6472] block mb-1">Notification Channels *</label>
@@ -3452,8 +3926,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </button>
               <button
                 onClick={() => {
+                  if (!editingReminder.name || !editingReminder.name.trim()) {
+                    setModalError('Reminder name is mandatory.');
+                    return;
+                  }
                   if (!editingReminder.daysBeforeExpiry || editingReminder.daysBeforeExpiry <= 0) {
                     setModalError('Working days before expiry must be greater than zero.');
+                    return;
+                  }
+                  if (editingReminder.recurrenceInterval !== undefined && (!Number.isInteger(Number(editingReminder.recurrenceInterval)) || Number(editingReminder.recurrenceInterval) <= 0)) {
+                    setModalError('Recurrence interval (N) must be a positive integer greater than zero.');
                     return;
                   }
                   executeModalSave(() => onSaveReminderSchedule(editingReminder), 'Reminder schedule updated successfully!', () => setShowReminderModal(false));
@@ -3639,10 +4121,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <div>
                 <label className="font-semibold text-[#5B6472] block mb-1">Collateral Category *</label>
                 <select
-                  value={editingDocRule.collateralCategory || 'Immovable Properties'}
+                  value={
+                    editingDocRule.collateralCategory === 'All'
+                      ? 'All Categories'
+                      : editingDocRule.collateralCategory || 'All Categories'
+                  }
                   onChange={(e) => setEditingDocRule({ ...editingDocRule, collateralCategory: e.target.value })}
                   className="input-field w-full font-bold"
                 >
+                  <option value="All Categories">All Categories (Applies to Any Collateral)</option>
                   <option value="Immovable Properties">Immovable Properties</option>
                   <option value="Movable Properties">Movable Properties</option>
                   <option value="Business Mortgages">Business Mortgages</option>
@@ -3650,6 +4137,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <option value="Guarantees">Guarantees</option>
                   <option value="Agricultural/Other">Agricultural/Other</option>
                 </select>
+              </div>
+              <div>
+                <label className="font-semibold text-[#5B6472] block mb-1">Business Segment *</label>
+                <select
+                  value={editingDocRule.segment || 'All Segments'}
+                  onChange={(e) => setEditingDocRule({ ...editingDocRule, segment: e.target.value })}
+                  className="input-field w-full font-bold"
+                >
+                  <option value="All Segments">All Segments</option>
+                  {segments.filter((s) => s.active !== false).map((s) => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] text-[#5B6472]">
+                  All Segments applies everywhere. A specific segment takes precedence for that segment; duplicate document types are only required once.
+                </p>
               </div>
               <div>
                 <label className="font-semibold text-[#5B6472] block mb-1">Collateral Sub-Type / Scope (Optional)</label>
@@ -3720,23 +4223,47 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <label htmlFor="docRuleActive" className="font-semibold text-[#101828]">Active Compliance Validation Rule</label>
               </div>
             </div>
-            <div className="flex justify-end gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button onClick={() => setShowDocRuleModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (!editingDocRule.documentType || !editingDocRule.documentType.trim()) {
-                    setModalError('Required document type is mandatory.');
-                    return;
-                  }
-                  executeModalSave(() => onSaveMandatoryDocRule(editingDocRule), 'Mandatory document rule saved successfully!', () => setShowDocRuleModal(false));
-                }}
-                disabled={modalSaving}
-                className="btn-primary text-xs"
-              >
-                {modalSaving ? 'Saving...' : 'Save Document Rule'}
-              </button>
+            <div className="flex justify-between items-center pt-3 border-t border-[#E2E8F0]">
+              <div>
+                {editingDocRule.id && onDeleteMandatoryDocRule && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (window.confirm(`Are you sure you want to delete mandatory document rule "${editingDocRule.documentType}"?`)) {
+                        try {
+                          await onDeleteMandatoryDocRule(editingDocRule.id!);
+                          setShowDocRuleModal(false);
+                          showToast(`Document rule "${editingDocRule.documentType}" deleted successfully.`);
+                        } catch (e: any) {
+                          setModalError(e?.message || 'Failed to delete document rule.');
+                        }
+                      }
+                    }}
+                    className="text-red-600 hover:text-red-800 text-xs font-semibold px-2 py-1 rounded hover:bg-red-50 flex items-center gap-1 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Rule
+                  </button>
+                )}
+              </div>
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setShowDocRuleModal(false)} className="btn-secondary text-xs" disabled={modalSaving}>
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (!editingDocRule.documentType || !editingDocRule.documentType.trim()) {
+                      setModalError('Required document type is mandatory.');
+                      return;
+                    }
+                    executeModalSave(() => onSaveMandatoryDocRule(editingDocRule), 'Mandatory document rule saved successfully!', () => setShowDocRuleModal(false));
+                  }}
+                  disabled={modalSaving}
+                  className="btn-primary text-xs"
+                >
+                  {modalSaving ? 'Saving...' : 'Save Document Rule'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

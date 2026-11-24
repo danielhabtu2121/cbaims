@@ -20,6 +20,21 @@ public class GlobalExceptionHandler {
     }
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String,Object>> conflict(IllegalStateException e){return build(HttpStatus.CONFLICT,e.getMessage());}
+
+    @ExceptionHandler(org.springframework.web.bind.MissingServletRequestParameterException.class)
+    public ResponseEntity<Map<String,Object>> missingParameter(org.springframework.web.bind.MissingServletRequestParameterException e){
+        return build(HttpStatus.BAD_REQUEST, "Required parameter '" + e.getParameterName() + "' is missing.");
+    }
+
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String,Object>> typeMismatch(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException e){
+        return build(HttpStatus.BAD_REQUEST, "Invalid value for parameter '" + e.getName() + "'.");
+    }
+
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String,Object>> unreadableBody(org.springframework.http.converter.HttpMessageNotReadableException e){
+        return build(HttpStatus.BAD_REQUEST, "The request body could not be read. Check the JSON format and required fields.");
+    }
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(Exception.class)

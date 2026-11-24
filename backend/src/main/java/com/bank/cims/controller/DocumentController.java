@@ -40,6 +40,66 @@ public class DocumentController {
     @Autowired
     private com.bank.cims.service.dms.DmsStorageService dmsStorageService;
 
+    @Autowired
+    private com.bank.cims.service.AuthorizationScopeService authorizationScopeService;
+
+    private String currentActorUsername() {
+        com.bank.cims.model.User actor = currentActor();
+        return actor.getUsername();
+    }
+
+    private com.bank.cims.model.User currentActor() {
+        com.bank.cims.model.User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive() || actor.getUsername() == null || actor.getUsername().isBlank()) {
+            throw new IllegalArgumentException("Authentication required: a valid signed-in user could not be identified.");
+        }
+        return actor;
+    }
+
+    private void assertEntityAccess(String entityType, String entityId) {
+        if (entityId == null || entityId.isBlank()) return;
+        if ("Collateral".equalsIgnoreCase(entityType)) cimsService.assertCollateralAccess(entityId);
+        else if ("Customer".equalsIgnoreCase(entityType)) cimsService.assertCustomerAccess(entityId);
+    }
+
+    private boolean canAccessDocument(String id) {
+        return ownershipDocumentRepository.findById(id).filter(this::isDocumentVisible).isPresent();
+    }
+
+    private boolean isDocumentVisible(OwnershipDocument doc) {
+        if (doc == null) return false;
+        com.bank.cims.service.AuthorizationScopeService.Scope scope = authorizationScopeService.currentScope();
+        if (scope.isBankWide()) return true;
+        Set<String> customerIds = customerRepository.findAll().stream()
+                .filter(scope::allowsCustomer)
+                .flatMap(c -> java.util.stream.Stream.of(c.getId(), c.getCif()))
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> collateralIds = collateralRepository.findAll().stream()
+                .filter(c -> scope.allowsCollateral(c, customerIds))
+                .flatMap(c -> java.util.stream.Stream.of(c.getId(), c.getCode()))
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> policyIds = insurancePolicyRepository.findAll().stream()
+                .filter(p -> (p.getCollateralId() != null && collateralIds.contains(p.getCollateralId()))
+                        || (p.getCustomerId() != null && customerIds.contains(p.getCustomerId())))
+                .map(InsurancePolicy::getId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> facilityIds = loanAccountRepository.findAll().stream()
+                .filter(f -> scope.allowsFacility(f, customerIds))
+                .map(LoanAccount::getId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
+        if (doc.getCollateralId() != null && collateralIds.contains(doc.getCollateralId())) return true;
+        if (doc.getEntityId() == null) return false;
+        return collateralIds.contains(doc.getEntityId())
+                || customerIds.contains(doc.getEntityId())
+                || policyIds.contains(doc.getEntityId())
+                || facilityIds.contains(doc.getEntityId());
+    }
+
     @GetMapping("/search")
     public ResponseEntity<List<OwnershipDocument>> searchDocuments(
             @RequestParam(required = false) String customerName,
@@ -58,7 +118,9 @@ public class DocumentController {
             @RequestParam(required = false) String expiryDate,
             @RequestParam(required = false) String uploadDate) {
 
-        List<OwnershipDocument> allDocs = ownershipDocumentRepository.findAll();
+        List<OwnershipDocument> allDocs = ownershipDocumentRepository.findAll().stream()
+                .filter(this::isDocumentVisible)
+                .toList();
 
         Set<String> matchingCustomerIds = new HashSet<>();
         if ((customerName != null && !customerName.isBlank()) || (cif != null && !cif.isBlank())) {
@@ -219,6 +281,7 @@ public class DocumentController {
         } else {
             docs = ownershipDocumentRepository.findAll();
         }
+        docs = docs.stream().filter(this::isDocumentVisible).toList();
 
         if (status != null && !status.isBlank() && !"All".equalsIgnoreCase(status)) {
             docs = docs.stream()
@@ -238,6 +301,7 @@ public class DocumentController {
     @GetMapping("/{id}")
     public ResponseEntity<OwnershipDocument> getDocumentById(@PathVariable String id) {
         return ownershipDocumentRepository.findById(id)
+                .filter(this::isDocumentVisible)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -249,10 +313,12 @@ public class DocumentController {
             return ResponseEntity.notFound().build();
         }
         OwnershipDocument doc = docOpt.get();
+        if (!isDocumentVisible(doc)) return ResponseEntity.notFound().build();
         String rootId = doc.getParentDocumentId() != null ? doc.getParentDocumentId() : doc.getId();
 
         List<OwnershipDocument> versions = ownershipDocumentRepository.findAll().stream()
                 .filter(d -> d.getId().equals(rootId) || rootId.equals(d.getParentDocumentId()) || d.getId().equals(id))
+                .filter(this::isDocumentVisible)
                 .sorted((a, b) -> Integer.compare(b.getVersion(), a.getVersion()))
                 .toList();
 
@@ -266,10 +332,12 @@ public class DocumentController {
             return ResponseEntity.notFound().build();
         }
         OwnershipDocument doc = docOpt.get();
+        if (!isDocumentVisible(doc)) return ResponseEntity.notFound().build();
         String rootId = doc.getParentDocumentId() != null ? doc.getParentDocumentId() : doc.getId();
 
         List<OwnershipDocument> versions = ownershipDocumentRepository.findAll().stream()
                 .filter(d -> d.getId().equals(rootId) || rootId.equals(d.getParentDocumentId()) || d.getId().equals(id))
+                .filter(this::isDocumentVisible)
                 .sorted((a, b) -> Integer.compare(b.getVersion(), a.getVersion()))
                 .toList();
 
@@ -303,7 +371,8 @@ public class DocumentController {
         String contentType = (String) payload.getOrDefault("contentType", "application/pdf");
         String fileContent = (String) payload.get("fileContent");
         String remarks = (String) payload.get("remarks");
-        String uploadedBy = (String) payload.getOrDefault("uploadedBy", "MGRCOLLDOC");
+        String uploadedBy = currentActorUsername();
+        assertEntityAccess(entityType, entityId);
         String expiryDate = (String) payload.get("expiryDate");
         Long fileSize = CimsService.parseFileSize(payload.get("fileSize"));
         String parentDocumentId = (String) payload.get("parentDocumentId");
@@ -320,11 +389,12 @@ public class DocumentController {
     public ResponseEntity<OwnershipDocument> uploadNewVersion(
             @PathVariable String id,
             @RequestBody Map<String, Object> payload) {
+        if (!canAccessDocument(id)) return ResponseEntity.notFound().build();
         String fileName = (String) payload.get("fileName");
         String contentType = (String) payload.getOrDefault("contentType", "application/pdf");
         String fileContent = (String) payload.get("fileContent");
         String versionNotes = (String) payload.get("versionNotes");
-        String uploadedBy = (String) payload.getOrDefault("uploadedBy", "MGRCOLLDOC");
+        String uploadedBy = currentActorUsername();
         String newExpiryDate = (String) payload.get("expiryDate");
         Long fileSize = CimsService.parseFileSize(payload.get("fileSize"));
 
@@ -336,9 +406,10 @@ public class DocumentController {
     public ResponseEntity<OwnershipDocument> verifyDocument(
             @PathVariable String id,
             @RequestBody Map<String, Object> payload) {
+        if (!canAccessDocument(id)) return ResponseEntity.notFound().build();
         String status = (String) payload.getOrDefault("verificationStatus", "Verified");
         String remarks = (String) payload.getOrDefault("remarks", "Document verified by Collateral Officer");
-        String verifiedBy = (String) payload.getOrDefault("verifiedBy", "COLLDOCOFF");
+        String verifiedBy = currentActorUsername();
 
         OwnershipDocument doc = cimsService.verifyDocument(id, status, remarks, verifiedBy);
         return ResponseEntity.ok(doc);
@@ -347,8 +418,9 @@ public class DocumentController {
     @PostMapping("/{id}/archive")
     public ResponseEntity<Map<String, Object>> archiveDocument(
             @PathVariable String id,
-            @RequestParam(defaultValue = "MGRCOLLDOC") String userId) {
-        OwnershipDocument doc = cimsService.archiveDocument(id, userId);
+            @RequestParam(required = false) String userId) {
+        if (!canAccessDocument(id)) return ResponseEntity.notFound().build();
+        OwnershipDocument doc = cimsService.archiveDocument(id, currentActorUsername());
         return ResponseEntity.ok(Map.of("success", true, "message", "Document archived in DMS.", "documentId", doc.getId()));
     }
 
@@ -526,8 +598,8 @@ public class DocumentController {
             return ResponseEntity.notFound().build();
         }
         OwnershipDocument doc = docOpt.get();
-        String actor = (userId != null && !userId.isBlank()) ? userId : "COLLDOCOFF";
-        cimsService.logAudit(actor, "COLLDOCOFF", "DOWNLOAD_DOCUMENT", "Document", doc.getId(), "FileDownload", "Vault", doc.getName(), "Downloaded document: " + doc.getName() + " (v" + doc.getVersion() + ")");
+        com.bank.cims.model.User actor = currentActor();
+        cimsService.logAudit(actor.getUsername(), actor.getRole(), "DOWNLOAD_DOCUMENT", "Document", doc.getId(), "FileDownload", "Vault", doc.getName(), "Downloaded document: " + doc.getName() + " (v" + doc.getVersion() + ")");
         String fileName = doc.getFileName() != null && !doc.getFileName().isBlank()
                 ? doc.getFileName()
                 : (doc.getName().endsWith(".pdf") ? doc.getName() : doc.getName() + ".pdf");
@@ -633,8 +705,8 @@ public class DocumentController {
             return ResponseEntity.notFound().build();
         }
         OwnershipDocument doc = docOpt.get();
-        String actor = (userId != null && !userId.isBlank()) ? userId : "COLLDOCOFF";
-        cimsService.logAudit(actor, "COLLDOCOFF", "PREVIEW_DOCUMENT", "Document", doc.getId(), "FilePreview", "Vault", doc.getName(), "Previewed document: " + doc.getName() + " (v" + doc.getVersion() + ")");
+        com.bank.cims.model.User actor = currentActor();
+        cimsService.logAudit(actor.getUsername(), actor.getRole(), "PREVIEW_DOCUMENT", "Document", doc.getId(), "FilePreview", "Vault", doc.getName(), "Previewed document: " + doc.getName() + " (v" + doc.getVersion() + ")");
         String fileName = doc.getFileName() != null ? doc.getFileName() : (doc.getName().endsWith(".pdf") ? doc.getName() : doc.getName() + ".pdf");
         String fileContent = doc.getFileContent();
 

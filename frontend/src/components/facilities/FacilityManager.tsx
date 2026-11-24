@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useState, useEffect } from 'react';
 import { CreditCard, Building2, Eye, ShieldCheck, AlertCircle, FileCheck, Layers, ArrowUpRight, Plus } from 'lucide-react';
 import {
@@ -116,13 +117,13 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
       header: 'Approved Limit',
       accessorKey: 'approvedLimit',
       align: 'right',
-      cell: (r) => `${r.lineCurrency} ${r.approvedLimit?.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+      cell: (r) => `${r.lineCurrency}${formatEtbNumber(r.approvedLimit)}`,
     },
     {
       header: 'Outstanding',
       accessorKey: 'outstandingBalance',
       align: 'right',
-      cell: (r) => `${r.lineCurrency} ${r.outstandingBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+      cell: (r) => `${r.lineCurrency}${formatEtbNumber(r.outstandingBalance)}`,
     },
     {
       header: 'Pledged Collateral',
@@ -410,19 +411,19 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                         <div>
                           <span className="text-slate-500 block text-[11px]">Approved Limit:</span>
                           <strong className="text-sm tabular-nums text-[#00205B]">
-                            {selectedFacility.lineCurrency} {selectedFacility.approvedLimit?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            {selectedFacility.lineCurrency} {formatEtbNumber(selectedFacility.approvedLimit)}
                           </strong>
                         </div>
                         <div>
                           <span className="text-slate-500 block text-[11px]">Outstanding Balance (Current Exposure):</span>
                           <strong className="text-sm tabular-nums text-[#00205B] font-bold">
-                            {selectedFacility.lineCurrency} {selectedFacility.outstandingBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            {selectedFacility.lineCurrency} {formatEtbNumber(selectedFacility.outstandingBalance)}
                           </strong>
                         </div>
                         <div>
                           <span className="text-[#5B6472] block text-[11px]">Available Amount (Derived):</span>
                           <strong className="text-sm tabular-nums text-emerald-700 font-bold">
-                            {selectedFacility.lineCurrency} {(selectedFacility.availableAmount !== undefined ? selectedFacility.availableAmount : Math.max(0, (selectedFacility.approvedLimit || 0) - (selectedFacility.outstandingBalance || 0)))?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            {selectedFacility.lineCurrency} {formatEtbNumber((selectedFacility.availableAmount !== undefined ? selectedFacility.availableAmount : Math.max(0, (selectedFacility.approvedLimit || 0) - (selectedFacility.outstandingBalance || 0))))}
                           </strong>
                         </div>
                         <div className="grid grid-cols-2 gap-2 pt-1">
@@ -446,7 +447,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                           <div>
                             <span className="text-[#5B6472] block text-[11px]">Collateral Contribution:</span>
                             <strong className="tabular-nums">
-                              {selectedFacility.lineCurrency} {(selectedFacility.collateralContribution || totalAllocatedSecurity)?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              {selectedFacility.lineCurrency} {formatEtbNumber((selectedFacility.collateralContribution || totalAllocatedSecurity))}
                             </strong>
                           </div>
                           <div>
@@ -459,13 +460,13 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                         <div>
                           <span className="text-[#5B6472] block text-[11px]">Total Pledged Collateral Valuation:</span>
                           <strong className="tabular-nums text-[#101828]">
-                            {selectedFacility.lineCurrency} {totalPledgedValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            {selectedFacility.lineCurrency} {formatEtbNumber(totalPledgedValue)}
                           </strong>
                         </div>
                         <div>
                           <span className="text-[#5B6472] block text-[11px]">Allocated Security Limits:</span>
                           <strong className="tabular-nums text-emerald-700">
-                            {selectedFacility.lineCurrency} {totalAllocatedSecurity.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            {selectedFacility.lineCurrency} {formatEtbNumber(totalAllocatedSecurity)}
                           </strong>
                         </div>
                       </div>
@@ -527,15 +528,15 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                       <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                         <span className="text-slate-500 block text-[10px] uppercase font-semibold">Facility Outstanding Exposure</span>
                         <strong className="text-slate-900 font-bold tabular-nums text-sm">
-                          {selectedFacility.lineCurrency} {outstandingExposure.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          {selectedFacility.lineCurrency} {formatEtbNumber(outstandingExposure)}
                         </strong>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">Approved Limit: ETB {selectedFacility.approvedLimit?.toLocaleString()}</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Approved Limit: ETB {formatEtbNumber(selectedFacility.approvedLimit)}</span>
                       </div>
 
                       <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                         <span className="text-blue-700 block text-[10px] uppercase font-semibold">Total Collateral Allocation</span>
                         <strong className="text-blue-800 font-bold tabular-nums text-sm">
-                          {selectedFacility.lineCurrency} {(securingSummary?.totalAllocatedCollateral ?? totalAllocatedSecurity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          {selectedFacility.lineCurrency} {formatEtbNumber((securingSummary?.totalAllocatedCollateral ?? totalAllocatedSecurity))}
                         </strong>
                         <span className="text-[10px] text-blue-600 block mt-0.5">Pledged Security Support</span>
                       </div>
@@ -543,7 +544,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                       <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                         <span className="text-emerald-700 block text-[10px] uppercase font-semibold">Total Net Collateral (NSV)</span>
                         <strong className="text-emerald-800 font-bold tabular-nums text-sm">
-                          {selectedFacility.lineCurrency} {(securingSummary?.totalNetCollateralValue ?? (totalPledgedValue * 0.8)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          {selectedFacility.lineCurrency} {formatEtbNumber((securingSummary?.totalNetCollateralValue ?? (totalPledgedValue * 0.8)))}
                         </strong>
                         <span className="text-[10px] text-emerald-600 block mt-0.5">Valuation less haircut</span>
                       </div>
@@ -568,17 +569,17 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                           <div className="text-[11px] text-slate-500">
                             Recognized Insurance:{' '}
                             <strong className="text-emerald-700">
-                              ETB {(securingSummary?.totalRecognizedInsurance ?? totalInsuredAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber((securingSummary?.totalRecognizedInsurance ?? totalInsuredAmount))}
                             </strong>
                             {' • '}
                             Requirement:{' '}
                             <strong>
-                              ETB {(securingSummary?.insuranceRequirement ?? outstandingExposure).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber((securingSummary?.insuranceRequirement ?? outstandingExposure))}
                             </strong>
                             {' • '}
                             Insurance Gap:{' '}
                             <strong className={(securingSummary?.insuranceGap ?? 0) > 0 ? 'text-red-600' : 'text-emerald-600'}>
-                              ETB {(securingSummary?.insuranceGap ?? Math.max(0, outstandingExposure - totalInsuredAmount)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber((securingSummary?.insuranceGap ?? Math.max(0, outstandingExposure - totalInsuredAmount)))}
                             </strong>
                           </div>
                         </div>
@@ -707,16 +708,16 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                                 </div>
                               </td>
                               <td className="p-2.5 text-right tabular-nums">
-                                ETB {Number(c.collateralValuation || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                ETB {formatEtbNumber(Number(c.collateralValuation || 0))}
                               </td>
                               <td className="p-2.5 text-right tabular-nums">
                                 <div className="font-semibold text-slate-900">
-                                  ETB {Number(c.netCollateralValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  ETB {formatEtbNumber(Number(c.netCollateralValue || 0))}
                                 </div>
                                 <div className="text-[10px] text-slate-400">Haircut: {c.collateralHaircut || 0}%</div>
                               </td>
                               <td className="p-2.5 text-right tabular-nums font-bold text-blue-700">
-                                ETB {Number(c.allocatedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                ETB {formatEtbNumber(Number(c.allocatedAmount || 0))}
                               </td>
                               <td className="p-2.5 text-right tabular-nums font-semibold text-slate-700">
                                 {Number(c.collateralAllocationPct || 0).toFixed(1)}%
@@ -800,24 +801,24 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[10px]">Total Allocated Support</span>
-                        <strong className="text-blue-800 font-bold">ETB {securingSummary.totalAllocatedCollateral?.toLocaleString()}</strong>
+                        <strong className="text-blue-800 font-bold">ETB {formatEtbNumber(securingSummary.totalAllocatedCollateral)}</strong>
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[10px]">Total Net Collateral (NSV)</span>
-                        <strong className="text-emerald-800 font-bold">ETB {securingSummary.totalNetCollateralValue?.toLocaleString()}</strong>
+                        <strong className="text-emerald-800 font-bold">ETB {formatEtbNumber(securingSummary.totalNetCollateralValue)}</strong>
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[10px]">Aggregate Insurance</span>
-                        <strong className="text-slate-900 font-bold">ETB {securingSummary.totalRecognizedInsurance?.toLocaleString()}</strong>
+                        <strong className="text-slate-900 font-bold">ETB {formatEtbNumber(securingSummary.totalRecognizedInsurance)}</strong>
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[10px]">Insurance Requirement</span>
-                        <strong className="text-slate-900 font-bold">ETB {securingSummary.insuranceRequirement?.toLocaleString()}</strong>
+                        <strong className="text-slate-900 font-bold">ETB {formatEtbNumber(securingSummary.insuranceRequirement)}</strong>
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[10px]">Insurance Gap</span>
                         <strong className={securingSummary.insuranceGap > 0 ? 'text-red-600 font-bold' : 'text-emerald-600 font-bold'}>
-                          ETB {securingSummary.insuranceGap?.toLocaleString()}
+                          ETB {formatEtbNumber(securingSummary.insuranceGap)}
                         </strong>
                       </div>
                     </div>
@@ -830,7 +831,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                   <div className="flex justify-between items-center">
                     <h4 className="font-bold text-[#101828]">Active Insurance Policies Securing Pledged Collateral</h4>
                     <span className="text-[11px] text-[#5B6472]">
-                      Total Insured Amount: <strong className="text-emerald-700">ETB {totalInsuredAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                      Total Insured Amount: <strong className="text-emerald-700">ETB {formatEtbNumber(totalInsuredAmount)}</strong>
                     </span>
                   </div>
                   <div className="cims-card overflow-hidden">
@@ -878,7 +879,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                                 <td className="p-2.5">{p.insurerName}</td>
                                 <td className="p-2.5">{p.coverageType}</td>
                                 <td className="p-2.5 text-right tabular-nums font-bold text-emerald-700">
-                                  ETB {p.insuredAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  ETB {formatEtbNumber(p.insuredAmount)}
                                 </td>
                                 <td className="p-2.5 font-mono">
                                   {col ? (

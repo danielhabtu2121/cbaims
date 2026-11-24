@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../../utils/format.ts';
 import React, { useState, useEffect } from 'react';
 import {
   Database,
@@ -61,7 +62,7 @@ export const CbsOriginalSnapshotModal: React.FC<CbsOriginalSnapshotModalProps> =
     { label: 'Category', cbs: parsedRaw.category || '—', cbaims: collateral.category || '—' },
     { label: 'Collateral Subtype', cbs: parsedRaw.collateralType || '—', cbaims: collateral.type || '—' },
     { label: 'Ownership Type', cbs: parsedRaw.ownershipType || '—', cbaims: collateral.ownerType || '—' },
-    { label: 'Valuation Amount', cbs: parsedRaw.collateralValue ? `ETB ${Number(parsedRaw.collateralValue).toLocaleString()}` : '—', cbaims: `ETB ${collateral.valuationAmount?.toLocaleString() || 0}` },
+    { label: 'Valuation Amount', cbs: parsedRaw.collateralValue ? `ETB ${formatEtbNumber(Number(parsedRaw.collateralValue))}` : '—', cbaims: `ETB ${formatEtbNumber(collateral.valuationAmount || 0)}` },
     { label: 'Haircut', cbs: parsedRaw.haircut ? `${parsedRaw.haircut}%` : '0%', cbaims: `${collateral.haircut || 0}%` },
     { label: 'Branch Code', cbs: parsedRaw.branch || '—', cbaims: collateral.branch || '—' },
     { label: 'Business Segment', cbs: parsedRaw.businessSegment || '—', cbaims: collateral.owningSegment || '—' },

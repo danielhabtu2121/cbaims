@@ -1,3 +1,5 @@
+import { formatEtbNumber } from '../../utils/format.ts';
+import { AmountInput } from '../common/AmountInput';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Building2,
@@ -953,7 +955,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
     }
     if (allocatedAmount > netCollateralValue) {
       setErrorMsg(
-        `Allocated amount (ETB ${allocatedAmount.toLocaleString()}) cannot exceed Net Collateral Value (ETB ${netCollateralValue.toLocaleString()}).`
+        `Allocated amount (ETB ${formatEtbNumber(allocatedAmount)}) cannot exceed Net Collateral Value (ETB ${formatEtbNumber(netCollateralValue)}).`
       );
       return;
     }
@@ -979,7 +981,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
       if (isSecondDegreeCeilingExceeded) {
         const rankCeiling = Math.max(0, netCollateralValue - priorChargeDeduction);
         setErrorMsg(
-          `Allocation exceeds 2nd-degree capacity ceiling (ETB ${rankCeiling.toLocaleString()}) after deducting 1st-degree prior charge exposure (ETB ${priorChargeDeduction.toLocaleString()}).`
+          `Allocation exceeds 2nd-degree capacity ceiling (ETB ${formatEtbNumber(rankCeiling)}) after deducting 1st-degree prior charge exposure (ETB ${formatEtbNumber(priorChargeDeduction)}).`
         );
         return;
       }
@@ -1169,19 +1171,19 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                       <div>
                         <span className="text-slate-500 block text-[11px]">Approved Limit:</span>
                         <strong className="text-slate-900 dark:text-white font-bold tabular-nums">
-                          ETB {Number(selectedFacility.approvedLimit || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ETB {formatEtbNumber(Number(selectedFacility.approvedLimit || 0))}
                         </strong>
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[11px]">Outstanding Balance (Exposure):</span>
                         <strong className="text-amber-800 dark:text-amber-400 font-bold tabular-nums">
-                          ETB {Number(selectedFacility.outstandingBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ETB {formatEtbNumber(Number(selectedFacility.outstandingBalance || 0))}
                         </strong>
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[11px]">Pledged Collateral Contribution:</span>
                         <strong className="text-emerald-700 dark:text-emerald-400 font-bold tabular-nums">
-                          ETB {Number(selectedFacility.collateralContribution || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ETB {formatEtbNumber(Number(selectedFacility.collateralContribution || 0))}
                         </strong>
                       </div>
                       <div>
@@ -1202,7 +1204,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           Existing Securities Pledged to this Facility ({existingCoCollaterals.length} Co-Collaterals)
                         </span>
                         <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
-                          Current Secured: ETB {priorAllocatedToFacility.toLocaleString()} ({((priorAllocatedToFacility / (facilityOutstandingExposure || 1)) * 100).toFixed(1)}% Coverage)
+                          Current Secured: ETB {formatEtbNumber(priorAllocatedToFacility)} ({((priorAllocatedToFacility / (facilityOutstandingExposure || 1)) * 100).toFixed(1)}% Coverage)
                         </span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-xs">
@@ -1218,7 +1220,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             </div>
                             <div className="text-right">
                               <div className="font-bold tabular-nums text-slate-900 dark:text-white text-[11px]">
-                                ETB {Number(cc.allocatedAmount || 0).toLocaleString()}
+                                ETB {formatEtbNumber(Number(cc.allocatedAmount || 0))}
                               </div>
                               <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                                 {cc.facilityCoveragePct ? `${cc.facilityCoveragePct.toFixed(1)}% Loan Cov` : 'Active'}
@@ -1230,7 +1232,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                       <div className="text-[11px] text-indigo-800 dark:text-indigo-300 flex items-center justify-between pt-1 border-t border-indigo-100 dark:border-indigo-900/40">
                         <span>Deficit to Exactly 100% Loan Coverage:</span>
                         <strong className="font-mono text-indigo-900 dark:text-white">
-                          ETB {remainingNeededFor100PctCoverage.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ETB {formatEtbNumber(remainingNeededFor100PctCoverage)}
                         </strong>
                       </div>
                     </div>
@@ -1335,7 +1337,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                         <option value="">-- Quick Dropdown: Select Candidate Collateral ({filteredCandidateCollaterals.length}) --</option>
                         {filteredCandidateCollaterals.map((cand) => (
                           <option key={cand.id} value={cand.id} disabled={!cand.eligible}>
-                            {cand.code} — {cand.type || cand.category} | Owner: {cand.legalOwnerNames || cand.customerName} | Avail: ETB {Number(cand.availableCapacity || 0).toLocaleString()} {!cand.eligible ? `(${cand.ineligibilityReason || 'Ineligible'})` : ''}
+                            {cand.code} — {cand.type || cand.category} | Owner: {cand.legalOwnerNames || cand.customerName} | Avail: ETB {formatEtbNumber(Number(cand.availableCapacity || 0))} {!cand.eligible ? `(${cand.ineligibilityReason || 'Ineligible'})` : ''}
                           </option>
                         ))}
                       </select>
@@ -1359,8 +1361,8 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             </div>
                             <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                               <span>Owner: <strong>{selectedCollateral.owners?.[0]?.name || selectedCustomer?.name || 'Borrower'}</strong></span>
-                              <span>NSV: <strong>ETB {netCollateralValue.toLocaleString()}</strong></span>
-                              <span>Avail: <strong className="text-emerald-700 dark:text-emerald-400">ETB {availableCollateralCapacity.toLocaleString()}</strong></span>
+                              <span>NSV: <strong>ETB {formatEtbNumber(netCollateralValue)}</strong></span>
+                              <span>Avail: <strong className="text-emerald-700 dark:text-emerald-400">ETB {formatEtbNumber(availableCollateralCapacity)}</strong></span>
                             </div>
                           </div>
                         </div>
@@ -1474,10 +1476,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                     </div>
                                   </td>
                                   <td className="p-2.5 text-right tabular-nums font-semibold text-slate-900 dark:text-white">
-                                    ETB {Number(cand.netCollateralValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    ETB {formatEtbNumber(Number(cand.netCollateralValue || 0))}
                                   </td>
                                   <td className="p-2.5 text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-400">
-                                    ETB {Number(cand.availableCapacity || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    ETB {formatEtbNumber(Number(cand.availableCapacity || 0))}
                                   </td>
                                   <td className="p-2.5 text-center">
                                     {cand.alreadyLinked ? (
@@ -1571,7 +1573,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           {availableCollaterals.map((c) => (
                             <option key={c.id} value={c.id}>
                               {c.code} — {c.type || c.category} ({c.ownerType || 'Borrower-owned'}) — Val: ETB{' '}
-                              {Number(c.valuationAmount || 0).toLocaleString()}
+                              {formatEtbNumber(c.valuationAmount || 0)}
                             </option>
                           ))}
                         </select>
@@ -1637,28 +1639,26 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                         <div>
                           <span className="text-slate-500 block text-[11px]">Market Valuation:</span>
                           <strong className="text-slate-900 dark:text-white font-bold tabular-nums">
-                            ETB {Number(selectedCollateral.valuationAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(Number(selectedCollateral.valuationAmount || 0))}
                           </strong>
                           <span className="block text-[10px] text-slate-400">Haircut: {selectedCollateral.haircut ?? 20}%</span>
                         </div>
                         <div>
                           <span className="text-slate-500 block text-[11px]">Net Security Value (NSV):</span>
                           <strong className="text-emerald-700 dark:text-emerald-400 font-bold tabular-nums">
-                            ETB {netCollateralValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(netCollateralValue)}
                           </strong>
                         </div>
                         <div>
                           <span className="text-slate-500 block text-[11px]">Currently Allocated:</span>
                           <strong className="text-blue-700 dark:text-blue-400 font-bold tabular-nums">
-                            ETB {(selectedCollateral.currentAllocation || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber((selectedCollateral.currentAllocation || 0))}
                           </strong>
                         </div>
                         <div>
                           <span className="text-slate-500 block text-[11px]">Available Capacity:</span>
                           <strong className="text-indigo-700 dark:text-indigo-400 font-bold tabular-nums">
-                            ETB {Math.max(0, netCollateralValue - (selectedCollateral.currentAllocation || 0)).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                            })}
+                            ETB {formatEtbNumber(Math.max(0, netCollateralValue - (selectedCollateral.currentAllocation || 0)))}
                           </strong>
                         </div>
                       </div>
@@ -1803,7 +1803,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           <option value="">-- Quick Dropdown: Select Candidate Facility ({filteredCandidateFacilities.length}) --</option>
                           {filteredCandidateFacilities.map((cand) => (
                             <option key={cand.id} value={cand.id} disabled={!cand.eligible}>
-                              {cand.loanReference || cand.lineCode || cand.id} — {cand.facilityType} | Borrower: {cand.borrowerName || cand.customerId} | Out: ETB {Number(cand.outstandingBalance || 0).toLocaleString()} {!cand.eligible ? `(${cand.ineligibilityReason || 'Ineligible'})` : cand.thirdParty ? '[Requires 3rd-Party Info]' : ''}
+                              {cand.loanReference || cand.lineCode || cand.id} — {cand.facilityType} | Borrower: {cand.borrowerName || cand.customerId} | Out: ETB {formatEtbNumber(Number(cand.outstandingBalance || 0))} {!cand.eligible ? `(${cand.ineligibilityReason || 'Ineligible'})` : cand.thirdParty ? '[Requires 3rd-Party Info]' : ''}
                             </option>
                           ))}
                         </select>
@@ -1827,8 +1827,8 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               </div>
                               <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                                 <span>Borrower: <strong>{borrowerNameDisplay}</strong></span>
-                                <span>Outstanding: <strong>ETB {Number(selectedFacility.outstandingBalance || 0).toLocaleString()}</strong></span>
-                                <span>Approved Limit: <strong>ETB {Number(selectedFacility.approvedLimit || 0).toLocaleString()}</strong></span>
+                                <span>Outstanding: <strong>ETB {formatEtbNumber(Number(selectedFacility.outstandingBalance || 0))}</strong></span>
+                                <span>Approved Limit: <strong>ETB {formatEtbNumber(Number(selectedFacility.approvedLimit || 0))}</strong></span>
                               </div>
                             </div>
                           </div>
@@ -1931,10 +1931,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                     </td>
                                     <td className="p-2.5">
                                       <div className="font-semibold text-slate-900 dark:text-white">
-                                        ETB {Number(cand.outstandingBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        ETB {formatEtbNumber(Number(cand.outstandingBalance || 0))}
                                       </div>
                                       <div className="text-[10px] text-slate-500">
-                                        {cand.facilityType} • Limit: ETB {Number(cand.approvedLimit || 0).toLocaleString()}
+                                        {cand.facilityType} • Limit: ETB {formatEtbNumber(Number(cand.approvedLimit || 0))}
                                       </div>
                                     </td>
                                     <td className="p-2.5 text-center">
@@ -2199,7 +2199,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             <div>
                               <span className="text-slate-500 block text-[10px]">Net Value (NSV):</span>
                               <strong className="text-emerald-700 dark:text-emerald-400 font-mono">
-                                ETB {netCollateralValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                ETB {formatEtbNumber(netCollateralValue)}
                               </strong>
                             </div>
                           </div>
@@ -2236,7 +2236,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             <div>
                               <span className="text-slate-500 block text-[10px]">Outstanding Balance:</span>
                               <strong className="text-amber-800 dark:text-amber-400 font-mono">
-                                ETB {Number(selectedFacility.outstandingBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                ETB {formatEtbNumber(Number(selectedFacility.outstandingBalance || 0))}
                               </strong>
                             </div>
                           </div>
@@ -2265,13 +2265,13 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               Other Securities Pledged to This Facility ({existingCoCollaterals.length} Co-Collaterals)
                             </span>
                             <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
-                              Current Secured: ETB {priorAllocatedToFacility.toLocaleString()} ({((priorAllocatedToFacility / (facilityOutstandingExposure || 1)) * 100).toFixed(1)}% Coverage)
+                              Current Secured: ETB {formatEtbNumber(priorAllocatedToFacility)} ({((priorAllocatedToFacility / (facilityOutstandingExposure || 1)) * 100).toFixed(1)}% Coverage)
                             </span>
                           </div>
                           <div className="text-[11px] text-indigo-800 dark:text-indigo-300 flex items-center justify-between">
                             <span>Remaining Needed for Exact 100% Loan Coverage:</span>
                             <strong className="font-mono text-indigo-950 dark:text-white">
-                              ETB {remainingNeededFor100PctCoverage.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber(remainingNeededFor100PctCoverage)}
                             </strong>
                           </div>
                         </div>
@@ -2543,7 +2543,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                     .filter((c) => c.collateralRank !== '2nd' && c.id !== selectedCollateral.id)
                                     .map((c) => (
                                       <option key={c.id} value={c.id}>
-                                        {c.code} — {c.description || c.category} (Value: ETB {c.valuationAmount?.toLocaleString()})
+                                        {c.code} — {c.description || c.category} (Value: ETB {formatEtbNumber(c.valuationAmount)})
                                       </option>
                                     ))}
                                 </select>
@@ -2593,13 +2593,12 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                   <label className="block text-[10px] font-semibold text-slate-700 dark:text-slate-300 mb-0.5">
                                     1st-Degree Outstanding Balance (ETB) *
                                   </label>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    placeholder="0.00"
-                                    value={firstDegreeOutstandingBalance ?? ''}
-                                    onChange={(e) => setFirstDegreeOutstandingBalance(e.target.value === '' ? undefined : Number(e.target.value))}
-                                    className="w-full p-1.5 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-mono font-bold"
+                                  <AmountInput
+                                    value={firstDegreeOutstandingBalance}
+                                    onChange={(val) => setFirstDegreeOutstandingBalance(val)}
+                                    placeholder="Enter amount"
+                                    required
+                                    className="py-1 px-2 text-xs"
                                   />
                                 </div>
                               </div>
@@ -2621,12 +2620,11 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                   <label className="block text-[10px] font-semibold text-slate-700 dark:text-slate-300 mb-0.5">
                                     Registered Mortgage Amount (ETB)
                                   </label>
-                                  <input
-                                    type="number"
-                                    placeholder="0.00"
-                                    value={registeredMortgageAmount ?? ''}
-                                    onChange={(e) => setRegisteredMortgageAmount(e.target.value === '' ? undefined : Number(e.target.value))}
-                                    className="w-full p-1.5 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-mono"
+                                  <AmountInput
+                                    value={registeredMortgageAmount}
+                                    onChange={(val) => setRegisteredMortgageAmount(val)}
+                                    placeholder="Enter amount"
+                                    className="py-1 px-2 text-xs"
                                   />
                                 </div>
                                 <div>
@@ -2666,22 +2664,22 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             <div className="flex items-center justify-between font-bold pb-1 border-b border-black/10">
                               <span>Rule 2.5: 2nd-Degree Available Security Assessment</span>
                               <span className="font-mono">
-                                Max Capacity Ceiling: ETB {Math.max(0, netCollateralValue - priorChargeDeduction).toLocaleString()}
+                                Max Capacity Ceiling: ETB {formatEtbNumber(Math.max(0, netCollateralValue - priorChargeDeduction))}
                               </span>
                             </div>
                             <div className="grid grid-cols-3 gap-2 pt-1 text-[11px]">
                               <div>
                                 <span className="text-slate-500 block text-[10px]">Net Collateral Value:</span>
-                                <strong>ETB {netCollateralValue.toLocaleString()}</strong>
+                                <strong>ETB {formatEtbNumber(netCollateralValue)}</strong>
                               </div>
                               <div>
                                 <span className="text-slate-500 block text-[10px]">Less 1st-Degree Debt:</span>
-                                <strong className="text-red-600">- ETB {priorChargeDeduction.toLocaleString()}</strong>
+                                <strong className="text-red-600">- ETB {formatEtbNumber(priorChargeDeduction)}</strong>
                               </div>
                               <div>
                                 <span className="text-slate-500 block text-[10px]">Net Available for 2nd Degree:</span>
                                 <strong className="text-emerald-700 dark:text-emerald-400 font-mono">
-                                  ETB {availableCollateralCapacity.toLocaleString()}
+                                  ETB {formatEtbNumber(availableCollateralCapacity)}
                                 </strong>
                               </div>
                             </div>
@@ -2711,7 +2709,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             Net Collateral Value (NSV)
                           </span>
                           <strong className="text-sm font-bold text-emerald-700 dark:text-emerald-400 tabular-nums block">
-                            ETB {netCollateralValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(netCollateralValue)}
                           </strong>
                           <span className="text-[10px] text-slate-400">
                             Haircut: {selectedCollateral.haircut ?? 20}%
@@ -2723,7 +2721,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             Active Allocations
                           </span>
                           <strong className="text-sm font-bold text-slate-900 dark:text-white tabular-nums block">
-                            ETB {(validationResult?.currentActiveAllocations ?? selectedCollateral.currentAllocation ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber((validationResult?.currentActiveAllocations ?? selectedCollateral.currentAllocation ?? 0))}
                           </strong>
                           <span className="text-[10px] text-slate-400">Prior facility pledges</span>
                         </div>
@@ -2733,7 +2731,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             Available Capacity
                           </span>
                           <strong className="text-sm font-bold text-blue-700 dark:text-blue-400 tabular-nums block">
-                            ETB {availableCollateralCapacity.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(availableCollateralCapacity)}
                           </strong>
                           <span className="text-[10px] text-slate-400">
                             {collateralRank === '2nd' ? '2nd-degree ceiling' : 'NSV ceiling'}
@@ -2749,7 +2747,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               remainingCapacity > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-600'
                             }`}
                           >
-                            ETB {remainingCapacity.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(remainingCapacity)}
                           </strong>
                           <span className="text-[10px] text-slate-400">After proposed allocation</span>
                         </div>
@@ -2764,8 +2762,8 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               Allocation Capacity Overflow Detected
                             </div>
                             <p className="mt-0.5">
-                              Proposed allocation of <strong>ETB {allocatedAmount.toLocaleString()}</strong> results in total allocations exceeding Net Security Value by{' '}
-                              <strong>ETB {validationResult.excessAllocationAmount.toLocaleString()} excess</strong>.
+                              Proposed allocation of <strong>ETB {formatEtbNumber(allocatedAmount)}</strong> results in total allocations exceeding Net Security Value by{' '}
+                              <strong>ETB {formatEtbNumber(validationResult.excessAllocationAmount)} excess</strong>.
                             </p>
                           </div>
                         </div>
@@ -2854,7 +2852,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                 />
                               </div>
                               <div className="text-[10px] text-slate-400">
-                                ETB {allocatedAmount.toLocaleString()} of ETB {netCollateralValue.toLocaleString()}
+                                ETB {formatEtbNumber(allocatedAmount)} of ETB {formatEtbNumber(netCollateralValue)}
                               </div>
                             </div>
 
@@ -2883,7 +2881,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                 />
                               </div>
                               <div className="text-[10px] text-slate-400">
-                                Total Secured: ETB {totalFacilityAllocatedWithProposed.toLocaleString()} of ETB {facilityOutstandingExposure.toLocaleString()}
+                                Total Secured: ETB {formatEtbNumber(totalFacilityAllocatedWithProposed)} of ETB {formatEtbNumber(facilityOutstandingExposure)}
                               </div>
                             </div>
                           </div>
@@ -2898,7 +2896,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                     Facility Collateral Coverage Exceeds 100% ({totalFacilityCoveragePct.toFixed(1)}%)
                                   </div>
                                   <span className="text-[10px] text-amber-800 dark:text-amber-300">
-                                    Total secured exceeds the loan balance by ETB {(totalFacilityAllocatedWithProposed - facilityOutstandingExposure).toLocaleString()}.
+                                    Total secured exceeds the loan balance by ETB {formatEtbNumber((totalFacilityAllocatedWithProposed - facilityOutstandingExposure))}.
                                   </span>
                                 </div>
                               </div>
@@ -2907,7 +2905,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                 onClick={() => setAllocatedAmount(recommended100PctAllocation)}
                                 className="shrink-0 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-bold text-[11px] transition-colors"
                               >
-                                Auto-Cap to 100% (ETB {recommended100PctAllocation.toLocaleString()})
+                                Auto-Cap to 100% (ETB {formatEtbNumber(recommended100PctAllocation)})
                               </button>
                             </div>
                           )}
@@ -3034,7 +3032,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                 Professional Valuation Report
                               </td>
                               <td className="p-2.5 text-slate-600 dark:text-slate-400">
-                                Approved valuation report supporting Net Security Value (ETB {netCollateralValue.toLocaleString()})
+                                Approved valuation report supporting Net Security Value (ETB {formatEtbNumber(netCollateralValue)})
                               </td>
                               <td className="p-2.5 font-mono text-[11px] text-slate-800 dark:text-slate-200">
                                 {selectedCollateral.valuationDate ? `VAL-REP-${selectedCollateral.valuationDate}` : 'VAL-REP-CURRENT'}
@@ -3291,14 +3289,14 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           <div>
                             <span className="text-slate-500 block text-[10px]">Net Collateral Value:</span>
                             <strong className="font-mono text-slate-900 dark:text-white">
-                              ETB {netCollateralValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber(netCollateralValue)}
                             </strong>
                           </div>
 
                           <div>
                             <span className="text-slate-500 block text-[10px]">Allocated Security:</span>
                             <strong className="font-mono text-emerald-700 dark:text-emerald-400 text-sm">
-                              ETB {allocatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber(allocatedAmount)}
                             </strong>
                           </div>
 

@@ -956,8 +956,8 @@ public class ValidationService {
         }
         List<String> missingMandatoryDocs = new ArrayList<>();
 
-        for (MandatoryDocumentRule rule : rules) {
-            if (!isMandatoryDocumentRuleApplicable(rule, collateral)) continue;
+        for (MandatoryDocumentRule rule : resolveApplicableDocumentRules(collateral, rules)) {
+            if (!rule.isMandatory()) continue;
 
             boolean satisfied = docs.stream().anyMatch(d -> {
                 if (!documentBelongsToCollateral(d, collateral)) return false;
@@ -1039,33 +1039,29 @@ public class ValidationService {
 
         if (r.equals(a)) return true;
 
-        // Canonical mapping per Part E rules
-        // Third-Party Consent and Pledge Agreement
-        boolean rIsPledge = r.contains("consent") && (r.contains("pledge") || r.contains("third party") || r.contains("thirdparty"));
-        boolean aIsPledge = a.contains("consent") && (a.contains("pledge") || a.contains("third party") || a.contains("thirdparty"));
+        // Canonical mapping per Part E rules. One confirmed file satisfies every
+        // admin-rule alias in the same group.
+        // Third-Party Consent / Pledge Agreement / Letter of Consent
+        boolean rIsPledge = r.contains("consent") || r.contains("pledge") || r.contains("third party") || r.contains("thirdparty");
+        boolean aIsPledge = a.contains("consent") || a.contains("pledge") || a.contains("third party") || a.contains("thirdparty");
         if (rIsPledge && aIsPledge) return true;
 
-        // Letter of Consent
-        boolean rIsLetter = r.contains("letter") && r.contains("consent");
-        boolean aIsLetter = a.contains("letter") && a.contains("consent");
-        if (rIsLetter && aIsLetter) return true;
-
-        // Title Deed / Property Ownership Certificate / Land Holding Certificate (LHC)
-        boolean rIsTitle = r.contains("title deed") || r.contains("property ownership") || r.contains("ownership cert") || r.contains("lhc") || r.contains("land holding");
-        boolean aIsTitle = a.contains("title deed") || a.contains("property ownership") || a.contains("ownership cert") || a.contains("lhc") || a.contains("land holding");
-        if (rIsTitle && aIsTitle) return true;
-        if (rIsTitle != aIsTitle && (rIsTitle || aIsTitle)) {
-            // If one is title deed and other is something else (like valuation or building plan), do NOT match
-            if (a.contains("valuation") || a.contains("building plan") || a.contains("logbook") || a.contains("vehicle reg")) return false;
-        }
+        // Title Deed / Property Ownership Certificate / LHC
+        boolean rIsTitle = r.contains("title deed") || r.contains("property ownership") || r.contains("ownership cert")
+                || r.contains("certificate of title") || r.contains("lhc") || r.contains("land holding");
+        boolean aIsTitle = a.contains("title deed") || a.contains("property ownership") || a.contains("ownership cert")
+                || a.contains("certificate of title") || a.contains("lhc") || a.contains("land holding");
 
         // Approved Building Plan / Cadastral / Site Plan
-        boolean rIsPlan = r.contains("building plan") || r.contains("cadastral") || r.contains("site plan");
-        boolean aIsPlan = a.contains("building plan") || a.contains("cadastral") || a.contains("site plan");
+        boolean rIsPlan = r.contains("building plan") || r.contains("approved plan") || r.contains("cadastral") || r.contains("site plan");
+        boolean aIsPlan = a.contains("building plan") || a.contains("approved plan") || a.contains("cadastral") || a.contains("site plan");
+
+        // A combined legacy requirement (for example "Title Deed / Approved Plan /
+        // Property Ownership Certificate") accepts either physical document. A
+        // plan-only requirement must not be satisfied by a title deed, and a
+        // title-only requirement must not be satisfied by a building plan.
+        if (rIsTitle && (aIsTitle || (rIsPlan && aIsPlan))) return true;
         if (rIsPlan && aIsPlan) return true;
-        if (rIsPlan != aIsPlan && (rIsPlan || aIsPlan)) {
-            if (a.contains("title deed") || a.contains("valuation") || a.contains("vehicle")) return false;
-        }
 
         // Vehicle Registration Certificate / Logbook / Libre
         boolean rIsVehicle = r.contains("vehicle") || r.contains("logbook") || r.contains("libre");
@@ -1184,61 +1180,220 @@ public class ValidationService {
     }
 
     public boolean categoryMatches(String ruleCategory, Collateral c) {
-        if (ruleCategory == null || ruleCategory.isBlank() || "All".equalsIgnoreCase(ruleCategory.trim())) return true;
-        if (same(ruleCategory, c.getCategory()) || same(ruleCategory, c.getType())) return true;
-        String x = ruleCategory.toLowerCase();
-        String cat = (c.getCategory() == null ? "" : c.getCategory()).toLowerCase();
-        String typ = (c.getType() == null ? "" : c.getType()).toLowerCase();
+        if (c == null) return false;
+        String cat = (c.getCategory() == null ? "" : c.getCategory()).toLowerCase().trim();
+        String typ = (c.getType() == null ? "" : c.getType()).toLowerCase().trim();
 
-        boolean isRuleImmovable = x.contains("immovable") || x.contains("real") || x.contains("building");
-        boolean isCatImmovable = cat.contains("immovable") || cat.contains("real") || cat.contains("building") ||
-                                 typ.contains("immovable") || typ.contains("building") || typ.contains("real");
+        boolean isCatImmovable = cat.contains("immovable") || cat.contains("real") || cat.contains("building") || cat.contains("land") ||
+                                 typ.contains("immovable") || typ.contains("building") || typ.contains("real") || typ.contains("land");
+        boolean isCatMovable = !isCatImmovable && (cat.contains("movable") || cat.contains("vehicle") || cat.contains("machin") ||
+                               typ.contains("movable") || typ.contains("vehicle") || typ.contains("machin") || cat.contains("business mortgage"));
+        boolean isCatGuarantee = cat.contains("guarantee") || typ.contains("guarantee");
+
+        if (ruleCategory == null || ruleCategory.isBlank() 
+                || "All".equalsIgnoreCase(ruleCategory.trim()) 
+                || "All Categories".equalsIgnoreCase(ruleCategory.trim())
+                || ruleCategory.toLowerCase().trim().startsWith("all")) {
+            return true;
+        }
+
+        String x = ruleCategory.toLowerCase().trim();
+        boolean isRuleImmovable = x.contains("immovable") || x.contains("real") || x.contains("building") || x.contains("land");
+        boolean isRuleMovable = !isRuleImmovable && (x.contains("movable") || x.contains("vehicle") || x.contains("machin") || x.contains("business mortgage"));
+        boolean isRuleGuarantee = x.contains("guarantee");
 
         if (isRuleImmovable) {
+            if (!isCatImmovable) return false;
             if (x.contains("under construction") || x.contains("construction in progress")) {
                 return typ.contains("under construction") || cat.contains("under construction") || typ.contains("construction");
             }
             if (x.contains("leasehold") || x.contains("lease")) {
                 return typ.contains("leasehold") || cat.contains("leasehold") || typ.contains("lease") || (c.getPropertyCertNumber() != null && c.getPropertyCertNumber().toLowerCase().contains("lease"));
             }
-            return isCatImmovable;
+            return true;
         }
 
         if (isCatImmovable) {
             return false;
         }
 
-        if (x.contains("vehicle") || x.contains("movable")) {
-            return cat.contains("movable") || cat.contains("vehicle") ||
-                   typ.contains("movable") || typ.contains("vehicle");
+        if (isRuleMovable) {
+            return isCatMovable;
         }
-        if (x.contains("machinery") || x.contains("business mortgage")) {
-            return cat.contains("machin") || cat.contains("business mortgage") || cat.contains("movable") ||
-                   typ.contains("machin") || typ.contains("business mortgage");
-        }
-        if (x.contains("guarantee")) {
-            return cat.contains("guarantee") || typ.contains("guarantee");
+        if (isRuleGuarantee) {
+            return isCatGuarantee;
         }
         if (x.contains("agricultural") || x.contains("livestock") || x.contains("farm") || x.contains("warehouse") || x.contains("other")) {
             return cat.contains("agricultural") || cat.contains("other") || cat.contains("livestock") || cat.contains("farm") || cat.contains(x) ||
                    typ.contains("agricultural") || typ.contains("other") || typ.contains("livestock") || typ.contains("farm");
         }
-        return false;
+        return same(ruleCategory, c.getCategory()) || same(ruleCategory, c.getType());
+    }
+
+    public boolean segmentMatches(String ruleSegment, String collateralSegment) {
+        if (ruleSegment == null || ruleSegment.isBlank()) return true;
+        String r = ruleSegment.trim().toLowerCase(Locale.ROOT);
+        if (r.equals("all") || r.equals("all segments") || r.equals("all segment") || r.equals("any")) return true;
+        if (collateralSegment == null || collateralSegment.isBlank()) return false;
+        String a = collateralSegment.trim().toLowerCase(Locale.ROOT);
+        if (r.equals(a)) return true;
+        String rn = r.replaceAll("[^a-z0-9]", "");
+        String an = a.replaceAll("[^a-z0-9]", "");
+        if (rn.equals(an)) return true;
+        // Tolerate short forms such as "Corporate" vs "Corporate Banking".
+        return rn.contains(an) || an.contains(rn);
     }
 
     public boolean isMandatoryDocumentRuleApplicable(MandatoryDocumentRule rule, Collateral collateral) {
+        return rule != null && rule.isMandatory() && isDocumentRuleRelevant(rule, collateral);
+    }
+
+    /**
+     * Resolves the effective document requirements for a collateral.
+     *
+     * Rules are filtered by active / segment / category / subtype / ownership and then
+     * deduplicated by document requirement, because the catalog may contain aliases or
+     * both a segment-specific rule and an All Segments rule for the same document.
+     *
+     * Precedence (highest first): segment-specific over All Segments, mandatory over
+     * optional, then more specific collateral type / ownership / applicability. The
+     * winning rule is the only one presented, validated or used to raise an exception,
+     * so one document can never create duplicate requirements.
+     */
+    public List<MandatoryDocumentRule> resolveApplicableDocumentRules(Collateral collateral, List<MandatoryDocumentRule> rules) {
+        if (collateral == null || rules == null || rules.isEmpty()) return List.of();
+        List<MandatoryDocumentRule> relevant = rules.stream()
+                .filter(r -> isDocumentRuleRelevant(r, collateral))
+                .sorted(Comparator.comparingInt(this::documentRulePrecedence).reversed())
+                .toList();
+
+        List<MandatoryDocumentRule> resolved = new ArrayList<>();
+        for (MandatoryDocumentRule rule : relevant) {
+            boolean duplicate = resolved.stream().anyMatch(existing -> sameDocumentRequirement(existing, rule));
+            if (!duplicate) resolved.add(rule);
+        }
+        return resolved;
+    }
+
+    private int documentRulePrecedence(MandatoryDocumentRule rule) {
+        int score = 0;
+        if (!isAllSegments(rule.getSegment())) score += 1000;
+        if (rule.isMandatory()) score += 100;
+        if (hasValue(rule.getCollateralType()) && !"all".equalsIgnoreCase(rule.getCollateralType().trim())) score += 10;
+        if (hasValue(rule.getOwnershipCondition()) && !"all".equalsIgnoreCase(rule.getOwnershipCondition().trim())
+                && !"any".equalsIgnoreCase(rule.getOwnershipCondition().trim())) score += 5;
+        if (hasValue(rule.getApplicabilityCondition()) && !"all".equalsIgnoreCase(rule.getApplicabilityCondition().trim())
+                && !"standard".equalsIgnoreCase(rule.getApplicabilityCondition().trim())) score += 2;
+        return score;
+    }
+
+    private boolean isAllSegments(String segment) {
+        if (segment == null || segment.isBlank()) return true;
+        String s = segment.trim().toLowerCase(Locale.ROOT);
+        return s.equals("all") || s.equals("all segments") || s.equals("all segment") || s.equals("any");
+    }
+
+    private boolean hasValue(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private boolean sameDocumentRequirement(MandatoryDocumentRule a, MandatoryDocumentRule b) {
+        if (a == null || b == null) return false;
+        String keyA = documentRequirementKey(a.getDocumentType());
+        String keyB = documentRequirementKey(b.getDocumentType());
+        return !keyA.isEmpty() && keyA.equals(keyB);
+    }
+
+    /**
+     * Canonical requirement key used only for de-duplication. Unlike
+     * {@link #docTypeMatches(String, String)} it must not merge genuinely distinct
+     * documents such as a Title Deed and an Approved Building Plan. It only groups
+     * known aliases of the same document.
+     */
+    private String documentRequirementKey(String docType) {
+        if (docType == null || docType.isBlank()) return "";
+        String d = docType.trim().toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (d.isEmpty()) return "";
+
+        // Building plan must be checked before title deed: legacy title-deed labels
+        // contain the words "Approved Plan" but are a different document.
+        if (d.contains("building plan") || d.contains("cadastral") || d.contains("site plan")) return "building-plan";
+        if (d.contains("architectural")) return "architectural-drawings";
+        if (d.contains("bill of quantity") || d.contains("boq")) return "bill-of-quantity";
+        if (d.contains("building permit")) return "building-permit";
+        if (d.contains("engineer progress") || d.contains("progress report")) return "engineer-progress-report";
+        if (d.contains("title deed") || d.contains("certificate of title") || d.contains("property ownership")
+                || d.contains("ownership cert") || d.contains("lhc") || d.contains("land holding")) return "title-deed";
+        if (d.contains("valuation")) return "valuation-report";
+        if (d.contains("roadworthiness")) return "roadworthiness-certificate";
+        if (d.contains("vehicle") || d.contains("logbook") || d.contains("libre")) return "vehicle-registration";
+        if (d.contains("technical inspection") || d.contains("machine inspection")) return "machine-technical-inspection";
+        if (d.contains("machinery") && (d.contains("ownership") || d.contains("cert"))) return "machinery-ownership";
+        if (d.contains("customs")) return "customs-clearance";
+        if (d.contains("purchase") || d.contains("invoice") || d.contains("bill of sale")) return "purchase-document";
+        if (d.contains("consent") || d.contains("pledge") || d.contains("third party")) return "third-party-consent";
+        if (d.contains("loan agreement") || d.contains("facility agreement") || d.contains("credit agreement")) return "loan-agreement";
+        if (d.contains("registration letter") || (d.contains("registration") && d.contains("letter"))) return "registration-letter";
+        if (d.contains("mortgage") && (d.contains("registration") || d.contains("confirmation"))) return "mortgage-registration-confirmation";
+        if (d.contains("warehouse receipt")) return "warehouse-receipt";
+        if (d.contains("veterinary")) return "veterinary-health-certificate";
+        if (d.contains("ear tag") || d.contains("eartag")) return "livestock-ear-tag";
+        if (d.contains("commodity inspection")) return "commodity-inspection";
+        if (d.contains("intellectual property") || d.contains("ip registration")) return "ip-registration";
+        if (d.contains("guarantee")) return "guarantee-agreement";
+        if (d.contains("board resolution") || d.contains("power of attorney")) return "board-resolution";
+        if (d.contains("lease agreement") || d.contains("lease payment")) return "lease-agreement";
+        if (d.contains("tin")) return "tin-evidence";
+        return d;
+    }
+
+    /** Category / segment / subtype / ownership filtering shared by validation and checklists. */
+    public boolean isDocumentRuleRelevant(MandatoryDocumentRule rule, Collateral collateral) {
         if (rule == null || collateral == null) return false;
-        if (!rule.isActive() || !rule.isMandatory()) return false;
+        if (!rule.isActive()) return false;
+
+        // 0. Segment match (All Segments / blank applies everywhere)
+        if (!segmentMatches(rule.getSegment(), collateral.getOwningSegment())) {
+            return false;
+        }
 
         // 1. Category match
         if (!categoryMatches(rule.getCollateralCategory(), collateral)) {
             return false;
         }
 
+        // 1b. Strict category isolation: Immovable assets must NEVER require Movable documents, and Movable assets must NEVER require Immovable documents
+        String cat = (collateral.getCategory() == null ? "" : collateral.getCategory()).toLowerCase().trim();
+        String typ = (collateral.getType() == null ? "" : collateral.getType()).toLowerCase().trim();
+        boolean isCatImmovable = cat.contains("immovable") || cat.contains("real") || cat.contains("building") || cat.contains("land") ||
+                                 typ.contains("immovable") || typ.contains("building") || typ.contains("real") || typ.contains("land");
+        boolean isCatMovable = !isCatImmovable && (cat.contains("movable") || cat.contains("vehicle") || cat.contains("machin") ||
+                               typ.contains("movable") || typ.contains("vehicle") || typ.contains("machin"));
+
+        String dt = rule.getDocumentType() != null ? rule.getDocumentType().toLowerCase() : "";
+        boolean isDocImmovable = dt.contains("title") || dt.contains("deed") || dt.contains("building plan") || dt.contains("cadastral") || dt.contains("lease");
+        boolean isDocMovable = dt.contains("vehicle") || dt.contains("logbook") || dt.contains("libre") || dt.contains("machin") || dt.contains("invoice") || dt.contains("customs");
+
+        boolean isRuleAllCategories = rule.getCollateralCategory() != null &&
+                (rule.getCollateralCategory().trim().equalsIgnoreCase("All") ||
+                 rule.getCollateralCategory().trim().equalsIgnoreCase("All Categories") ||
+                 rule.getCollateralCategory().toLowerCase().trim().startsWith("all"));
+
+        if (!isRuleAllCategories) {
+            if (isCatMovable && isDocImmovable) {
+                return false;
+            }
+            if (isCatImmovable && isDocMovable) {
+                return false;
+            }
+        }
+
         // 2. Internal 2nd degree collateral exemption (only if this is a 2nd degree collateral linking to an internal 1st degree charge)
         boolean isSecondDegree = "2nd".equalsIgnoreCase(collateral.getCollateralRank()) || "Second Degree".equalsIgnoreCase(collateral.getCollateralRank()) || collateral.getFirstDegreeCollateralId() != null;
         if (isSecondDegree && collateral.isFirstDegreeInternal() && collateral.getFirstDegreeCollateralId() != null) {
-            String dt = rule.getDocumentType() != null ? rule.getDocumentType().toLowerCase() : "";
             if (dt.contains("title") || dt.contains("deed") || dt.contains("valuation") || dt.contains("ownership cert")) {
                 return false;
             }
@@ -1664,8 +1819,8 @@ public class ValidationService {
             List<MandatoryDocumentRule> rules = mandatoryDocumentRuleRepository.findAll();
             List<OwnershipDocument> existingDocs = ownershipDocumentRepository.findAll();
 
-            for (MandatoryDocumentRule rule : rules) {
-                if (!isMandatoryDocumentRuleApplicable(rule, targetCol)) continue;
+            for (MandatoryDocumentRule rule : resolveApplicableDocumentRules(targetCol, rules)) {
+                if (!rule.isMandatory()) continue;
 
                 // Check existing repo docs
                 boolean satisfied = existingDocs.stream().anyMatch(d ->
@@ -1972,8 +2127,8 @@ public class ValidationService {
                     ? ownershipDocumentRepository.findByCollateralId(collateral.getId())
                     : Collections.emptyList();
 
-            for (MandatoryDocumentRule rule : rules) {
-                if (!isMandatoryDocumentRuleApplicable(rule, collateral)) continue;
+            for (MandatoryDocumentRule rule : resolveApplicableDocumentRules(collateral, rules)) {
+                if (!rule.isMandatory()) continue;
 
                 // Check existing repo docs
                 boolean satisfied = existingDocs.stream().anyMatch(d ->

@@ -1,4 +1,6 @@
+import { formatEtb } from '../../../utils/format';
 import React from 'react';
+
 import {
   TrendingUp,
   Shield,
@@ -21,6 +23,7 @@ import {
   BarChart3,
   Calendar,
 } from 'lucide-react';
+
 import {
   ResponsiveContainer,
   PieChart,
@@ -34,7 +37,9 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts';
+
 import { DashboardSummary, DashboardChartData, DashboardPortfolioRow } from '../../../types';
+
 import { UniversalPortfolioTable } from '../UniversalPortfolioTable';
 
 interface ExecutiveDashboardViewProps {
@@ -52,10 +57,7 @@ export const ExecutiveDashboardView: React.FC<ExecutiveDashboardViewProps> = ({
   onNavigate,
   isSeniorManagement = false,
 }) => {
-  const formatCurrency = (val?: number) => {
-    if (val === undefined || val === null) return 'ETB 0.00';
-    return `ETB ${new Intl.NumberFormat('en-ET', { maximumFractionDigits: 0 }).format(val)}`;
-  };
+  const formatCurrency = (val?: number) => formatEtb(val);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>

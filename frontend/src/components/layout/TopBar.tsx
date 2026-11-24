@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Shield,
@@ -32,8 +33,6 @@ import {
 
 interface TopBarProps {
   currentUser: UserSession;
-  allUsers: UserSession[];
-  onSwitchUser: (user: UserSession) => void;
   selectedSegment: string;
   onSelectSegment: (segment: string) => void;
   availableSegments: string[];
@@ -56,8 +55,6 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({
   currentUser,
-  allUsers,
-  onSwitchUser,
   selectedSegment,
   onSelectSegment,
   availableSegments,
@@ -269,16 +266,18 @@ export const TopBar: React.FC<TopBarProps> = ({
     }
   };
 
-  const isBankWideRole = ['EXEC', 'SRMGMT', 'SYSADMIN', 'AUDITOR', 'COMPLIANCE', 'RISK', 'MGRCOLLDOC'].includes(currentUser.role);
-  const isMultiSegmentRole = isBankWideRole || ['DISTDIR', 'BRMGR', 'BRO', 'CRO'].includes(currentUser.role);
-  const userSegmentList = currentUser.segmentIds && currentUser.segmentIds.length > 0
-    ? currentUser.segmentIds
-    : (currentUser.segment ? [currentUser.segment] : ['Corporate Banking']);
-  const canSelectSegment = isMultiSegmentRole || userSegmentList.length > 1;
-
-  const segmentOptions = isMultiSegmentRole
-    ? (availableSegments && availableSegments.length > 0 ? availableSegments : ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'])
-    : userSegmentList;
+  // Segment authority comes only from the persisted backend user scope.
+  const userSegmentList = (currentUser.allowedSegments && currentUser.allowedSegments.length > 0
+    ? currentUser.allowedSegments
+    : (currentUser.segmentIds || []));
+  const segmentList = userSegmentList.length > 0
+    ? userSegmentList
+    : (currentUser.segment ? [currentUser.segment] : []);
+  const bankWide = currentUser.bankWide === true;
+  const canSelectSegment = bankWide || segmentList.length > 1;
+  const segmentOptions = bankWide
+    ? (availableSegments && availableSegments.length > 0 ? availableSegments : segmentList)
+    : segmentList;
 
   const userInitials = currentUser.name
     .split(' ')
@@ -301,9 +300,9 @@ export const TopBar: React.FC<TopBarProps> = ({
               className="bg-transparent text-white text-xs font-semibold cursor-pointer outline-none focus:ring-0 border-none py-0.5 pr-2"
               title="Filter entire application data by Business Segment"
             >
-              {isMultiSegmentRole && (
+              {bankWide && (
                 <option value="ALL" className="bg-[#00205B] text-white">
-                  All Segments {currentUser.role === 'BRMGR' ? '(Branch)' : currentUser.role === 'DISTDIR' ? '(District)' : '(Bank)'}
+                  All Authorized Segments
                 </option>
               )}
               {segmentOptions.map((seg) => (
@@ -324,6 +323,19 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span className="text-[10px] text-blue-200/80" title="Organizational scope locked">🔒</span>
           </div>
         )}
+
+        {/* Authorized organizational hierarchy from the backend user assignment. */}
+        <div
+          className="hidden lg:flex items-center gap-1.5 text-[10px] text-blue-100/90 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1"
+          title="Your authorized scope: District Office → Branches → Customers"
+        >
+          <Building2 className="w-3 h-3 text-[#D48806] shrink-0" />
+          <span className="font-semibold">{currentUser.district || 'Head Office'}</span>
+          <span className="text-blue-300">→</span>
+          <span className="font-semibold">{currentUser.branch || 'All Branches'}</span>
+          <span className="text-blue-300">→</span>
+          <span>Customers in scope</span>
+        </div>
       </div>
 
       {/* Center: Global Search Bar */}
@@ -440,7 +452,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                             </div>
                             <div className="text-[11px] text-slate-500 flex items-center gap-2">
                               <span>{f.facilityType || 'Loan'}</span>
-                              {f.approvedLimit && <span>• ETB {Number(f.approvedLimit).toLocaleString()}</span>}
+                              {f.approvedLimit && <span>• ETB {formatEtbNumber(Number(f.approvedLimit))}</span>}
                             </div>
                           </div>
                         </div>
@@ -473,7 +485,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                             </div>
                             <div className="text-[11px] text-slate-500 flex items-center gap-2">
                               <span>{col.category}</span>
-                              {col.valuationAmount && <span>• ETB {Number(col.valuationAmount).toLocaleString()}</span>}
+                              {col.valuationAmount && <span>• ETB {formatEtbNumber(Number(col.valuationAmount))}</span>}
                             </div>
                           </div>
                         </div>
@@ -506,7 +518,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                             </div>
                             <div className="text-[11px] text-slate-500">
                               <span>{p.coverageType}</span>
-                              {p.insuredAmount && <span> • ETB {Number(p.insuredAmount).toLocaleString()}</span>}
+                              {p.insuredAmount && <span> • ETB {formatEtbNumber(Number(p.insuredAmount))}</span>}
                             </div>
                           </div>
                         </div>

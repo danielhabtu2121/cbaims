@@ -29,6 +29,7 @@ public class NotificationTemplateService {
     @Autowired private BranchRepository branchRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private BusinessCalendarService businessCalendarService;
+    @Autowired private ReminderScheduleRepository reminderScheduleRepository;
     @Autowired @Lazy private CimsService cimsService;
 
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{([^}]+)}");
@@ -521,6 +522,33 @@ public class NotificationTemplateService {
             throw new IllegalArgumentException("A template with the same name and channel already exists.");
         }
 
+        // The linked Reminder Schedule is the single source of truth for audience.
+        // Reject any template audience that the schedule does not notify, so the
+        // backend cannot drift from the filtered admin UI.
+        if (t.getScheduleId() != null && !t.getScheduleId().isBlank()) {
+            ReminderSchedule schedule = reminderScheduleRepository.findById(t.getScheduleId())
+                    .orElseThrow(() -> new IllegalArgumentException("Linked reminder schedule not found: " + t.getScheduleId()));
+            Set<String> allowed = parseScheduleAudiences(schedule.getAudience());
+            String requested = t.getAudience();
+            if (requested == null || requested.isBlank()) {
+                if (allowed.size() == 1) {
+                    t.setAudience(allowed.iterator().next());
+                } else {
+                    throw new IllegalArgumentException("Audience is mandatory when the linked reminder schedule targets multiple audiences (" + String.join(", ", allowed) + ").");
+                }
+            } else {
+                String canonical = allowed.stream()
+                        .filter(a -> a.equalsIgnoreCase(requested.trim()))
+                        .findFirst()
+                        .orElse(null);
+                if (canonical == null) {
+                    throw new IllegalArgumentException("Audience '" + requested + "' is not enabled on reminder schedule '"
+                            + schedule.getName() + "'. Allowed audiences: " + String.join(", ", allowed) + ".");
+                }
+                t.setAudience(canonical);
+            }
+        }
+
         NotificationTemplate saved = repository.save(t);
         cimsService.logAudit(
                 userId == null ? "SYSADMIN" : userId,
@@ -534,6 +562,30 @@ public class NotificationTemplateService {
                 "Notification template updated; database persistence active."
         );
         return saved;
+    }
+
+    /** Mirrors ReminderConfigurationService.parseAudiences for backend enforcement. */
+    private Set<String> parseScheduleAudiences(String audienceStr) {
+        Set<String> set = new LinkedHashSet<>();
+        if (audienceStr == null || audienceStr.isBlank()) {
+            set.add("Staff");
+            return set;
+        }
+        String lower = audienceStr.toLowerCase(Locale.ROOT);
+        if (lower.contains("both") || (lower.contains("staff") && lower.contains("customer"))) {
+            set.add("Staff");
+            set.add("Customer");
+        } else if (lower.contains("customer")) {
+            set.add("Customer");
+        } else if (lower.contains("insurer") || lower.contains("insurance")) {
+            set.add("Insurer");
+        } else {
+            set.add("Staff");
+        }
+        if (lower.contains("insurer") || lower.contains("insurance")) {
+            set.add("Insurer");
+        }
+        return set;
     }
 
     private String state(NotificationTemplate t) {

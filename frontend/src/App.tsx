@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Lock } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   UserSession,
   Customer,
@@ -29,9 +28,16 @@ import {
   CbsFacility,
   CbsCollateral,
   CbsSyncLog,
-  RoleCode,
 } from './types';
-import { cimsApi } from './api/cimsApi';
+import { cimsApi, SESSION_EXPIRED_EVENT } from './api/cimsApi';
+import {
+  defaultSegmentFor,
+  findScreenPermission,
+  isReadOnlyUser,
+  normalizePermissions,
+  scopeSignature,
+  toUserSession,
+} from './auth/session';
 import { TopBar } from './components/layout/TopBar';
 import { Sidebar, NavPageId } from './components/layout/Sidebar';
 import { Breadcrumbs } from './components/layout/Breadcrumbs';
@@ -52,293 +58,66 @@ import { AdminPortal } from './components/admin/AdminPortal';
 import { AuditTrailViewer } from './components/audit/AuditTrailViewer';
 import { NotificationManager } from './components/notifications/NotificationManager';
 import { CbsSimulator } from './components/cbs/CbsSimulator';
+import { NotificationProvider, useInAppNotification } from './context/NotificationContext';
 
-// 16 Pre-Seeded Bank Personas
-const INITIAL_PERSONAS: UserSession[] = [
-  {
-    userId: 'brmgr_user',
-    username: 'brmgr_user',
-    name: 'Abebe Bikila',
-    role: 'BRMGR',
-    roleName: 'Branch Manager',
-    branch: 'Bole Special Branch',
-    branchCode: 'BOLE-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-brmgr',
-    canApprove: true,
-    canCreate: true,
-    canEdit: true,
-    canDelete: false,
-  },
-  {
-    userId: 'cro_user',
-    username: 'cro_user',
-    name: 'Derartu Tulu',
-    role: 'CRO',
-    roleName: 'Corporate Relationship Officer',
-    branch: 'Bole Special Branch',
-    branchCode: 'BOLE-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-cro',
-    canApprove: false,
-    canCreate: true,
-    canEdit: true,
-    canDelete: false,
-  },
-  {
-    userId: 'exec_user',
-    username: 'exec_user',
-    name: 'Dr. Haile Gebrselassie',
-    role: 'EXEC',
-    roleName: 'Executive Director / VP',
-    branch: 'Head Office',
-    branchCode: 'HQ-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-exec',
-    canApprove: true,
-    canCreate: false,
-    canEdit: false,
-    canDelete: false,
-  },
-  {
-    userId: 'distdir_user',
-    username: 'distdir_user',
-    name: 'Kenenisa Bekele',
-    role: 'DISTDIR',
-    roleName: 'District Director',
-    branch: 'East Addis District',
-    branchCode: 'DIST-EAA-01',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-distdir',
-    canApprove: true,
-    canCreate: true,
-    canEdit: true,
-    canDelete: false,
-  },
-  {
-    userId: 'hodept_user',
-    username: 'hodept_user',
-    name: 'Tirunesh Dibaba',
-    role: 'HODEPT',
-    roleName: 'Head Office Department Head',
-    branch: 'Head Office',
-    branchCode: 'HQ-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking'],
-    token: 'jwt-token-hodept',
-    canApprove: true,
-    canCreate: true,
-    canEdit: true,
-    canDelete: false,
-  },
-  {
-    userId: 'srm_user',
-    username: 'srm_user',
-    name: 'Sileshi Sihine',
-    role: 'SRM',
-    roleName: 'Senior Relationship Manager',
-    branch: 'Bole Special Branch',
-    branchCode: 'BOLE-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-srm',
-    canApprove: true,
-    canCreate: true,
-    canEdit: true,
-    canDelete: false,
-  },
-  {
-    userId: 'brm_user',
-    username: 'brm_user',
-    name: 'Meseret Defar',
-    role: 'BRM',
-    roleName: 'Branch Relationship Manager',
-    branch: 'Bole Special Branch',
-    branchCode: 'BOLE-001',
-    segment: 'Retail Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-brm',
-    canApprove: true,
-    canCreate: true,
-    canEdit: true,
-    canDelete: false,
-  },
-  {
-    userId: 'bro_user',
-    username: 'bro_user',
-    name: 'Gete Wami',
-    role: 'BRO',
-    roleName: 'Branch Relationship Officer',
-    branch: 'Bole Special Branch',
-    branchCode: 'BOLE-001',
-    segment: 'Retail Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-bro',
-    canApprove: false,
-    canCreate: true,
-    canEdit: true,
-    canDelete: false,
-  },
-  {
-    userId: 'mgrcolldoc_user',
-    username: 'mgrcolldoc_user',
-    name: 'Fatuma Roba',
-    role: 'MGRCOLLDOC',
-    roleName: 'Manager Collateral & Documentation',
-    branch: 'Head Office',
-    branchCode: 'HQ-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-mgrcolldoc',
-    canApprove: true,
-    canCreate: true,
-    canEdit: true,
-    canDelete: false,
-  },
-  {
-    userId: 'colldocoff_user',
-    username: 'colldocoff_user',
-    name: 'Gezahegne Abera',
-    role: 'COLLDOCOFF',
-    roleName: 'Collateral & Documentation Officer',
-    branch: 'Head Office',
-    branchCode: 'HQ-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking'],
-    token: 'jwt-token-colldocoff',
-    canApprove: false,
-    canCreate: true,
-    canEdit: true,
-    canDelete: false,
-  },
-  {
-    userId: 'compliance_user',
-    username: 'compliance_user',
-    name: 'Almaz Ayana',
-    role: 'COMPLIANCE',
-    roleName: 'Compliance Officer',
-    branch: 'Head Office',
-    branchCode: 'HQ-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-compliance',
-    canApprove: true,
-    canCreate: false,
-    canEdit: false,
-    canDelete: false,
-  },
-  {
-    userId: 'risk_user',
-    username: 'risk_user',
-    name: 'Lelisa Desisa',
-    role: 'RISK',
-    roleName: 'Risk Management Officer',
-    branch: 'Head Office',
-    branchCode: 'HQ-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-risk',
-    canApprove: false,
-    canCreate: false,
-    canEdit: false,
-    canDelete: false,
-  },
-  {
-    userId: 'auditor_user',
-    username: 'auditor_user',
-    name: 'Tsegaye Kebede',
-    role: 'AUDITOR',
-    roleName: 'Internal Auditor',
-    branch: 'Head Office',
-    branchCode: 'HQ-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-auditor',
-    canApprove: false,
-    canCreate: false,
-    canEdit: false,
-    canDelete: false,
-  },
-  {
-    userId: 'sysadmin_user',
-    username: 'sysadmin_user',
-    name: 'System Administrator',
-    role: 'SYSADMIN',
-    roleName: 'System Administrator',
-    branch: 'Head Office',
-    branchCode: 'HQ-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-sysadmin',
-    canApprove: false,
-    canCreate: true,
-    canEdit: true,
-    canDelete: true,
-  },
-  {
-    userId: 'srmgmt_user',
-    username: 'srmgmt_user',
-    name: 'Senior Management Lead',
-    role: 'SRMGMT',
-    roleName: 'Senior Management',
-    branch: 'Head Office',
-    branchCode: 'HQ-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking', 'Retail Banking', 'MSME Banking', 'Interest-Free Banking (IFB)'],
-    token: 'jwt-token-srmgmt',
-    canApprove: true,
-    canCreate: false,
-    canEdit: false,
-    canDelete: false,
-  },
-  {
-    userId: 'rdonly_user',
-    username: 'rdonly_user',
-    name: 'Read Only Viewer',
-    role: 'RDONLY',
-    roleName: 'Read Only Inspector',
-    branch: 'Head Office',
-    branchCode: 'HQ-001',
-    segment: 'Corporate Banking',
-    segmentIds: ['Corporate Banking'],
-    token: 'jwt-token-rdonly',
-    canApprove: false,
-    canCreate: false,
-    canEdit: false,
-    canDelete: false,
-  },
-];
+function getPageFromUrl(): NavPageId {
+  if (typeof window === 'undefined') return 'dashboard';
+  const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
+  const route = path || hash;
+  if (route === 'admin' || route === 'sysadmin') return 'admin';
+  if (route === 'collateral' || route === 'collaterals') return 'collateral';
+  if (route === 'facilities' || route === 'facility') return 'facilities';
+  if (route === 'insurance' || route === 'policies' || route === 'policy') return 'insurance';
+  if (route === 'customers' || route === 'customer') return 'customers';
+  if (route === 'approvals' || route === 'workflow') return 'approvals';
+  if (route === 'exceptions' || route === 'exception') return 'exceptions';
+  if (route === 'documents' || route === 'dms') return 'documents';
+  if (route === 'reports' || route === 'report') return 'reports';
+  if (route === 'audit' || route === 'audittrail') return 'audit';
+  if (route === 'notifications' || route === 'notif') return 'notifications';
+  if (route === 'cbssim' || route === 'cbs-sim' || route === 'cbs') return 'cbs-sim';
+  return 'dashboard';
+}
 
-export function App() {
+function updateUrlForPage(page: NavPageId) {
+  if (typeof window === 'undefined') return;
+  const targetPath = page === 'dashboard' ? '/' : `/${page}`;
+  if (window.location.pathname !== targetPath) {
+    window.history.pushState({ page }, '', targetPath);
+  }
+}
+
+function AppContent() {
+  const { showToast, showError, showSuccess, showWarning, showConfirm } = useInAppNotification();
   const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
     try {
       const stored = JSON.parse(localStorage.getItem('cims.currentUser') || 'null');
+      const token = localStorage.getItem('cims.token') || stored?.token;
       if (
         stored?.role &&
         stored?.username &&
-        stored?.token &&
-        typeof stored.token === 'string' &&
-        stored.token.startsWith('cims_tkn.')
+        typeof token === 'string' &&
+        token.startsWith('cims_tkn.')
       ) {
-        return {
-          ...stored,
-          userId: stored.userId || stored.id || stored.username,
-          name: stored.name || stored.fullName || stored.username,
-          roleName: stored.roleName || stored.role,
-          canApprove: stored.role === 'SYSADMIN' ? false : stored.canApprove,
-        };
+        return toUserSession({ ...stored, token });
       }
     } catch { }
     return null;
   });
   const [sessionVerified, setSessionVerified] = useState(() => !currentUser);
-  const [activePage, setActivePage] = useState<NavPageId>('dashboard');
+  const [activePage, setActivePage] = useState<NavPageId>(() => getPageFromUrl());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [selectedSegment, setSelectedSegment] = useState('Corporate Banking');
+  const [selectedSegment, setSelectedSegment] = useState(() => defaultSegmentFor(currentUser));
+  const authoritativeScopeRef = useRef<string>(scopeSignature(currentUser));
+
+  useEffect(() => {
+    const onPopState = () => {
+      setActivePage(getPageFromUrl());
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Deep-linking navigation target IDs
   const [targetFacilityId, setTargetFacilityId] = useState<string | null>(null);
@@ -353,53 +132,42 @@ export function App() {
     if (page === 'policies') targetPage = 'insurance';
     if (page === 'collaterals') targetPage = 'collateral';
 
-    if (params?.facilityId || (targetPage === 'facilities' && (params?.id || params?.entityId))) {
-      const facId = params.facilityId || params.id || params.entityId;
-      setTargetFacilityId(facId);
-      const fac = facilities.find(f => f.id === facId || f.lineCode === facId || f.loanReference === facId);
-      if (fac && fac.segment && effectiveSegment !== 'ALL' && fac.segment.toLowerCase() !== effectiveSegment.toLowerCase()) {
-        setSelectedSegment('ALL');
-      }
-    }
-    if (params?.collateralId || (targetPage === 'collateral' && (params?.id || params?.entityId))) {
-      const colId = params.collateralId || params.id || params.entityId;
-      setTargetCollateralId(colId);
-      const col = collaterals.find(c => c.id === colId || c.code === colId);
-      if (col && col.owningSegment && effectiveSegment !== 'ALL' && col.owningSegment.toLowerCase() !== effectiveSegment.toLowerCase()) {
-        setSelectedSegment('ALL');
-      }
-    }
-    if (params?.policyId || (targetPage === 'insurance' && (params?.id || params?.entityId))) {
-      const polId = params.policyId || params.id || params.entityId;
-      setTargetPolicyId(polId);
-      const pol = policies.find(p => p.id === polId || p.policyNumber === polId);
-      if (pol) {
-        const col = collaterals.find(c => c.id === pol.collateralId || c.code === pol.collateralId);
-        const cust = customers.find(c => c.id === pol.customerId || c.cif === pol.customerId);
-        const seg = col?.owningSegment || cust?.segment;
-        if (seg && effectiveSegment !== 'ALL' && seg.toLowerCase() !== effectiveSegment.toLowerCase()) {
-          setSelectedSegment('ALL');
-        }
-      }
-    }
-    if (params?.customerId || params?.cif || (targetPage === 'customers' && (params?.id || params?.selectedCif))) {
-      const custId = params.customerId || params.cif || params.id || params.selectedCif;
-      setTargetCustomerId(custId);
-    }
-    if (params?.documentId || (targetPage === 'documents' && params?.id)) {
-      setTargetDocumentId(params.documentId || params.id);
-    }
-    if (params?.exceptionId || (targetPage === 'exceptions' && params?.id)) {
-      setTargetExceptionId(params.exceptionId || params.id);
-    }
+    // Always clear stale deep links. A detail modal must only open when the
+    // caller explicitly supplies an id for this navigation.
+    const byPageId = params?.id || params?.entityId || null;
+    setTargetFacilityId(params?.facilityId || (targetPage === 'facilities' ? byPageId : null));
+    setTargetCollateralId(params?.collateralId || (targetPage === 'collateral' ? byPageId : null));
+    setTargetPolicyId(params?.policyId || (targetPage === 'insurance' ? byPageId : null));
+    setTargetCustomerId(params?.customerId || params?.cif || (targetPage === 'customers' ? (params?.selectedCif || byPageId) : null));
+    setTargetDocumentId(params?.documentId || (targetPage === 'documents' ? byPageId : null));
+    setTargetExceptionId(params?.exceptionId || (targetPage === 'exceptions' ? byPageId : null));
 
     setActivePage(targetPage);
+    updateUrlForPage(targetPage);
   };
 
   // Modals & Drawers
   const [showNotifications, setShowNotifications] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showSessionTimeout, setShowSessionTimeout] = useState(false);
+
+  const expireSession = useCallback((message: string) => {
+    cimsApi.setCurrentUser(null);
+    setCurrentUser(null);
+    setLoginNotice(message);
+    setActivePage('dashboard');
+    setShowSessionTimeout(false);
+    setShowNotifications(false);
+    setShowChangePassword(false);
+    setSessionVerified(true);
+    setSelectedSegment('ALL');
+    setTargetFacilityId(null);
+    setTargetCollateralId(null);
+    setTargetPolicyId(null);
+    setTargetCustomerId(null);
+    setTargetDocumentId(null);
+    setTargetExceptionId(null);
+  }, []);
 
   // Application Data States
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -429,23 +197,39 @@ export function App() {
   const [cbsFacilities, setCbsFacilities] = useState<CbsFacility[]>([]);
   const [cbsCollaterals, setCbsCollaterals] = useState<CbsCollateral[]>([]);
   const [cbsSyncLogs, setCbsSyncLogs] = useState<CbsSyncLog[]>([]);
-  const [allUsersList, setAllUsersList] = useState<UserSession[]>(INITIAL_PERSONAS);
+  const [allUsersList, setAllUsersList] = useState<UserSession[]>([]);
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
 
-  // Fetch initial data
-  const loadData = async () => {
+  const applyAuthoritativeUser = useCallback((next: UserSession | null) => {
+    const signature = scopeSignature(next);
+    if (signature === authoritativeScopeRef.current) return;
+    authoritativeScopeRef.current = signature;
+    cimsApi.setCurrentUser(next);
+    setCurrentUser(next);
+  }, []);
+
+  // Fetch initial data. The validated backend user is the only source of
+  // role, branch, segment and permission values used by the workspace.
+  const loadData = async (actor: UserSession | null = currentUser) => {
+    if (!actor) return;
     try {
       setDataLoadError(null);
       const session = await cimsApi.validateSession();
-      if (!session.valid) {
-        setLoginNotice('Your session expired. Please sign in again.');
-        setCurrentUser(null);
-        cimsApi.setCurrentUser(null);
-        setSessionVerified(true);
+      if (!session.valid || session.active === false || !session.user) {
+        expireSession('Your session expired. Please sign in again.');
         return;
       }
+
+      const token = localStorage.getItem('cims.token') || actor.token;
+      const validated = toUserSession({ ...session.user, token });
+      if (!validated || validated.username.toLowerCase() !== actor.username.toLowerCase()) {
+        expireSession('Your session is no longer valid. Please sign in again.');
+        return;
+      }
+      applyAuthoritativeUser(validated);
       setSessionVerified(true);
+
       const [
         custRes,
         facRes,
@@ -486,7 +270,7 @@ export function App() {
         cimsApi.getExceptions(),
         cimsApi.getNotifications(),
         cimsApi.getAuditLogs(),
-        cimsApi.getWorkflowTasks(currentUser?.role, undefined, currentUser?.username || currentUser?.userId),
+        cimsApi.getWorkflowTasks(validated.role, undefined, validated.username || validated.userId),
         cimsApi.getDelegations(),
         cimsApi.getSegments(),
         cimsApi.getBranches(),
@@ -520,7 +304,6 @@ export function App() {
       setDelegations(delRes);
       setSegments(segRes);
       setBranches(brRes);
-      setPermissions(permRes);
       setApprovalConfigs(apprRes);
       setReminderSchedules(remRes);
       setScheduledReports(schedRes);
@@ -534,66 +317,54 @@ export function App() {
       setCbsCollaterals(cbsColRes);
       setCbsSyncLogs(cbsLogRes);
 
-      if (usersRes && usersRes.length > 0) {
-        const mappedUsers: any[] = usersRes.map((u: any) => {
-          const p = INITIAL_PERSONAS.find(
-            (persona) =>
-              persona.username.toLowerCase() === (u.username || '').toLowerCase()
-          );
-          return {
-            id: u.id || u.userId,
-            userId: u.id || u.username,
-            username: u.username,
-            name: u.fullName || u.name || p?.name || u.username,
-            fullName: u.fullName || u.name || p?.name || u.username,
-            role: (u.role || p?.role || 'BRMGR') as RoleCode,
-            roleName: p?.roleName || u.role,
-            branch: u.branch || p?.branch || 'Bole Special Branch',
-            branchCode: u.branchCode || p?.branchCode || 'BRN-001',
-            segment: u.segment || p?.segment || 'Corporate Banking',
-            segmentIds: (u.segmentIds && u.segmentIds.length > 0)
-              ? (Array.isArray(u.segmentIds) ? u.segmentIds : [u.segmentIds])
-              : (p?.segmentIds || [u.segment || 'Corporate Banking']),
-            token: '',
-            active: u.active !== false,
-            email: u.email || '',
-            phone: u.phone || '',
-            canApprove: p !== undefined ? p.canApprove : ['BRMGR', 'SRMGMT', 'HODEPT', 'DISTDIR', 'EXEC', 'MGRCOLLDOC', 'COMPLIANCE', 'SRM', 'BRM'].includes(u.role),
-            canCreate: p !== undefined ? p.canCreate : !['EXEC', 'COMPLIANCE', 'RISK', 'AUDITOR', 'SRMGMT', 'RDONLY'].includes(u.role),
-            canEdit: p !== undefined ? p.canEdit : !['EXEC', 'COMPLIANCE', 'RISK', 'AUDITOR', 'SRMGMT', 'RDONLY'].includes(u.role),
-            canDelete: p !== undefined ? p.canDelete : u.role === 'SYSADMIN',
-          };
-        });
-        setAllUsersList(mappedUsers);
-      }
+      const effectivePermissions = normalizePermissions(
+        validated.permissions?.length ? validated.permissions : permRes,
+        permRes,
+        validated.role
+      );
+      setPermissions(effectivePermissions);
+      const userWithPermissions = toUserSession(
+        { ...session.user, permissions: effectivePermissions, token },
+        effectivePermissions
+      );
+      if (userWithPermissions) applyAuthoritativeUser(userWithPermissions);
+
+      setAllUsersList(
+        Array.isArray(usersRes)
+          ? usersRes
+              .map((u: any) => toUserSession({ ...u, permissions: effectivePermissions }, effectivePermissions))
+              .filter((u): u is UserSession => u !== null)
+          : []
+      );
     } catch (err: any) {
       if (err?.status === 401) {
-        setDataLoadError(null);
-        setLoginNotice('Your session expired. Please sign in again.');
-        setCurrentUser(null);
-        cimsApi.setCurrentUser(null);
-        setSessionVerified(true);
+        expireSession('Your session expired. Please sign in again.');
         return;
       }
       setSessionVerified(true);
-      console.warn('Backend API communication error. Using localized fallback data.');
+      console.warn('Backend API communication error.', err);
       setDataLoadError(err?.message || 'Unable to communicate with CIMS backend services');
     }
   };
 
   useEffect(() => {
     if (currentUser) {
+      authoritativeScopeRef.current = scopeSignature(currentUser);
+      setSelectedSegment(defaultSegmentFor(currentUser));
       setSessionVerified(false);
       cimsApi.setCurrentUser(currentUser);
-      loadData();
+      loadData(currentUser);
     } else {
       setSessionVerified(true);
     }
-  }, [currentUser]);
+    // Reload when the authenticated identity changes, not when its permissions object is refreshed.
+  }, [currentUser?.userId]);
 
   // Session Inactivity Timeout Tracking (Default 15 minutes or from backend policy)
   const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(15);
+  const [sessionWarningSeconds, setSessionWarningSeconds] = useState(120);
   const lastActivityRef = useRef<number>(Date.now());
+  const lastSessionRefreshRef = useRef<number>(0);
 
   useEffect(() => {
     cimsApi.getPasswordPolicy().then((p) => {
@@ -605,20 +376,40 @@ export function App() {
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'cims.logout_event' || (e.key === 'cims.token' && !e.newValue)) {
-        setCurrentUser(null);
-        cimsApi.setCurrentUser(null);
+        expireSession('Your session has ended. Please sign in again.');
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  }, [expireSession]);
+
+  // Any protected API returning 401 means the backend session expired.
+  useEffect(() => {
+    const handleSessionExpired = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      expireSession(detail?.message || 'Your session has expired. Please sign in again.');
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+  }, [expireSession]);
 
   useEffect(() => {
     if (!currentUser) return;
     lastActivityRef.current = Date.now();
-    const updateActivity = () => { lastActivityRef.current = Date.now(); };
+    lastSessionRefreshRef.current = Date.now();
 
-    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'];
+    const updateActivity = () => {
+      const now = Date.now();
+      lastActivityRef.current = now;
+      // Slide the server-side session at most once a minute; the backend is
+      // still authoritative and rejects expired/revoked tokens independently.
+      if (now - lastSessionRefreshRef.current >= 60_000) {
+        lastSessionRefreshRef.current = now;
+        void cimsApi.keepSessionAlive().catch(() => { });
+      }
+    };
+
+    const events = ['mousemove', 'mousedown', 'pointerdown', 'pointermove', 'keydown', 'scroll', 'wheel', 'touchstart', 'focus', 'visibilitychange'];
     events.forEach((evt) => window.addEventListener(evt, updateActivity, { passive: true }));
 
     const interval = setInterval(() => {
@@ -626,23 +417,28 @@ export function App() {
       const warningThreshold = Math.max(1, sessionTimeoutMinutes - 2);
       if (idleMinutes >= sessionTimeoutMinutes) {
         setShowSessionTimeout(false);
-        handleLogout();
+        void cimsApi.logout().catch(() => { });
+        expireSession('Your session expired due to inactivity. Please sign in again.');
       } else if (idleMinutes >= warningThreshold) {
+        setSessionWarningSeconds(Math.max(1, Math.ceil((sessionTimeoutMinutes - idleMinutes) * 60)));
         setShowSessionTimeout(true);
       }
-    }, 15000);
+    }, 10_000);
 
     return () => {
       events.forEach((evt) => window.removeEventListener(evt, updateActivity));
       clearInterval(interval);
     };
-  }, [currentUser, sessionTimeoutMinutes]);
+  }, [currentUser, sessionTimeoutMinutes, expireSession]);
 
   const handleStayLoggedIn = async () => {
     try {
       const res = await cimsApi.keepSessionAlive();
       if (res && res.success) {
         lastActivityRef.current = Date.now();
+        lastSessionRefreshRef.current = Date.now();
+        if (res.sessionTimeoutMinutes) setSessionTimeoutMinutes(res.sessionTimeoutMinutes);
+        if (res.expiresAt) setSessionWarningSeconds(Math.max(1, Math.ceil((new Date(res.expiresAt).getTime() - Date.now()) / 1000)));
         setShowSessionTimeout(false);
       } else {
         await handleLogout();
@@ -660,33 +456,25 @@ export function App() {
         if (!authRes.token) {
           return { success: false, message: 'Authentication failed: server did not issue a valid session token.' };
         }
-        const u = authRes.user;
-        const p = INITIAL_PERSONAS.find(
-          (persona) =>
-            persona.username.toLowerCase() === (u.username || '').toLowerCase() ||
-            persona.role === u.role
-        );
-        const session: UserSession = {
-          userId: u.id || u.username,
-          username: u.username,
-          name: u.fullName || u.name || p?.name || u.username,
-          role: (u.role || p?.role || 'BRMGR') as RoleCode,
-          roleName: p?.roleName || u.role,
-          branch: u.branch || p?.branch || 'Bole Special Branch',
-          branchCode: u.branchCode || p?.branchCode || 'BRN-001',
-          segment: u.segment || p?.segment || 'Corporate Banking',
-          segmentIds: (u.segmentIds && u.segmentIds.length > 0) ? u.segmentIds : (p?.segmentIds || [u.segment || 'Corporate Banking']),
-          token: authRes.token,
-          canApprove: p !== undefined ? p.canApprove : ['BRMGR', 'SRMGMT', 'HODEPT', 'DISTDIR', 'EXEC', 'MGRCOLLDOC', 'COMPLIANCE', 'SRM', 'BRM'].includes(u.role),
-          canCreate: p !== undefined ? p.canCreate : !['EXEC', 'COMPLIANCE', 'RISK', 'AUDITOR', 'SRMGMT', 'RDONLY'].includes(u.role),
-          canEdit: p !== undefined ? p.canEdit : !['EXEC', 'COMPLIANCE', 'RISK', 'AUDITOR', 'SRMGMT', 'RDONLY'].includes(u.role),
-          canDelete: p !== undefined ? p.canDelete : u.role === 'SYSADMIN',
-        };
+        const session = toUserSession({ ...authRes.user, token: authRes.token });
+        if (!session) {
+          return { success: false, message: 'Authentication failed: server did not return a valid user role.' };
+        }
+        authoritativeScopeRef.current = scopeSignature(session);
+        setSelectedSegment(defaultSegmentFor(session));
         setSessionVerified(false);
         setCurrentUser(session);
         cimsApi.setCurrentUser(session);
         setLoginNotice(null);
+        setActivePage('dashboard');
+        setTargetFacilityId(null);
+        setTargetCollateralId(null);
+        setTargetPolicyId(null);
+        setTargetCustomerId(null);
+        setTargetDocumentId(null);
+        setTargetExceptionId(null);
         lastActivityRef.current = Date.now();
+        lastSessionRefreshRef.current = Date.now();
         if (authRes.sessionTimeoutMinutes) setSessionTimeoutMinutes(authRes.sessionTimeoutMinutes);
         return { success: true };
       } else if (authRes && !authRes.success) {
@@ -706,6 +494,13 @@ export function App() {
     setCurrentUser(null);
     cimsApi.setCurrentUser(null);
     setLoginNotice(null);
+    setShowSessionTimeout(false);
+    setTargetFacilityId(null);
+    setTargetCollateralId(null);
+    setTargetPolicyId(null);
+    setTargetCustomerId(null);
+    setTargetDocumentId(null);
+    setTargetExceptionId(null);
   };
 
   // CBS Simulator Handlers
@@ -759,7 +554,7 @@ export function App() {
       }
       await loadData();
     } catch (e: any) {
-      alert(`Collateral registration failed: ${e?.message || 'The collateral could not be registered.'}`);
+      showError(e?.message || 'The collateral could not be registered.', 'Collateral Registration Failed');
       throw e;
     }
   };
@@ -795,7 +590,7 @@ export function App() {
       await cimsApi.registerInsurancePolicy(pol, currentUser?.username || 'CRO_USER', documents);
       await loadData();
     } catch (e: any) {
-      alert(`Policy registration failed: ${e?.message || 'The policy could not be saved.'}`);
+      showError(e?.message || 'The policy could not be saved.', 'Policy Registration Failed');
       throw e;
     }
   };
@@ -805,7 +600,7 @@ export function App() {
       await cimsApi.submitPolicy(policyId, currentUser?.username || 'CRO_USER');
       await loadData();
     } catch (e: any) {
-      alert(`Policy submission failed: ${e?.message || 'The policy could not be submitted.'}`);
+      showError(e?.message || 'The policy could not be submitted.', 'Policy Submission Failed');
       throw e;
     }
   };
@@ -865,7 +660,7 @@ export function App() {
       );
       await loadData();
     } catch (e: any) {
-      alert(`Approval failed: ${e?.message || 'The approval could not be completed.'}`);
+      showError(e?.message || 'The approval could not be completed.', 'Approval Failed');
       throw e;
     }
   };
@@ -882,7 +677,7 @@ export function App() {
       );
       await loadData();
     } catch (e: any) {
-      alert(`Rejection failed: ${e?.message || 'The rejection could not be completed.'}`);
+      showError(e?.message || 'The rejection could not be completed.', 'Rejection Failed');
       throw e;
     }
   };
@@ -899,7 +694,7 @@ export function App() {
       );
       await loadData();
     } catch (e: any) {
-      alert(`Return failed: ${e?.message || 'The task could not be returned.'}`);
+      showError(e?.message || 'The task could not be returned.', 'Return Failed');
       throw e;
     }
   };
@@ -1020,7 +815,17 @@ export function App() {
   };
 
   const handleSaveMandatoryDocRule = async (rule: Partial<MandatoryDocumentRule>) => {
-    await cimsApi.saveMandatoryDocRule(rule);
+    await cimsApi.saveMandatoryDocRule(rule, currentUser?.username || 'SYSADMIN');
+    await loadData();
+  };
+
+  const handleDeleteMandatoryDocRule = async (ruleId: string) => {
+    await cimsApi.deleteMandatoryDocRule(ruleId, currentUser?.username || 'SYSADMIN');
+    await loadData();
+  };
+
+  const handleDeleteAllMandatoryDocRules = async () => {
+    await cimsApi.deleteAllMandatoryDocRules(currentUser?.username || 'SYSADMIN');
     await loadData();
   };
 
@@ -1044,75 +849,64 @@ export function App() {
     }
   };
 
-  // Dynamically resolve screen permissions for current page and current user's role
-  const activeScreenPermission = useMemo(() => {
-    if (!permissions || permissions.length === 0 || !currentUser) return null;
-    const pageKey = activePage.toLowerCase().replace(/[^a-z0-9]/g, '');
-    return permissions.find((p) => {
-      if (p.roleCode !== currentUser.role) return false;
-      const screen = p.screenName.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (screen === pageKey || screen.includes(pageKey) || pageKey.includes(screen)) return true;
-      if (pageKey === 'collateral' && screen.includes('collat')) return true;
-      if (pageKey === 'customers' && screen.includes('custom')) return true;
-      if (pageKey === 'facilities' && screen.includes('facilit')) return true;
-      if (pageKey === 'insurance' && (screen.includes('insuran') || screen.includes('polic'))) return true;
-      if (pageKey === 'approvals' && (screen.includes('approv') || screen.includes('workflow'))) return true;
-      if (pageKey === 'exceptions' && screen.includes('except')) return true;
-      if (pageKey === 'documents' && (screen.includes('docum') || screen.includes('dms'))) return true;
-      if (pageKey === 'reports' && screen.includes('report')) return true;
-      if (pageKey === 'audit' && screen.includes('audit')) return true;
-      if (pageKey === 'cbssim' && screen.includes('cbs')) return true;
-      if (pageKey === 'notifications' && screen.includes('notif')) return true;
-      return false;
-    });
-  }, [permissions, currentUser, activePage]);
+  // Dynamically resolve authority from the backend permission matrix for the current role.
+  const permissionSource = currentUser?.permissions?.length ? currentUser.permissions : permissions;
+
+  const canViewActivePage = useMemo(() => {
+    if (!currentUser) return true;
+    if (activePage === 'dashboard') return true;
+    if (activePage === 'admin') return currentUser.isAdmin === true;
+    const permission = findScreenPermission(permissionSource, currentUser.role, activePage);
+    return permission ? permission.canView : false;
+  }, [currentUser, activePage, permissionSource]);
+
+  // Unauthorized modules are never rendered. Return the user to the single
+  // role-driven dashboard instead of displaying an access-denied screen.
+  useEffect(() => {
+    if (currentUser && !canViewActivePage && activePage !== 'dashboard') {
+      setActivePage('dashboard');
+      if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+        window.history.replaceState({ page: 'dashboard' }, '', '/');
+      }
+    }
+  }, [currentUser, canViewActivePage, activePage]);
+
+  const visiblePage: NavPageId = canViewActivePage ? activePage : 'dashboard';
+
+  const activeScreenPermission = useMemo(
+    () => findScreenPermission(permissionSource, currentUser?.role || '', visiblePage),
+    [permissionSource, currentUser?.role, visiblePage]
+  );
 
   const effectiveUserSession: UserSession = useMemo(() => {
-    if (!currentUser) return INITIAL_PERSONAS[0];
-    if (currentUser.role === 'SYSADMIN') {
-      return { ...currentUser, canCreate: true, canEdit: true, canApprove: false, canDelete: true };
-    }
-    if (activeScreenPermission) {
-      return {
-        ...currentUser,
-        canCreate: activeScreenPermission.canCreate,
-        canEdit: activeScreenPermission.canEdit,
-        canApprove: activeScreenPermission.canApprove,
-        canDelete: activeScreenPermission.canDelete,
-      };
-    }
-    return currentUser;
+    // Rendered only when authenticated; this keeps the type non-null for child props.
+    if (!currentUser) return currentUser as unknown as UserSession;
+    const readOnly = isReadOnlyUser(currentUser);
+    return {
+      ...currentUser,
+      canCreate: readOnly ? false : activeScreenPermission ? activeScreenPermission.canCreate : currentUser.canCreate === true,
+      canEdit: readOnly ? false : activeScreenPermission ? activeScreenPermission.canEdit : currentUser.canEdit === true,
+      canApprove: readOnly || currentUser.isAdmin === true
+        ? false
+        : activeScreenPermission ? activeScreenPermission.canApprove : currentUser.canApprove === true,
+      canDelete: readOnly ? false : activeScreenPermission ? activeScreenPermission.canDelete : currentUser.canDelete === true,
+    };
   }, [currentUser, activeScreenPermission]);
-
-  const isCurrentPageViewAllowed = useMemo(() => {
-    if (!currentUser) return true;
-    if (currentUser.role === 'SYSADMIN') return true;
-    if (activePage === 'admin') return false;
-    if (activeScreenPermission) {
-      return activeScreenPermission.canView;
-    }
-    return true;
-  }, [currentUser, activePage, activeScreenPermission]);
 
   const unreadNotifs = notifications.filter((n) => n.status !== 'Sent').length;
 
   // Memoized Scoped Data Collections based on selectedSegment and currentUser role
   const effectiveSegment = useMemo(() => {
     if (!currentUser) return selectedSegment || 'ALL';
-    const isBankWideRole = ['EXEC', 'SRMGMT', 'SYSADMIN', 'AUDITOR', 'COMPLIANCE', 'RISK', 'MGRCOLLDOC', 'DISTDIR', 'BRMGR'].includes(currentUser.role);
-    if (isBankWideRole) {
-      return selectedSegment || 'ALL';
+    if (currentUser.bankWide === true) return selectedSegment || 'ALL';
+    const allowed = currentUser.allowedSegments?.length
+      ? currentUser.allowedSegments
+      : (currentUser.segmentIds?.length ? currentUser.segmentIds : (currentUser.segment ? [currentUser.segment] : []));
+    if (allowed.length > 1) {
+      if (selectedSegment === 'ALL') return 'ALL';
+      return allowed.includes(selectedSegment) ? selectedSegment : allowed[0];
     }
-    if (currentUser.role === 'HODEPT') {
-      return currentUser.segment || 'Corporate Banking';
-    }
-    const userSegmentList = currentUser.segmentIds && currentUser.segmentIds.length > 0
-      ? currentUser.segmentIds
-      : (currentUser.segment ? [currentUser.segment] : ['Corporate Banking']);
-    if (userSegmentList.length > 1) {
-      return userSegmentList.includes(selectedSegment) ? selectedSegment : (selectedSegment === 'ALL' ? 'ALL' : userSegmentList[0]);
-    }
-    return currentUser.segment || 'Corporate Banking';
+    return allowed[0] || selectedSegment || 'ALL';
   }, [currentUser, selectedSegment]);
 
   const scopedCustomers = useMemo(() => {
@@ -1211,18 +1005,11 @@ export function App() {
       {/* TopBar */}
       <TopBar
         currentUser={currentUser}
-        allUsers={allUsersList}
-        onSwitchUser={(user) => {
-          setCurrentUser(user);
-          if (['EXEC', 'SRMGMT', 'BRMGR', 'DISTDIR', 'SYSADMIN', 'AUDITOR', 'COMPLIANCE', 'RISK', 'MGRCOLLDOC'].includes(user.role)) {
-            setSelectedSegment('ALL');
-          } else {
-            setSelectedSegment(user.segment || 'Corporate Banking');
-          }
-        }}
         selectedSegment={selectedSegment}
         onSelectSegment={setSelectedSegment}
-        availableSegments={segments && segments.length > 0 ? segments.filter(s => s.active !== false).map(s => s.name) : (currentUser.segmentIds || ['Corporate Banking'])}
+        availableSegments={segments && segments.length > 0
+          ? segments.filter(s => s.active !== false).map(s => s.name)
+          : (currentUser.allowedSegments || currentUser.segmentIds || [])}
         unreadNotificationCount={unreadNotifs}
         pendingApprovalCount={pendingApprovals}
         onOpenNotifications={() => setShowNotifications(true)}
@@ -1243,10 +1030,11 @@ export function App() {
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Sidebar */}
         <Sidebar
-          activePage={activePage}
-          onNavigate={(page) => setActivePage(page)}
+          activePage={visiblePage}
+          onNavigate={handleNavigate}
           userRole={currentUser.role}
-          permissions={permissions}
+          isAdmin={currentUser.isAdmin === true}
+          permissions={permissionSource}
           pendingApprovalCount={pendingApprovals}
           openExceptionCount={openExceptions}
           collapsed={sidebarCollapsed}
@@ -1256,7 +1044,7 @@ export function App() {
         {/* Content Area */}
         <main className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden min-w-0 bg-[#EFF5FB]">
           <div className="sticky top-0 z-20 shrink-0">
-            <Breadcrumbs activePage={activePage} onNavigateHome={() => setActivePage('dashboard')} />
+            <Breadcrumbs activePage={visiblePage} onNavigateHome={() => setActivePage('dashboard')} />
           </div>
 
           {/* Data Load Error Banner (Audit Finding 68) */}
@@ -1264,7 +1052,7 @@ export function App() {
             <div className="mx-6 mt-3 px-4 py-3 bg-red-50 border border-red-300 rounded-lg flex items-center justify-between text-xs text-red-900 shadow-xs">
               <div className="flex items-center space-x-2">
                 <span className="font-semibold uppercase tracking-wider text-red-700 bg-red-100 px-2 py-0.5 rounded">Backend Connection Error</span>
-                <span>{dataLoadError}. Displaying preserved offline records. Actions requiring backend sync may be disabled.</span>
+                <span>{dataLoadError}. Backend-sourced records may be incomplete until the connection is restored.</span>
               </div>
               <button onClick={() => loadData()} className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium cursor-pointer">
                 Retry
@@ -1276,11 +1064,11 @@ export function App() {
           {effectiveSegment !== 'ALL' && (
             <div className="mx-6 mt-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between text-xs text-blue-900 shadow-xs">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-blue-700">🏢 Active Segment Filter:</span>
+                <span className="font-semibold text-blue-700">ðŸ¢ Active Segment Filter:</span>
                 <span className="font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-300">{effectiveSegment}</span>
                 <span className="text-blue-600 text-[11px]">(All master records, loans, collateral, and policies are scoped to this business unit)</span>
               </div>
-              {['EXEC', 'SRMGMT', 'SYSADMIN', 'AUDITOR', 'COMPLIANCE', 'RISK'].includes(currentUser.role) && (
+              {currentUser.bankWide === true && (
                 <button
                   onClick={() => setSelectedSegment('ALL')}
                   className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 underline hover:no-underline"
@@ -1293,22 +1081,7 @@ export function App() {
 
           {/* Page Routing */}
           <div className="flex-1 pb-10">
-            {!isCurrentPageViewAllowed ? (
-              <div className="p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
-                <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4">
-                  <Lock className="w-8 h-8" />
-                </div>
-                <h2 className="text-xl font-bold text-gray-900">Access Restricted by Administrator</h2>
-                <p className="text-xs text-gray-600 max-w-md mt-2">
-                  Your current role <strong>({currentUser.role})</strong> does not have View permission for the <strong>{activePage.toUpperCase()}</strong> module as configured in the System Administration Role Matrix (§2.1).
-                </p>
-                <button onClick={() => setActivePage('dashboard')} className="btn-primary mt-4 py-1.5 px-4 text-xs">
-                  Return to Dashboard
-                </button>
-              </div>
-            ) : (
-              <>
-                {activePage === 'dashboard' && (
+                {visiblePage === 'dashboard' && (
                   <DashboardContainer
                     currentUser={effectiveUserSession}
                     selectedSegment={selectedSegment}
@@ -1330,7 +1103,7 @@ export function App() {
                   />
                 )}
 
-                {activePage === 'customers' && (
+                {visiblePage === 'customers' && (
                   <CustomerManager
                     customers={scopedCustomers}
                     facilities={scopedFacilities}
@@ -1347,7 +1120,7 @@ export function App() {
                   />
                 )}
 
-                {activePage === 'facilities' && (
+                {visiblePage === 'facilities' && (
                   <FacilityManager
                     facilities={scopedFacilities}
                     customers={scopedCustomers}
@@ -1361,7 +1134,7 @@ export function App() {
                   />
                 )}
 
-                {activePage === 'collateral' && (
+                {visiblePage === 'collateral' && (
                   <CollateralManager
                     collaterals={scopedCollaterals}
                     facilities={scopedFacilities}
@@ -1388,7 +1161,7 @@ export function App() {
                   />
                 )}
 
-                {activePage === 'insurance' && (
+                {visiblePage === 'insurance' && (
                   <PolicyManager
                     policies={scopedPolicies}
                     endorsements={endorsements}
@@ -1414,7 +1187,7 @@ export function App() {
                   />
                 )}
 
-                {activePage === 'approvals' && (
+                {visiblePage === 'approvals' && (
                   <MakerCheckerInbox
                     tasks={scopedWorkflowTasks}
                     delegations={delegations}
@@ -1440,7 +1213,7 @@ export function App() {
                   />
                 )}
 
-                {activePage === 'exceptions' && (
+                {visiblePage === 'exceptions' && (
                   <ExceptionManager
                     exceptions={scopedExceptions}
                     currentUser={effectiveUserSession}
@@ -1461,7 +1234,7 @@ export function App() {
                   />
                 )}
 
-                {activePage === 'documents' && (
+                {visiblePage === 'documents' && (
                   <DocumentRepository
                     documents={scopedDocuments}
                     collaterals={scopedCollaterals}
@@ -1473,7 +1246,7 @@ export function App() {
                   />
                 )}
 
-                {activePage === 'reports' && (
+                {visiblePage === 'reports' && (
                   <ReportCatalog
                     customers={scopedCustomers}
                     facilities={scopedFacilities}
@@ -1492,7 +1265,7 @@ export function App() {
                   />
                 )}
 
-                {activePage === 'admin' && (
+                {visiblePage === 'admin' && (
                   <AdminPortal
                     segments={segments}
                     branches={branches}
@@ -1519,16 +1292,18 @@ export function App() {
                     onSaveInsurer={handleSaveInsurer}
                     onSaveTaxonomy={handleSaveTaxonomy}
                     onSaveMandatoryDocRule={handleSaveMandatoryDocRule}
+                    onDeleteMandatoryDocRule={handleDeleteMandatoryDocRule}
+                    onDeleteAllMandatoryDocRules={handleDeleteAllMandatoryDocRules}
                     onSaveHoliday={handleSaveHoliday}
                     onDeleteHoliday={handleDeleteHoliday}
                   />
                 )}
 
-                {activePage === 'audit' && (
+                {visiblePage === 'audit' && (
                   <AuditTrailViewer auditLogs={auditLogs} currentUser={effectiveUserSession} />
                 )}
 
-                {activePage === 'notifications' && (
+                {visiblePage === 'notifications' && (
                   <NotificationManager
                     notifications={notifications}
                     currentUser={effectiveUserSession}
@@ -1538,7 +1313,7 @@ export function App() {
                   />
                 )}
 
-                {activePage === 'cbs-sim' && (
+                {visiblePage === 'cbs-sim' && (
                   <CbsSimulator
                     customers={cbsCustomers}
                     facilities={cbsFacilities}
@@ -1551,8 +1326,6 @@ export function App() {
                     onSaveCollateral={handleSaveCbsCollateral}
                   />
                 )}
-              </>
-            )}
           </div>
         </main>
       </div>
@@ -1579,10 +1352,19 @@ export function App() {
 
       <SessionTimeoutModal
         isOpen={showSessionTimeout}
+        secondsRemaining={sessionWarningSeconds}
         onStayLoggedIn={handleStayLoggedIn}
         onLogout={handleLogout}
       />
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <NotificationProvider>
+      <AppContent />
+    </NotificationProvider>
   );
 }
 

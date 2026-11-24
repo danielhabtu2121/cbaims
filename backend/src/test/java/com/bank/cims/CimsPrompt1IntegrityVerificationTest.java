@@ -1111,7 +1111,7 @@ public class CimsPrompt1IntegrityVerificationTest {
         link.setStatus("Active");
         loanCollateralLinkRepository.save(link);
 
-        relationshipService.endRelationship(link.getId(), "Facility Refinanced", "TEST_OFFICER");
+        relationshipService.endRelationship(link.getId(), "Facility Refinanced", "SYSTEM");
 
         LoanCollateralLink released = loanCollateralLinkRepository.findById(link.getId()).orElseThrow();
         assertEquals("Ended", released.getStatus());
@@ -1511,6 +1511,8 @@ public class CimsPrompt1IntegrityVerificationTest {
                 col.setTitleDeedNumber("TD-999");
             } else if (cat.equals("Movable Properties")) {
                 col.setVehiclePlateNumber("ET-3-12345");
+            } else if (cat.equals("Guarantees")) {
+                col.setGuarantorName("Commercial Bank of Ethiopia");
             }
             assertDoesNotThrow(() -> validationService.validateCollateralRequiredInformation(col));
         }

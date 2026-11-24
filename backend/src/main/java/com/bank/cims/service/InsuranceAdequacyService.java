@@ -18,6 +18,25 @@ public class InsuranceAdequacyService {
 
     private static final Logger log = LoggerFactory.getLogger(InsuranceAdequacyService.class);
 
+    private User requireActor() {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive()
+                || actor.getUsername() == null || actor.getUsername().isBlank()
+                || actor.getRole() == null || actor.getRole().isBlank()) {
+            throw new IllegalStateException("A signed-in user with an assigned role is required for this action.");
+        }
+        return actor;
+    }
+
+    private void assertCurrentUserCanApprove(String exceptionId) {
+        WorkflowTask task = workflowTaskRepository.findByEntityTypeAndEntityId("Insurance Exception", exceptionId)
+                .stream()
+                .filter(t -> "Pending".equalsIgnoreCase(t.getStatus()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("No pending workflow task found for insurance exception " + exceptionId + "."));
+        workflowAuthorizationService.assertCanApprove(requireActor().getUsername(), task.getId());
+    }
+
     @Autowired
     private CollateralRepository collateralRepository;
 
@@ -41,6 +60,15 @@ public class InsuranceAdequacyService {
 
     @Autowired
     private CimsService cimsService;
+
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
+    @Autowired
+    private WorkflowAuthorizationService workflowAuthorizationService;
+
+    @Autowired
+    private WorkflowTaskRepository workflowTaskRepository;
 
     @Autowired(required = false)
     @org.springframework.context.annotation.Lazy
@@ -363,6 +391,7 @@ public class InsuranceAdequacyService {
 
     @Transactional
     public InsuranceException submitException(InsuranceException exception, String requestingUserId) {
+        final String effectiveRequester = requireActor().getUsername();
         if (exception.getCollateralId() == null || exception.getCollateralId().isBlank()) {
             throw new IllegalArgumentException("Collateral ID is mandatory for insurance exception.");
         }
@@ -380,7 +409,7 @@ public class InsuranceAdequacyService {
         }
 
         exception.setId("ins-exc-" + UUID.randomUUID().toString().substring(0, 8));
-        exception.setRequestingUserId(requestingUserId);
+        exception.setRequestingUserId(effectiveRequester);
         exception.setApprovalStatus("Pending");
         exception.setCreatedAt(LocalDateTime.now().toString());
 
@@ -389,9 +418,9 @@ public class InsuranceAdequacyService {
         // Submit to workflow inbox for supervisor dual-control authorization
         cimsService.submitToWorkflow("INSURANCE_EXCEPTION", "Insurance Exception", saved.getId(),
                 "APPROVE_INSURANCE_EXCEPTION", "{\"exceptionId\":\"" + saved.getId() + "\",\"amount\":" + saved.getApprovedExceptionAmount() + "}",
-                "Exception Request: " + saved.getReason(), requestingUserId, "BRMGR");
+                "Exception Request: " + saved.getReason(), effectiveRequester, null);
 
-        cimsService.logAudit(requestingUserId, "MAKER", "SUBMIT_INSURANCE_EXCEPTION", "InsuranceException",
+        cimsService.logAudit(effectiveRequester, "MAKER", "SUBMIT_INSURANCE_EXCEPTION", "InsuranceException",
                 saved.getId(), "Status", "Draft", "Pending Approval", "Submitted insurance exception for collateral " + saved.getCollateralId());
 
         return saved;
@@ -399,26 +428,28 @@ public class InsuranceAdequacyService {
 
     @Transactional
     public InsuranceException approveException(String exceptionId, String supervisorId, String supervisorRole, String comments) {
+        User actor = requireActor();
+        final String effectiveApprover = actor.getUsername();
+        final String effectiveRole = actor.getRole();
+        assertCurrentUserCanApprove(exceptionId);
+
         InsuranceException exc = insuranceExceptionRepository.findById(exceptionId)
                 .orElseThrow(() -> new IllegalArgumentException("Insurance exception not found: " + exceptionId));
 
         if (!"Pending".equalsIgnoreCase(exc.getApprovalStatus()) && !"Pending Approval".equalsIgnoreCase(exc.getApprovalStatus())) {
             throw new IllegalStateException("Invalid state transition: Exception " + exceptionId + " is in '" + exc.getApprovalStatus() + "' status and cannot be approved. Only Pending exceptions can be approved.");
         }
-        if (supervisorId == null || supervisorId.isBlank()) {
-            throw new IllegalArgumentException("Supervisor approver identity is required.");
-        }
-        if (supervisorId.equalsIgnoreCase(exc.getRequestingUserId())) {
+        if (effectiveApprover.equalsIgnoreCase(exc.getRequestingUserId())) {
             throw new IllegalArgumentException("Maker-checker violation: Requester cannot approve their own exception request.");
         }
 
-        exc.setSupervisorApproverId(supervisorId);
+        exc.setSupervisorApproverId(effectiveApprover);
         exc.setApprovalStatus("Approved");
         exc.setDecisionDate(LocalDateTime.now().toString());
         exc.setDecisionComments(comments);
         InsuranceException saved = insuranceExceptionRepository.save(exc);
 
-        cimsService.logAudit(supervisorId, supervisorRole != null ? supervisorRole : "CHECKER", "APPROVE_INSURANCE_EXCEPTION",
+        cimsService.logAudit(effectiveApprover, effectiveRole, "APPROVE_INSURANCE_EXCEPTION",
                 "InsuranceException", saved.getId(), "ApprovalStatus", "Pending", "Approved",
                 "Approved insurance exception until " + saved.getValidityEndDate());
 
@@ -430,26 +461,28 @@ public class InsuranceAdequacyService {
 
     @Transactional
     public InsuranceException rejectException(String exceptionId, String supervisorId, String supervisorRole, String comments) {
+        User actor = requireActor();
+        final String effectiveApprover = actor.getUsername();
+        final String effectiveRole = actor.getRole();
+        assertCurrentUserCanApprove(exceptionId);
+
         InsuranceException exc = insuranceExceptionRepository.findById(exceptionId)
                 .orElseThrow(() -> new IllegalArgumentException("Insurance exception not found: " + exceptionId));
 
         if (!"Pending".equalsIgnoreCase(exc.getApprovalStatus()) && !"Pending Approval".equalsIgnoreCase(exc.getApprovalStatus())) {
             throw new IllegalStateException("Invalid state transition: Exception " + exceptionId + " is in '" + exc.getApprovalStatus() + "' status and cannot be rejected. Only Pending exceptions can be rejected.");
         }
-        if (supervisorId == null || supervisorId.isBlank()) {
-            throw new IllegalArgumentException("Supervisor checker identity is required.");
-        }
-        if (supervisorId.equalsIgnoreCase(exc.getRequestingUserId())) {
+        if (effectiveApprover.equalsIgnoreCase(exc.getRequestingUserId())) {
             throw new IllegalArgumentException("Maker-checker violation: Requester cannot reject their own exception request.");
         }
 
-        exc.setSupervisorApproverId(supervisorId);
+        exc.setSupervisorApproverId(effectiveApprover);
         exc.setApprovalStatus("Rejected");
         exc.setDecisionDate(LocalDateTime.now().toString());
         exc.setDecisionComments(comments);
         InsuranceException saved = insuranceExceptionRepository.save(exc);
 
-        cimsService.logAudit(supervisorId, supervisorRole != null ? supervisorRole : "CHECKER", "REJECT_INSURANCE_EXCEPTION",
+        cimsService.logAudit(effectiveApprover, effectiveRole, "REJECT_INSURANCE_EXCEPTION",
                 "InsuranceException", saved.getId(), "ApprovalStatus", "Pending", "Rejected",
                 "Rejected insurance exception: " + comments);
 
@@ -458,26 +491,28 @@ public class InsuranceAdequacyService {
 
     @Transactional
     public InsuranceException returnException(String exceptionId, String supervisorId, String supervisorRole, String comments) {
+        User actor = requireActor();
+        final String effectiveApprover = actor.getUsername();
+        final String effectiveRole = actor.getRole();
+        assertCurrentUserCanApprove(exceptionId);
+
         InsuranceException exc = insuranceExceptionRepository.findById(exceptionId)
                 .orElseThrow(() -> new IllegalArgumentException("Insurance exception not found: " + exceptionId));
 
         if (!"Pending".equalsIgnoreCase(exc.getApprovalStatus()) && !"Pending Approval".equalsIgnoreCase(exc.getApprovalStatus())) {
             throw new IllegalStateException("Invalid state transition: Exception " + exceptionId + " is in '" + exc.getApprovalStatus() + "' status and cannot be returned. Only Pending exceptions can be returned.");
         }
-        if (supervisorId == null || supervisorId.isBlank()) {
-            throw new IllegalArgumentException("Supervisor checker identity is required.");
-        }
-        if (supervisorId.equalsIgnoreCase(exc.getRequestingUserId())) {
+        if (effectiveApprover.equalsIgnoreCase(exc.getRequestingUserId())) {
             throw new IllegalArgumentException("Maker-checker violation: Requester cannot return their own exception request.");
         }
 
-        exc.setSupervisorApproverId(supervisorId);
+        exc.setSupervisorApproverId(effectiveApprover);
         exc.setApprovalStatus("Returned");
         exc.setDecisionDate(LocalDateTime.now().toString());
         exc.setDecisionComments(comments);
         InsuranceException saved = insuranceExceptionRepository.save(exc);
 
-        cimsService.logAudit(supervisorId, supervisorRole != null ? supervisorRole : "CHECKER", "RETURN_INSURANCE_EXCEPTION",
+        cimsService.logAudit(effectiveApprover, effectiveRole, "RETURN_INSURANCE_EXCEPTION",
                 "InsuranceException", saved.getId(), "ApprovalStatus", "Pending", "Returned",
                 "Returned insurance exception for correction: " + comments);
 
@@ -486,6 +521,7 @@ public class InsuranceAdequacyService {
 
     @Transactional
     public InsuranceException resolveException(String exceptionId, String resolvedBy, String notes) {
+        final String effectiveResolver = requireActor().getUsername();
         InsuranceException exc = insuranceExceptionRepository.findById(exceptionId)
                 .orElseThrow(() -> new IllegalArgumentException("Insurance exception not found: " + exceptionId));
 
@@ -498,7 +534,7 @@ public class InsuranceAdequacyService {
         exc.setResolutionNotes(notes);
         InsuranceException saved = insuranceExceptionRepository.save(exc);
 
-        cimsService.logAudit(resolvedBy, "OFFICER", "RESOLVE_INSURANCE_EXCEPTION",
+        cimsService.logAudit(effectiveResolver, "OFFICER", "RESOLVE_INSURANCE_EXCEPTION",
                 "InsuranceException", saved.getId(), "ApprovalStatus", "Approved", "Resolved",
                 "Resolved insurance exception: " + notes);
 

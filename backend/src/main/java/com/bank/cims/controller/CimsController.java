@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
@@ -51,11 +53,23 @@ public class CimsController {
     private com.bank.cims.service.CollateralFacilityRelationshipService collateralFacilityRelationshipService;
 
     @Autowired
+    private com.bank.cims.service.AuthorizationScopeService authorizationScopeService;
+
+    @Autowired
     private BusinessSegmentRepository businessSegmentRepository;
+
+    private String currentActorUsername() {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive()
+                || actor.getUsername() == null || actor.getUsername().isBlank()) {
+            throw new IllegalArgumentException("Authentication required: a valid signed-in user could not be identified.");
+        }
+        return actor.getUsername();
+    }
 
     @GetMapping("/state")
     public ResponseEntity<Map<String, Object>> getState() {
-        return ResponseEntity.ok(cimsService.getFullState());
+        return ResponseEntity.ok(cimsService.getAuthorizedState());
     }
 
     @GetMapping("/config/system-date")
@@ -66,7 +80,8 @@ public class CimsController {
     @PostMapping("/config/system-date")
     public ResponseEntity<Map<String, String>> setSystemDate(
             @RequestBody(required = false) Map<String, String> payload,
-            @RequestParam(defaultValue = "SYSADMIN") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.assertUserPermission(userId, "System Settings", "EDIT");
         String d = payload != null ? payload.get("systemDate") : null;
         cimsService.setSimulatedSystemDate(d);
@@ -77,7 +92,8 @@ public class CimsController {
     @PostMapping("/segments/add")
     public ResponseEntity<Map<String, Object>> addSegment(
             @RequestBody BusinessSegment segment,
-            @RequestParam(defaultValue = "SYSADMIN") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.assertUserPermission(userId, "Business Segments", "EDIT");
         cimsService.addBusinessSegment(segment, userId);
         return ResponseEntity.ok(cimsService.getFullState());
@@ -87,7 +103,8 @@ public class CimsController {
     public ResponseEntity<Map<String, Object>> toggleSegmentStatus(
             @RequestParam String segmentId,
             @RequestParam boolean active,
-            @RequestParam(defaultValue = "SYSADMIN") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.assertUserPermission(userId, "Business Segments", "EDIT");
         cimsService.toggleSegmentActiveStatus(segmentId, active, userId);
         return ResponseEntity.ok(cimsService.getFullState());
@@ -99,7 +116,8 @@ public class CimsController {
             @RequestParam String collateralId,
             @RequestParam String destinationSegment,
             @RequestParam String reason,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         Optional<Collateral> colOpt = collateralRepository.findById(collateralId);
         if (colOpt.isPresent()) {
             Collateral col = colOpt.get();
@@ -123,7 +141,9 @@ public class CimsController {
     @PostMapping("/transfers/approve")
     public ResponseEntity<?> approveTransfer(
             @RequestParam String transferId,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
+        final String actor = userId;
         cimsService.assertUserPermission(userId, "Collateral", "APPROVE");
         OwnershipTransfer trf = ownershipTransferRepository.findById(transferId)
                 .orElseThrow(() -> new IllegalArgumentException("Ownership transfer request not found: " + transferId));
@@ -150,7 +170,7 @@ public class CimsController {
             String oldSeg = col.getOwningSegment();
             col.setOwningSegment(trf.getDestinationSegment());
             collateralRepository.save(col);
-            cimsService.logAudit(userId, "HODEPT", "APPROVE_OWNERSHIP_TRANSFER", "Collateral", col.getId(), "Segment", oldSeg, trf.getDestinationSegment(), "Approved segment transfer");
+            cimsService.logAudit(actor, "HODEPT", "APPROVE_OWNERSHIP_TRANSFER", "Collateral", col.getId(), "Segment", oldSeg, trf.getDestinationSegment(), "Approved segment transfer");
         });
         return ResponseEntity.ok(cimsService.getFullState());
     }
@@ -159,7 +179,8 @@ public class CimsController {
     public ResponseEntity<?> rejectTransfer(
             @RequestParam String transferId,
             @RequestParam String remarks,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.assertUserPermission(userId, "Collateral", "APPROVE");
         OwnershipTransfer trf = ownershipTransferRepository.findById(transferId)
                 .orElseThrow(() -> new IllegalArgumentException("Ownership transfer request not found: " + transferId));
@@ -186,10 +207,7 @@ public class CimsController {
             @RequestBody Customer customer,
             @RequestHeader(value = "X-User-Id", required = false) String headerUserId,
             @RequestParam(required = false) String userId) {
-        String effUserId = (headerUserId != null && !headerUserId.isBlank()) ? headerUserId.trim() : (userId != null ? userId.trim() : null);
-        if (effUserId == null || effUserId.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "userId / X-User-Id is required to register a customer."));
-        }
+        String effUserId = currentActorUsername();
 
         if (customer == null || customer.getName() == null || customer.getName().trim().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "Customer name is mandatory."));
@@ -281,7 +299,8 @@ public class CimsController {
     public ResponseEntity<Map<String, Object>> updateCustomer(
             @PathVariable String id,
             @RequestBody Map<String, Object> changes,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         if (userId == null || userId.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "userId is required."));
         }
@@ -298,7 +317,8 @@ public class CimsController {
     public ResponseEntity<Map<String, Object>> updateCollateral(
             @PathVariable String id,
             @RequestBody Map<String, Object> changes,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         if (userId == null || userId.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "userId is required."));
         }
@@ -315,7 +335,8 @@ public class CimsController {
     public ResponseEntity<Map<String, Object>> changeCollateralOwnership(
             @PathVariable String id,
             @RequestBody Map<String, Object> payload,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             return ResponseEntity.ok(cimsService.changeCollateralOwnership(id, payload, userId));
         } catch (IllegalArgumentException e) {
@@ -326,14 +347,26 @@ public class CimsController {
     // --- Collateral Master & 360 Endpoints ---
     @GetMapping({"/collateral", "/collaterals"})
     public ResponseEntity<List<Collateral>> getAllCollateral(@RequestParam(required = false) String origin) {
-        if (origin != null && !origin.isBlank() && !"ALL".equalsIgnoreCase(origin)) {
-            return ResponseEntity.ok(collateralRepository.findByOriginType(origin.toUpperCase()));
+        com.bank.cims.service.AuthorizationScopeService.Scope scope = authorizationScopeService.currentScope();
+        List<Collateral> source = (origin != null && !origin.isBlank() && !"ALL".equalsIgnoreCase(origin))
+                ? collateralRepository.findByOriginType(origin.toUpperCase())
+                : collateralRepository.findAll();
+        if (scope == null || scope.isBankWide()) {
+            return ResponseEntity.ok(source);
         }
-        return ResponseEntity.ok(collateralRepository.findAll());
+        Set<String> customerIds = customerRepository.findAll().stream()
+                .filter(scope::allowsCustomer)
+                .flatMap(c -> java.util.stream.Stream.of(c.getId(), c.getCif()))
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        return ResponseEntity.ok(source.stream()
+                .filter(c -> scope.allowsCollateral(c, customerIds))
+                .toList());
     }
 
     @GetMapping("/collateral/{id}")
     public ResponseEntity<Collateral> getCollateralById(@PathVariable String id) {
+        cimsService.assertCollateralAccess(id);
         return collateralRepository.findById(id)
                 .or(() -> collateralRepository.findByCode(id))
                 .map(ResponseEntity::ok)
@@ -342,11 +375,13 @@ public class CimsController {
 
     @GetMapping("/collateral/{id}/360")
     public ResponseEntity<Collateral360Dto> getCollateral360(@PathVariable String id) {
+        cimsService.assertCollateralAccess(id);
         return ResponseEntity.ok(cimsService.getCollateral360(id));
     }
 
     @GetMapping("/collateral/{id}/document-checklist")
     public ResponseEntity<List<Collateral360Dto.DocumentChecklistItemDto>> getCollateralDocumentChecklist(@PathVariable String id) {
+        cimsService.assertCollateralAccess(id);
         return ResponseEntity.ok(cimsService.getMandatoryDocumentChecklist(id));
     }
 
@@ -362,12 +397,14 @@ public class CimsController {
 
     @GetMapping("/collateral/{id}/facilities")
     public ResponseEntity<List<Collateral360Dto.LinkedFacilityDetailDto>> getLinkedFacilitiesForCollateral(@PathVariable String id) {
+        cimsService.assertCollateralAccess(id);
         Collateral360Dto dto = cimsService.getCollateral360(id);
         return ResponseEntity.ok(dto.getLinkedFacilities());
     }
 
     @GetMapping("/collateral/{id}/owners")
     public ResponseEntity<Map<String, Object>> getCollateralOwners(@PathVariable String id) {
+        cimsService.assertCollateralAccess(id);
         Collateral360Dto dto = cimsService.getCollateral360(id);
         return ResponseEntity.ok(Map.of(
                 "activeOwners", dto.getActiveOwners(),
@@ -381,7 +418,8 @@ public class CimsController {
             @RequestParam String ownerId,
             @RequestParam(defaultValue = "Verified") String status,
             @RequestParam(required = false) String comments,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             return ResponseEntity.ok(cimsService.verifyCollateralOwner(id, ownerId, status, comments, userId));
         } catch (IllegalArgumentException e) {
@@ -393,7 +431,8 @@ public class CimsController {
     public ResponseEntity<Map<String, Object>> addCollateralOwner(
             @PathVariable String id,
             @RequestBody CollateralOwner owner,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             return ResponseEntity.ok(cimsService.addCollateralOwner(id, owner, userId));
         } catch (IllegalArgumentException e) {
@@ -406,7 +445,8 @@ public class CimsController {
             @PathVariable String id,
             @RequestParam String ownerId,
             @RequestBody CollateralOwner owner,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             return ResponseEntity.ok(cimsService.updateCollateralOwner(id, ownerId, owner, userId));
         } catch (IllegalArgumentException e) {
@@ -416,6 +456,7 @@ public class CimsController {
 
     @GetMapping("/customers/{customerId}/collateral")
     public ResponseEntity<List<Collateral>> getCollateralsForCustomer(@PathVariable String customerId) {
+        cimsService.assertCustomerAccess(customerId);
         return ResponseEntity.ok(collateralRepository.findByCustomerId(customerId));
     }
 
@@ -423,18 +464,29 @@ public class CimsController {
     public ResponseEntity<List<Collateral>> getCollateralsForFacility(@PathVariable String facilityId) {
         List<LoanCollateralLink> links = loanCollateralLinkRepository.findByLoanAccountId(facilityId);
         List<String> colIds = links.stream().map(LoanCollateralLink::getCollateralId).distinct().toList();
-        return ResponseEntity.ok(collateralRepository.findAllById(colIds));
+        return ResponseEntity.ok(collateralRepository.findAllById(colIds).stream()
+                .filter(c -> {
+                    try {
+                        cimsService.assertCollateralAccess(c.getId());
+                        return true;
+                    } catch (RuntimeException denied) {
+                        return false;
+                    }
+                })
+                .toList());
     }
 
     @GetMapping("/collateral/validate-release")
     public ResponseEntity<Map<String, Object>> validateRelease(@RequestParam String collateralId) {
+        cimsService.assertCollateralAccess(collateralId);
         return ResponseEntity.ok(cimsService.validateCollateralRelease(collateralId));
     }
 
     @PostMapping("/collateral/register-native")
     public ResponseEntity<Map<String, Object>> registerNativeCollateral(
             @RequestBody Collateral collateral,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.registerNativeCollateral(collateral, userId);
         return ResponseEntity.ok(cimsService.getFullState());
     }
@@ -445,10 +497,11 @@ public class CimsController {
             @RequestParam String loanId,
             @RequestParam String collateralId,
             @RequestParam double amount,
-            @RequestParam String userId,
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false) String linkageType,
             @RequestParam(required = false) String effectiveDate,
             @RequestParam(required = false) String endDate) {
+        userId = currentActorUsername();
         cimsService.addLink(loanId, collateralId, amount, userId, linkageType, effectiveDate, endDate);
         return ResponseEntity.ok(cimsService.getFullState());
     }
@@ -456,7 +509,8 @@ public class CimsController {
     @PostMapping("/links/remove")
     public ResponseEntity<Map<String, Object>> removeLink(
             @RequestParam String linkId,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.removeLink(linkId, userId);
         return ResponseEntity.ok(cimsService.getFullState());
     }
@@ -465,7 +519,8 @@ public class CimsController {
     @PostMapping("/policies/add")
     public ResponseEntity<Map<String, Object>> addPolicy(
             @RequestBody InsurancePolicy policy,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.addPolicy(policy, userId);
         return ResponseEntity.ok(cimsService.getFullState());
     }
@@ -473,7 +528,8 @@ public class CimsController {
     @PostMapping("/policies/submit")
     public ResponseEntity<Map<String, Object>> submitPolicy(
             @RequestParam String policyId,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.submitPolicyForApproval(policyId, userId);
         return ResponseEntity.ok(cimsService.getFullState());
     }
@@ -481,7 +537,8 @@ public class CimsController {
     @PostMapping("/policies/approve")
     public ResponseEntity<Map<String, Object>> approvePolicy(
             @RequestParam String policyId,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.approvePolicy(policyId, userId);
         return ResponseEntity.ok(cimsService.getFullState());
     }
@@ -490,7 +547,8 @@ public class CimsController {
     public ResponseEntity<Map<String, Object>> rejectPolicy(
             @RequestParam String policyId,
             @RequestParam String comments,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.rejectPolicy(policyId, comments, userId);
         return ResponseEntity.ok(cimsService.getFullState());
     }
@@ -500,7 +558,8 @@ public class CimsController {
             @RequestParam String policyId,
             @RequestBody InsurancePolicy policy,
             @RequestParam(defaultValue = "Policy terms amended by maker") String reason,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.amendPolicy(policyId, policy, reason, userId);
         return ResponseEntity.ok(cimsService.getFullState());
     }
@@ -511,7 +570,8 @@ public class CimsController {
             @RequestParam(defaultValue = "0") double newAmount,
             @RequestParam(defaultValue = "0") double newPremium,
             @RequestParam String newExpiryDate,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.renewPolicy(policyId, newAmount, newPremium, newExpiryDate, userId);
         return ResponseEntity.ok(cimsService.getFullState());
     }
@@ -521,12 +581,14 @@ public class CimsController {
     // --- Customer 360 Endpoint ---
     @GetMapping("/customers/{id}/360")
     public ResponseEntity<Customer360Dto> getCustomer360(@PathVariable String id) {
+        cimsService.assertCustomerAccess(id);
         return ResponseEntity.ok(cimsService.getCustomer360(id));
     }
 
     // --- Collateral Exposure Breakdown ---
     @GetMapping("/collateral/{id}/exposure-summary")
     public ResponseEntity<ExposureAdequacySummaryDto> getCollateralExposureSummary(@PathVariable String id) {
+        cimsService.assertCollateralAccess(id);
         return ResponseEntity.ok(exposureCalculationService.calculateExposureAndAdequacy(id));
     }
 
@@ -556,7 +618,8 @@ public class CimsController {
     @PostMapping("/collateral/register-with-allocations")
     public ResponseEntity<Map<String, Object>> registerCollateralWithAllocations(
             @RequestBody CollateralRegistrationRequest request,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             return ResponseEntity.ok(cimsService.registerCollateralWithAllocations(
                     request.getCollateral(), request.getAllocations(), request.getDocuments(),
@@ -611,7 +674,8 @@ public class CimsController {
     @PostMapping("/collateral/submit-exception-request")
     public ResponseEntity<?> submitCollateralExceptionRequest(
             @RequestBody EntryTimeExceptionRequest request,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             return ResponseEntity.ok(cimsService.submitEntryTimeException(request, userId));
         } catch (IllegalArgumentException e) {
@@ -626,7 +690,8 @@ public class CimsController {
             @PathVariable String id,
             @RequestBody List<Map<String, Object>> allocations,
             @RequestParam(defaultValue = "false") boolean fullReplacement,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             return ResponseEntity.ok(collateralFacilityRelationshipService.allocateCollateralFacilities(id, allocations, fullReplacement, userId));
         } catch (IllegalArgumentException e) {
@@ -638,7 +703,8 @@ public class CimsController {
     public ResponseEntity<Map<String, Object>> requestCollateralRelease(
             @PathVariable String id,
             @RequestParam(defaultValue = "Facility settled") String reason,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             return ResponseEntity.ok(cimsService.requestCollateralRelease(id, reason, userId));
         } catch (IllegalArgumentException e) {
@@ -661,7 +727,8 @@ public class CimsController {
     @PostMapping("/policies/register")
     public ResponseEntity<Map<String, Object>> registerPolicy(
             @RequestBody Map<String, Object> payload,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             ObjectMapper mapper = new ObjectMapper();
             mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -710,7 +777,8 @@ public class CimsController {
     @PostMapping("/policies/submit-exception-request")
     public ResponseEntity<?> submitPolicyExceptionRequest(
             @RequestBody EntryTimeExceptionRequest request,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             return ResponseEntity.ok(cimsService.submitEntryTimeException(request, userId));
         } catch (IllegalArgumentException e) {
@@ -762,7 +830,8 @@ public class CimsController {
             @PathVariable String id,
             @RequestBody Map<String, Object> payload,
             @RequestParam(required = false) String reason,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             ObjectMapper mapper = new ObjectMapper();
             mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -800,7 +869,8 @@ public class CimsController {
             @RequestParam(required = false) Double newAmount,
             @RequestParam(required = false) Double newPremium,
             @RequestParam(required = false) String newExpiryDate,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             ObjectMapper mapper = new ObjectMapper();
             mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -844,7 +914,8 @@ public class CimsController {
             @RequestParam(defaultValue = "Standard endorsement") String description,
             @RequestParam(required = false) String effectiveDate,
             @RequestParam(required = false) String documentId,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             String effNo = endorsementNo;
             String effDesc = description;
@@ -871,7 +942,8 @@ public class CimsController {
             @PathVariable String id,
             @RequestBody Map<String, Object> payload,
             @RequestParam(required = false) String reason,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             ObjectMapper mapper = new ObjectMapper();
             mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -901,7 +973,8 @@ public class CimsController {
             @PathVariable String id,
             @RequestBody(required = false) Map<String, Object> payload,
             @RequestParam(required = false) String reason,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             String effReason = reason;
             List<Map<String, Object>> documents = null;
@@ -925,7 +998,8 @@ public class CimsController {
             @PathVariable String id,
             @RequestBody(required = false) Map<String, Object> payload,
             @RequestParam(required = false) String reason,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             String effReason = reason;
             List<Map<String, Object>> documents = null;
@@ -949,7 +1023,8 @@ public class CimsController {
             @PathVariable String id,
             @RequestBody(required = false) Map<String, Object> payload,
             @RequestParam(required = false) String reason,
-            @RequestParam(defaultValue = "CRO_USER") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             String effReason = reason;
             List<Map<String, Object>> documents = null;
@@ -972,7 +1047,8 @@ public class CimsController {
     @PostMapping("/cron/run")
     public ResponseEntity<Map<String, Object>> runCron(
             @RequestParam int days,
-            @RequestParam String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         cimsService.scanAndGenerateExceptions();
         return ResponseEntity.ok(Map.of("success", true, "message", "Cron executed for day offset " + days));
     }

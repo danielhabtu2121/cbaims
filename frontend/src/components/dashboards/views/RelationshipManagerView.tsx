@@ -1,4 +1,6 @@
+import { formatEtb } from '../../../utils/format';
 import React from 'react';
+
 import {
   Users,
   Briefcase,
@@ -16,7 +18,9 @@ import {
   Phone,
   Mail,
 } from 'lucide-react';
+
 import { DashboardSummary, DashboardChartData, DashboardPortfolioRow, DashboardWorkQueueItem } from '../../../types';
+
 import { UniversalPortfolioTable } from '../UniversalPortfolioTable';
 
 interface RelationshipManagerViewProps {
@@ -36,10 +40,7 @@ export const RelationshipManagerView: React.FC<RelationshipManagerViewProps> = (
   onNavigate,
   isSeniorRM = false,
 }) => {
-  const formatCurrency = (val?: number) => {
-    if (val === undefined || val === null) return 'ETB 0.00';
-    return `ETB ${new Intl.NumberFormat('en-ET', { maximumFractionDigits: 0 }).format(val)}`;
-  };
+  const formatCurrency = (val?: number) => formatEtb(val);
 
   const attentionItems = workQueue.filter((q) => q.priority === 'Critical' || q.priority === 'High');
 

@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../../utils/format.ts';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp,
@@ -360,13 +361,13 @@ export const EnterpriseRiskConcentrationSuite: React.FC<EnterpriseRiskConcentrat
                       </td>
                       <td className="p-3 font-medium text-slate-600">{fac.facilityType}</td>
                       <td className="p-3 font-bold text-slate-800">
-                        ETB {Number(fac.outstandingBalance || 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(fac.outstandingBalance || 0))}
                       </td>
                       <td className="p-3 font-bold text-emerald-700">
-                        ETB {Number(fac.pledgedCollateralValue || 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(fac.pledgedCollateralValue || 0))}
                       </td>
                       <td className="p-3 font-black text-red-600">
-                        ETB {Number(fac.shortfallAmount || 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(fac.shortfallAmount || 0))}
                       </td>
                       <td className="p-3 text-center font-bold text-red-600">
                         {fac.ltvRatio}%
@@ -437,10 +438,10 @@ export const EnterpriseRiskConcentrationSuite: React.FC<EnterpriseRiskConcentrat
                       </td>
                       <td className="p-3 font-medium text-slate-700">{pool.ownerName}</td>
                       <td className="p-3 font-bold text-slate-800">
-                        ETB {Number(pool.marketValue || 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(pool.marketValue || 0))}
                       </td>
                       <td className="p-3 font-bold text-emerald-700">
-                        ETB {Number(pool.netSecurityValue || 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(pool.netSecurityValue || 0))}
                       </td>
                       <td className="p-3 text-center">
                         <span className="px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-900 border border-blue-200">
@@ -448,7 +449,7 @@ export const EnterpriseRiskConcentrationSuite: React.FC<EnterpriseRiskConcentrat
                         </span>
                       </td>
                       <td className="p-3 font-bold text-[#1F4E7A]">
-                        ETB {Number(pool.totalLinkedExposure || 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(pool.totalLinkedExposure || 0))}
                       </td>
                       <td className="p-3 text-center font-bold">
                         {pool.totalAllocationPct}%
@@ -526,10 +527,10 @@ export const EnterpriseRiskConcentrationSuite: React.FC<EnterpriseRiskConcentrat
                         <div className="text-[10px] text-slate-500 font-mono">{asset.cif}</div>
                       </td>
                       <td className="p-3 font-bold text-slate-800">
-                        ETB {Number(asset.marketValue || 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(asset.marketValue || 0))}
                       </td>
                       <td className="p-3 font-bold text-red-600">
-                        ETB {Number(asset.exposedLoanAmount || 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(asset.exposedLoanAmount || 0))}
                       </td>
                       <td className="p-3">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${

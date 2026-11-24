@@ -1,9 +1,12 @@
 package com.bank.cims.service;
 
 import com.bank.cims.model.PasswordHistory;
+import com.bank.cims.model.RolePermission;
 import com.bank.cims.model.User;
 import com.bank.cims.model.UserSession;
+import com.bank.cims.repository.BranchRepository;
 import com.bank.cims.repository.PasswordHistoryRepository;
+import com.bank.cims.repository.RolePermissionRepository;
 import com.bank.cims.repository.UserRepository;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -31,6 +34,10 @@ public class AuthService {
     @Autowired private ConfigurationService configurationService;
     @Autowired private SessionManagementService sessionManagementService;
     @Autowired private PasswordHistoryRepository passwordHistoryRepository;
+    @Autowired private AuthorizationScopeService authorizationScopeService;
+    @Autowired private BranchRepository branchRepository;
+    @Autowired private RolePermissionRepository rolePermissionRepository;
+    @Autowired private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @PostConstruct
     @Transactional
@@ -61,7 +68,10 @@ public class AuthService {
         }
 
         String cleanIdentifier = identifier.trim();
-        Optional<User> opt = userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(cleanIdentifier, cleanIdentifier);
+        Optional<User> opt = userRepository.findByUsernameIgnoreCase(cleanIdentifier);
+        if (opt.isEmpty()) {
+            opt = userRepository.findByEmailIgnoreCase(cleanIdentifier);
+        }
 
         // Security requirement: constant-time failure and generic error message to avoid username enumeration
         if (opt.isEmpty()) {
@@ -166,7 +176,10 @@ public class AuthService {
             throw new IllegalArgumentException("Username or corporate email is required.");
         }
         String cleanIdentifier = identifier.trim();
-        Optional<User> opt = userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(cleanIdentifier, cleanIdentifier);
+        Optional<User> opt = userRepository.findByUsernameIgnoreCase(cleanIdentifier);
+        if (opt.isEmpty()) {
+            opt = userRepository.findByEmailIgnoreCase(cleanIdentifier);
+        }
 
         if (opt.isPresent()) {
             User user = opt.get();
@@ -373,18 +386,84 @@ public class AuthService {
     public Map<String, Object> safeUser(User u) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", u.getId());
+        m.put("userId", u.getId());
         m.put("username", u.getUsername());
         m.put("fullName", u.getFullName());
+        m.put("name", u.getFullName());
         m.put("email", u.getEmail());
         m.put("phone", u.getPhone());
         m.put("role", u.getRole());
+        m.put("roleName", roleDisplayName(u.getRole()));
         m.put("branch", u.getBranch());
         m.put("segment", u.getSegment());
         m.put("district", u.getDistrict());
         m.put("active", u.isActive());
         m.put("passwordExpired", u.isPasswordExpired());
         m.put("passwordExpiryDate", u.getPasswordExpiryDate() != null ? u.getPasswordExpiryDate().toString() : null);
+        m.put("segmentIds", parseSegmentIds(u.getSegmentIds()));
+        String branchCode = null;
+        try {
+            if (u.getBranch() != null && !u.getBranch().isBlank()) {
+                branchCode = branchRepository.findFirstByNameIgnoreCase(u.getBranch())
+                        .or(() -> branchRepository.findFirstByCodeIgnoreCase(u.getBranch()))
+                        .map(b -> b.getCode())
+                        .orElse(null);
+            }
+        } catch (Exception ignored) { }
+        m.put("branchCode", branchCode);
+        m.put("isAdmin", u.getRole() != null && (u.getRole().toUpperCase(Locale.ROOT).contains("SYSADMIN") || u.getRole().equalsIgnoreCase("ADMIN") || u.getRole().toUpperCase(Locale.ROOT).endsWith("_ADMIN")));
+
+        // Authoritative scope resolved from persisted assignment, not from the client.
+        AuthorizationScopeService.Scope scope = authorizationScopeService.resolve(u);
+        m.put("allowedSegments", new ArrayList<>(scope.getAllowedSegments()));
+        m.put("allowedBranches", new ArrayList<>(scope.getAllowedBranches()));
+        m.put("allowedDistricts", new ArrayList<>(scope.getAllowedDistricts()));
+        m.put("bankWide", scope.isBankWide());
+        m.put("readOnly", scope.isReadOnly());
+        m.put("scopeRestricted", scope.isRestricted());
+
+        try {
+            List<RolePermission> perms = rolePermissionRepository.findByRoleCodeIgnoreCase(u.getRole());
+            m.put("permissions", perms.stream().filter(RolePermission::isActive).toList());
+        } catch (Exception ignored) {
+            m.put("permissions", List.of());
+        }
         return m;
+    }
+
+    private List<String> parseSegmentIds(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
+        try {
+            return objectMapper.readValue(raw, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+        } catch (Exception ignored) {
+            String cleaned = raw.replace("[", "").replace("]", "").replace("\"", "");
+            return Arrays.stream(cleaned.split(",")).map(String::trim).filter(s -> !s.isBlank()).toList();
+        }
+    }
+
+    private String roleDisplayName(String role) {
+        if (role == null) return "Bank User";
+        return switch (role.toUpperCase(Locale.ROOT)) {
+            case "SYSADMIN" -> "System Administrator";
+            case "EXEC" -> "Executive Director / VP";
+            case "SRMGMT" -> "Senior Management";
+            case "HODEPT" -> "Head Office Department Head";
+            case "DISTDIR" -> "District Director";
+            case "BRMGR" -> "Branch Manager";
+            case "BRO" -> "Branch Relationship Officer";
+            case "CRO" -> "Corporate Relationship Officer";
+            case "SRM" -> "Senior Relationship Manager";
+            case "BRM" -> "Branch Relationship Manager";
+            case "RO" -> "Relationship Officer";
+            case "CRM" -> "Customer Relationship Manager";
+            case "MGRCOLLDOC" -> "Manager Collateral & Documentation";
+            case "COLLDOCOFF" -> "Collateral & Documentation Officer";
+            case "RISK" -> "Risk Management Officer";
+            case "COMPLIANCE" -> "Compliance Officer";
+            case "AUDITOR", "AUDIT" -> "Internal Auditor";
+            case "RDONLY" -> "Read Only Inspector";
+            default -> role;
+        };
     }
 
     private String maskIdentifier(String id) {

@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   X,
@@ -292,7 +293,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         ['Policy Schedule / Ref', doc.entityId || 'Active Policy Schedule'],
         ['Linked Collateral Asset', col?.code || doc.collateralId || 'Linked Asset'],
         ['Underwriting Syndicate', 'Licensed National Underwriter (Approved Insurer)'],
-        ['Sum Insured Coverage', col?.insuredAmount ? `ETB ${col.insuredAmount.toLocaleString()}` : 'Registered in Policy Master'],
+        ['Sum Insured Coverage', col?.insuredAmount ? `ETB ${formatEtbNumber(col.insuredAmount)}` : 'Registered in Policy Master'],
         ['Annual Premium Status', 'Settled & Verified (Bank Sole Loss Payee)']
       );
     } else {
@@ -300,8 +301,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         ['Linked Collateral Code', col?.code || doc.entityId || 'N/A'],
         ['Pledged Asset Description', col?.description || 'Registered Bank Security Collateral'],
         ['Collateral Category', col?.category || 'Pledged Security Asset'],
-        ['Asset Market Valuation', col?.valuationAmount ? `ETB ${col.valuationAmount.toLocaleString()}` : 'Recorded in Credit Register'],
-        ['Active Insurance Coverage', col?.insuredAmount ? `ETB ${col.insuredAmount.toLocaleString()}` : 'Covered Under Pledged Policy']
+        ['Asset Market Valuation', col?.valuationAmount ? `ETB ${formatEtbNumber(col.valuationAmount)}` : 'Recorded in Credit Register'],
+        ['Active Insurance Coverage', col?.insuredAmount ? `ETB ${formatEtbNumber(col.insuredAmount)}` : 'Covered Under Pledged Policy']
       );
     }
 

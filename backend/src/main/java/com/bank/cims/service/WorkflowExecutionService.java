@@ -102,17 +102,41 @@ public class WorkflowExecutionService {
     @org.springframework.context.annotation.Lazy
     private CimsService cimsService;
 
+    @Autowired(required = false)
+    private AuthorizationScopeService authorizationScopeService;
+
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     @Transactional
     public WorkflowActionResultDto submitToWorkflow(String entityType, String entityId, String actionType, String makerId, String remarks, String payloadJson) {
+        return submitToWorkflow(entityType, entityId, actionType, makerId, remarks, payloadJson, null);
+    }
+
+    /**
+     * Explicit candidate role overload. Used by exception workflows whose approver is
+     * resolved from the Admin-configured exception hierarchy (e.g. the configured Risk
+     * Approver) so that generic transaction matching cannot override it.
+     */
+    @Transactional
+    public WorkflowActionResultDto submitToWorkflow(String entityType, String entityId, String actionType, String makerId,
+                                                    String remarks, String payloadJson, String explicitCandidateRole) {
         String now = LocalDateTime.now().toString();
-        String fallbackRole = ("Document".equalsIgnoreCase(entityType) || "Ownership Document".equalsIgnoreCase(entityType) || "Collateral Document".equalsIgnoreCase(entityType))
-                ? "MGRCOLLDOC" : "BRMGR";
-        // Route through the same Admin-configured Approval Hierarchy used everywhere else,
-        // rather than a hardcoded role, so this path stays consistent with the rest of the
-        // system and with whatever the Approval Hierarchy admin screen actually says.
-        String candidateRole = roleHierarchyService.resolveApproverRole(entityType, actionType, fallbackRole);
+        // Authenticated identity always wins. Caller-supplied maker IDs are used when
+        // running inside direct service calls/tests or trusted internal continuations.
+        com.bank.cims.model.User currentActor = authorizationScopeService != null ? authorizationScopeService.currentUser() : null;
+        final String effectiveMakerId = (currentActor != null && currentActor.getUsername() != null && !currentActor.getUsername().isBlank())
+                ? currentActor.getUsername()
+                : (currentActor != null && currentActor.getId() != null && !currentActor.getId().isBlank()
+                    ? currentActor.getId()
+                    : (makerId != null && !makerId.isBlank() ? makerId : null));
+        if (effectiveMakerId == null || effectiveMakerId.isBlank()) {
+            throw new org.springframework.security.access.AccessDeniedException("An authenticated maker is required to submit a workflow task.");
+        }
+        // Route through the Admin-configured Approval Hierarchy. Explicit roles are used
+        // only when already resolved from that configuration (for example exception routing).
+        String candidateRole = (explicitCandidateRole != null && !explicitCandidateRole.isBlank())
+                ? explicitCandidateRole.trim()
+                : roleHierarchyService.resolveApproverRole(entityType, actionType);
 
         // Check if existing pending task exists for exact transaction (entityType, entityId, actionType)
         WorkflowTask task = null;
@@ -138,7 +162,7 @@ public class WorkflowExecutionService {
         }
 
         task.setActionType(actionType != null ? actionType : "REGISTRATION");
-        task.setMakerId(makerId != null ? makerId : "SYSTEM");
+        task.setMakerId(effectiveMakerId);
         task.setCandidateRole(candidateRole);
         task.setStatus("Pending");
         task.setCurrentStep("Checker Review");
@@ -157,10 +181,10 @@ public class WorkflowExecutionService {
         task = workflowTaskRepository.save(task);
 
         // Update entity maker fields
-        updateEntityToPendingState(entityType, entityId, actionType, makerId, now);
+        updateEntityToPendingState(entityType, entityId, actionType, effectiveMakerId, now);
 
         // Audit
-        createAuditLog(makerId, "MAKER", "WORKFLOW_SUBMIT", entityType, entityId, "status", "Draft", "Pending", 
+        createAuditLog(effectiveMakerId, "MAKER", "WORKFLOW_SUBMIT", entityType, entityId, "status", "Draft", "Pending", 
                 "Transaction submitted to workflow: " + actionType);
 
         WorkflowActionResultDto res = new WorkflowActionResultDto(true, "Submitted to workflow successfully");
@@ -188,8 +212,11 @@ public class WorkflowExecutionService {
             throw new IllegalStateException("Dual Control Violation: Maker (" + task.getMakerId() + ") cannot approve their own submission.");
         }
 
-        // Authorize Checker
-        workflowAuthService.assertCanApprove(checkerId, taskId);
+        // Authorize Checker. Identity and role are always taken from the persisted user,
+        // never from caller-supplied request parameters.
+        User checker = workflowAuthService.assertCanApprove(checkerId, taskId);
+        checkerId = checker.getUsername() != null && !checker.getUsername().isBlank() ? checker.getUsername() : (checker.getId() != null ? checker.getId() : checkerId);
+        checkerRole = checker.getRole();
 
         String now = LocalDateTime.now().toString();
         String entityType = task.getEntityType();
@@ -198,11 +225,14 @@ public class WorkflowExecutionService {
 
         // Multi-level approval hierarchy check (§ SysAdmin Approval Workflows)
         ApprovalHierarchyConfig cfg = findHierarchyConfig(task.getActionType(), entityType);
-        boolean requiresLevel2 = cfg != null && cfg.getApprovalLevels() == 2 && !"Level 2 Review".equalsIgnoreCase(task.getCurrentStep())
-                && !"POLICY_CANCELLATION".equalsIgnoreCase(task.getActionType());
+        boolean requiresLevel2 = cfg != null && cfg.getApprovalLevels() == 2 && !"Level 2 Review".equalsIgnoreCase(task.getCurrentStep());
 
         if (requiresLevel2) {
-            String nextRole = cfg.getLevel2Role() != null && !cfg.getLevel2Role().isBlank() ? cfg.getLevel2Role() : "HODEPT";
+            String nextRole = cfg.getLevel2Role();
+            if (nextRole == null || nextRole.isBlank()) {
+                throw new IllegalStateException("Approval hierarchy for '" + task.getActionType()
+                        + "' declares two levels but no level 2 approver is configured.");
+            }
             task.setCurrentStep("Level 2 Review");
             task.setCandidateRole(nextRole);
             task.setStatus("Pending");
@@ -213,7 +243,7 @@ public class WorkflowExecutionService {
             history.setId("hist-" + UUID.randomUUID().toString().substring(0, 8));
             history.setWorkflowTaskId(task.getId());
             history.setActorId(checkerId);
-            history.setActorRole(checkerRole != null ? checkerRole : "BRMGR");
+            history.setActorRole(checkerRole != null && !checkerRole.isBlank() ? checkerRole : task.getCandidateRole());
             history.setStepName("Level 1 Review");
             history.setDecision("Approved");
             history.setComments(comments != null ? comments : "Level 1 Approved; forwarded to Level 2 (" + nextRole + ")");
@@ -517,36 +547,46 @@ public class WorkflowExecutionService {
                 cimsExceptionRepository.save(exc);
                 finalEntityStatus = "Resolved";
 
-                // Step 8: Exception Approved -> Validation failure overridden -> Transaction resumes -> Normal workflow continues!
-                if ("Insurance Policy".equalsIgnoreCase(exc.getEntityType()) || "Policy".equalsIgnoreCase(exc.getEntityType())) {
-                    InsurancePolicy pol = findInsurancePolicy(exc.getEntityId());
-                    if (pol != null) {
-                        pol.setStatus("Pending Approval");
-                        pol.setAuthStat("U");
-                        pol.setRecordStat("U");
-                        String appNote = String.format(Locale.ROOT,
-                                "{\"event\":\"EXCEPTION_APPROVED_TRANSACTION_RESUMED\",\"exceptionId\":\"%s\",\"checkerId\":\"%s\",\"comments\":\"%s\",\"timestamp\":\"%s\"}",
-                                safe(exc.getId()), safe(checkerId), safe(comments), now);
-                        appendPolicyHistory(pol, appNote);
-                        insurancePolicyRepository.save(pol);
+                // Step 8: Exception Approved -> Validation failure overridden -> Transaction
+                // resumes only after every exception raised for the same entity is cleared.
+                // Otherwise approving one of several missing-document exceptions would
+                // resume the collateral while the remaining exceptions are still pending.
+                boolean otherExceptionsPending = cimsExceptionRepository
+                        .findByEntityTypeAndEntityId(exc.getEntityType(), exc.getEntityId()).stream()
+                        .filter(other -> !other.getId().equals(exc.getId()))
+                        .anyMatch(other -> !isTerminalExceptionStatus(other.getStatus()));
 
-                        // Submit to normal workflow for standard checker approval
-                        submitToWorkflow("Insurance Policy", pol.getId(), "POLICY_REGISTRATION",
-                                task.getMakerId(), "Policy registration resumed following exception approval: " + comments, null);
-                    }
-                } else if ("Collateral".equalsIgnoreCase(exc.getEntityType()) || "Collateral Asset".equalsIgnoreCase(exc.getEntityType())) {
-                    Collateral col = collateralRepository.findById(exc.getEntityId())
-                            .or(() -> collateralRepository.findByCode(exc.getEntityId()))
-                            .orElse(null);
-                    if (col != null) {
-                        col.setStatus("Pending Approval");
-                        col.setAuthStat("U");
-                        col.setRecordStat("U");
-                        collateralRepository.save(col);
+                if (!otherExceptionsPending) {
+                    if ("Insurance Policy".equalsIgnoreCase(exc.getEntityType()) || "Policy".equalsIgnoreCase(exc.getEntityType())) {
+                        InsurancePolicy pol = findInsurancePolicy(exc.getEntityId());
+                        if (pol != null) {
+                            pol.setStatus("Pending Approval");
+                            pol.setAuthStat("U");
+                            pol.setRecordStat("U");
+                            String appNote = String.format(Locale.ROOT,
+                                    "{\"event\":\"EXCEPTION_APPROVED_TRANSACTION_RESUMED\",\"exceptionId\":\"%s\",\"checkerId\":\"%s\",\"comments\":\"%s\",\"timestamp\":\"%s\"}",
+                                    safe(exc.getId()), safe(checkerId), safe(comments), now);
+                            appendPolicyHistory(pol, appNote);
+                            insurancePolicyRepository.save(pol);
 
-                        // Submit to normal workflow for standard checker authorization
-                        submitToWorkflow("Collateral", col.getId(), "COLLATERAL_REGISTRATION",
-                                task.getMakerId(), "Collateral registration resumed following exception approval: " + comments, null);
+                            // Submit to normal workflow for standard checker approval
+                            submitToWorkflow("Insurance Policy", pol.getId(), "POLICY_REGISTRATION",
+                                    task.getMakerId(), "Policy registration resumed following exception approval: " + comments, null);
+                        }
+                    } else if ("Collateral".equalsIgnoreCase(exc.getEntityType()) || "Collateral Asset".equalsIgnoreCase(exc.getEntityType())) {
+                        Collateral col = collateralRepository.findById(exc.getEntityId())
+                                .or(() -> collateralRepository.findByCode(exc.getEntityId()))
+                                .orElse(null);
+                        if (col != null) {
+                            col.setStatus("Pending Approval");
+                            col.setAuthStat("U");
+                            col.setRecordStat("U");
+                            collateralRepository.save(col);
+
+                            // Submit to normal workflow for standard checker authorization
+                            submitToWorkflow("Collateral", col.getId(), "COLLATERAL_REGISTRATION",
+                                    task.getMakerId(), "Collateral registration resumed following exception approval: " + comments, null);
+                        }
                     }
                 }
             }
@@ -589,7 +629,7 @@ public class WorkflowExecutionService {
         history.setId("hist-" + UUID.randomUUID().toString().substring(0, 8));
         history.setWorkflowTaskId(task.getId());
         history.setActorId(checkerId);
-        history.setActorRole(checkerRole != null ? checkerRole : "BRMGR");
+        history.setActorRole(checkerRole);
         history.setStepName("Checker Review");
         history.setDecision("Approved");
         history.setComments(comments != null ? comments : "Approved");
@@ -639,7 +679,9 @@ public class WorkflowExecutionService {
         WorkflowTask task = workflowTaskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalArgumentException("Workflow task not found: " + taskId));
 
-        workflowAuthService.assertCanApprove(checkerId, taskId);
+        User checker = workflowAuthService.assertCanApprove(checkerId, taskId);
+        checkerId = checker.getUsername() != null && !checker.getUsername().isBlank() ? checker.getUsername() : (checker.getId() != null ? checker.getId() : checkerId);
+        checkerRole = checker.getRole();
 
         String now = LocalDateTime.now().toString();
         String entityType = task.getEntityType();
@@ -755,7 +797,7 @@ public class WorkflowExecutionService {
         history.setId("hist-" + UUID.randomUUID().toString().substring(0, 8));
         history.setWorkflowTaskId(task.getId());
         history.setActorId(checkerId);
-        history.setActorRole(checkerRole != null ? checkerRole : "BRMGR");
+        history.setActorRole(checkerRole);
         history.setStepName("Checker Review");
         history.setDecision("Returned");
         history.setComments(comments);
@@ -804,7 +846,9 @@ public class WorkflowExecutionService {
         WorkflowTask task = workflowTaskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalArgumentException("Workflow task not found: " + taskId));
 
-        workflowAuthService.assertCanApprove(checkerId, taskId);
+        User checker = workflowAuthService.assertCanApprove(checkerId, taskId);
+        checkerId = checker.getUsername() != null && !checker.getUsername().isBlank() ? checker.getUsername() : (checker.getId() != null ? checker.getId() : checkerId);
+        checkerRole = checker.getRole();
 
         String now = LocalDateTime.now().toString();
         String entityType = task.getEntityType();
@@ -912,6 +956,13 @@ public class WorkflowExecutionService {
                 exc.setResolvedAt(now);
                 exc.setResolutionNotes("Exception rejected by management: " + comments);
                 cimsExceptionRepository.save(exc);
+
+                // A rejection returns the whole submission to the maker. Sibling
+                // exception tasks raised by the same submission must not remain
+                // actionable, otherwise another approver could later resume a
+                // record that was already rejected.
+                cancelSiblingExceptionTasks(exc, checkerId, now);
+
                 if ("Insurance Policy".equalsIgnoreCase(exc.getEntityType()) || "Policy".equalsIgnoreCase(exc.getEntityType())) {
                     InsurancePolicy pol = findInsurancePolicy(exc.getEntityId());
                     if (pol != null) {
@@ -968,7 +1019,7 @@ public class WorkflowExecutionService {
         history.setId("hist-" + UUID.randomUUID().toString().substring(0, 8));
         history.setWorkflowTaskId(task.getId());
         history.setActorId(checkerId);
-        history.setActorRole(checkerRole != null ? checkerRole : "BRMGR");
+        history.setActorRole(checkerRole);
         history.setStepName("Checker Review");
         history.setDecision("Rejected");
         history.setComments(comments);
@@ -1041,10 +1092,13 @@ public class WorkflowExecutionService {
     }
 
     private void createAuditLog(String userId, String roleCode, String actionType, String entityType, String entityId, String fieldName, String oldVal, String newVal, String comments) {
+        if (userId == null || userId.isBlank() || roleCode == null || roleCode.isBlank()) {
+            throw new IllegalStateException("An authenticated actor and role are required to record workflow audit history.");
+        }
         AuditLog audit = new AuditLog();
         audit.setId("audit-" + UUID.randomUUID().toString().substring(0, 8));
-        audit.setUserId(userId != null ? userId : "SYSTEM");
-        audit.setRoleCode(roleCode != null ? roleCode : "SYSADMIN");
+        audit.setUserId(userId);
+        audit.setRoleCode(roleCode);
         audit.setActionType(actionType);
         audit.setEntityType(entityType);
         audit.setEntityId(entityId);
@@ -1064,6 +1118,45 @@ public class WorkflowExecutionService {
     private InsurancePolicy findInsurancePolicy(String idOrNumber) {
         return insurancePolicyRepository.findById(idOrNumber)
                 .orElseGet(() -> insurancePolicyRepository.findByPolicyNumber(idOrNumber).orElse(null));
+    }
+
+    private boolean isTerminalExceptionStatus(String status) {
+        if (status == null || status.isBlank()) return false;
+        String s = status.trim();
+        return "Resolved".equalsIgnoreCase(s) || "Rejected".equalsIgnoreCase(s)
+                || "Closed".equalsIgnoreCase(s) || "Cancelled".equalsIgnoreCase(s)
+                || "Canceled".equalsIgnoreCase(s);
+    }
+
+    /**
+     * Cancels the remaining pending exceptions (and their tasks) that belong to
+     * the same submission when one of them is rejected. The rejection already
+     * returned the underlying record to the maker, so the other exception tasks
+     * are no longer valid decisions. History is preserved by keeping the rows
+     * with a Cancelled status and an explanatory resolution note.
+     */
+    private void cancelSiblingExceptionTasks(CimsException rejected, String checkerId, String now) {
+        if (rejected == null || rejected.getEntityType() == null || rejected.getEntityId() == null) return;
+        List<CimsException> siblings = cimsExceptionRepository
+                .findByEntityTypeAndEntityId(rejected.getEntityType(), rejected.getEntityId());
+        for (CimsException sibling : siblings) {
+            if (sibling.getId() == null || sibling.getId().equals(rejected.getId())) continue;
+            if (isTerminalExceptionStatus(sibling.getStatus())) continue;
+            sibling.setStatus("Cancelled");
+            sibling.setResolvedBy(checkerId);
+            sibling.setResolvedAt(now);
+            sibling.setResolutionNotes("Cancelled because a related exception for the same submission was rejected by " + checkerId + ".");
+            cimsExceptionRepository.save(sibling);
+            for (WorkflowTask siblingTask : workflowTaskRepository.findByEntityId(sibling.getId())) {
+                if ("Pending".equalsIgnoreCase(siblingTask.getStatus())) {
+                    siblingTask.setStatus("Cancelled");
+                    siblingTask.setCompletedAt(now);
+                    siblingTask.setCurrentStep("Cancelled");
+                    siblingTask.setRemarks("Cancelled due to rejection of a related exception.");
+                    workflowTaskRepository.save(siblingTask);
+                }
+            }
+        }
     }
 
     private String safe(String s) {

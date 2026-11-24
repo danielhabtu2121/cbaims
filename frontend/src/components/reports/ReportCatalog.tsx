@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useState, useMemo } from 'react';
 import {
   BarChart3,
@@ -283,8 +284,8 @@ export const ReportCatalog: React.FC<ReportCatalogProps> = ({
 
         kpis = [
           { label: 'Pledged Assets Audited', value: rows.length.toLocaleString(), subtext: 'In current scope' },
-          { label: 'Total Collateral Valuation', value: `ETB ${(totalVal / 1e6).toFixed(1)}M`, subtext: `ETB ${totalVal.toLocaleString()}` },
-          { label: 'Total Active Insurance', value: `ETB ${(totalIns / 1e6).toFixed(1)}M`, subtext: `ETB ${totalIns.toLocaleString()}`, color: 'text-emerald-700' },
+          { label: 'Total Collateral Valuation', value: `ETB ${(totalVal / 1e6).toFixed(1)}M`, subtext: `ETB ${formatEtbNumber(totalVal)}` },
+          { label: 'Total Active Insurance', value: `ETB ${(totalIns / 1e6).toFixed(1)}M`, subtext: `ETB ${formatEtbNumber(totalIns)}`, color: 'text-emerald-700' },
           { label: 'Net Insurance Compliance', value: `${avgPct.toFixed(1)}%`, subtext: `Gap: ETB ${(totalGap / 1e6).toFixed(1)}M`, color: avgPct >= 80 ? 'text-emerald-700' : 'text-amber-700' },
         ];
         break;
@@ -480,7 +481,7 @@ export const ReportCatalog: React.FC<ReportCatalogProps> = ({
 
         kpis = [
           { label: 'Facilities Audited', value: rows.length.toLocaleString(), subtext: 'In active scope' },
-          { label: 'Total Outstanding Balance', value: `ETB ${(totalLoans / 1e6).toFixed(1)}M`, subtext: `ETB ${totalLoans.toLocaleString()}` },
+          { label: 'Total Outstanding Balance', value: `ETB ${(totalLoans / 1e6).toFixed(1)}M`, subtext: `ETB ${formatEtbNumber(totalLoans)}` },
           { label: 'Total Insured Security', value: `ETB ${(totalSecurity / 1e6).toFixed(1)}M`, subtext: `Active collateral policies`, color: 'text-emerald-700' },
           { label: 'Facilities with Insurance Gap', value: gapFacilities.toLocaleString(), subtext: `${((gapFacilities / (rows.length || 1)) * 100).toFixed(1)}% of portfolio`, color: gapFacilities > 0 ? 'text-amber-700' : 'text-emerald-700' },
         ];
@@ -665,7 +666,7 @@ export const ReportCatalog: React.FC<ReportCatalogProps> = ({
 
         kpis = [
           { label: 'Approved Underwriters', value: rows.length.toLocaleString(), subtext: 'In bank master' },
-          { label: 'Bank Total Insured Sum', value: `ETB ${(grandTotalInsured / 1e6).toFixed(1)}M`, subtext: `ETB ${grandTotalInsured.toLocaleString()}` },
+          { label: 'Bank Total Insured Sum', value: `ETB ${(grandTotalInsured / 1e6).toFixed(1)}M`, subtext: `ETB ${formatEtbNumber(grandTotalInsured)}` },
           { label: 'Highest Underwriter Share', value: topInsurer ? `${topInsurer['Portfolio Share %']}` : '0%', subtext: topInsurer ? topInsurer['Insurer Name'] : 'None', color: 'text-amber-700' },
           { label: 'Insurers on Watchlist', value: watchlistCount.toLocaleString(), subtext: 'NBE 25% exposure threshold', color: watchlistCount > 0 ? 'text-red-700' : 'text-emerald-700' },
         ];
@@ -716,7 +717,7 @@ export const ReportCatalog: React.FC<ReportCatalogProps> = ({
 
         kpis = [
           { label: 'Authorized Release Audits', value: rows.length.toLocaleString(), subtext: 'Full collateral releases' },
-          { label: 'Total Valuation De-Pledged', value: `ETB ${(totalReleasedVal / 1e6).toFixed(1)}M`, subtext: `ETB ${totalReleasedVal.toLocaleString()}` },
+          { label: 'Total Valuation De-Pledged', value: `ETB ${(totalReleasedVal / 1e6).toFixed(1)}M`, subtext: `ETB ${formatEtbNumber(totalReleasedVal)}` },
           { label: 'Zero-Balance Compliance', value: '100%', subtext: 'Verified against core banking', color: 'text-emerald-700' },
           { label: 'Audit Discrepancies', value: '0', subtext: 'All covenants satisfied', color: 'text-emerald-700' },
         ];
@@ -994,7 +995,7 @@ export const ReportCatalog: React.FC<ReportCatalogProps> = ({
       columns.map((c) => {
         const val = r[c.key];
         if (colIsCurrency(c) && typeof val === 'number') {
-          return `ETB ${val.toLocaleString()}`;
+          return `ETB ${formatEtbNumber(val)}`;
         }
         return val !== undefined && val !== null ? String(val) : '—';
       })
@@ -1317,7 +1318,7 @@ export const ReportCatalog: React.FC<ReportCatalogProps> = ({
                                 className={`p-3 text-right tabular-nums whitespace-nowrap font-mono ${col.isDanger && val > 0 ? 'text-red-600 font-bold' : 'text-slate-800'
                                   }`}
                               >
-                                ETB {val.toLocaleString()}
+                                ETB {formatEtbNumber(val)}
                               </td>
                             );
                           }

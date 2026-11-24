@@ -1,4 +1,6 @@
+import { formatEtb } from '../../../utils/format';
 import React, { useState } from 'react';
+
 import {
   Building2,
   Shield,
@@ -16,6 +18,7 @@ import {
   Lock,
   PieChart as PieIcon,
 } from 'lucide-react';
+
 import {
   ResponsiveContainer,
   PieChart,
@@ -29,7 +32,9 @@ import {
   YAxis,
   CartesianGrid,
 } from 'recharts';
+
 import { DashboardSummary, DashboardChartData, DashboardPortfolioRow, DashboardWorkQueueItem } from '../../../types';
+
 import { UniversalPortfolioTable } from '../UniversalPortfolioTable';
 
 interface BranchManagerDashboardViewProps {
@@ -53,10 +58,7 @@ export const BranchManagerDashboardView: React.FC<BranchManagerDashboardViewProp
 }) => {
   const [activeTab, setActiveTab] = useState<'queue' | 'portfolio' | 'expiring' | 'uninsured' | 'approvals'>('queue');
 
-  const formatCurrency = (val?: number) => {
-    if (val === undefined || val === null) return 'ETB 0.00';
-    return `ETB ${new Intl.NumberFormat('en-ET', { maximumFractionDigits: 0 }).format(val)}`;
-  };
+  const formatCurrency = (val?: number) => formatEtb(val);
 
   const pendingApprovals = workQueue.filter((q) => q.category?.includes('Approval') || q.category?.includes('Workflow') || q.status === 'Pending');
   const criticalExpiries = workQueue.filter((q) => q.category?.includes('Expired') || q.category?.includes('Expiring'));

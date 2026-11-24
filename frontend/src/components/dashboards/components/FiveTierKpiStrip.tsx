@@ -1,4 +1,6 @@
+import { formatEtb } from '../../../utils/format';
 import React from 'react';
+
 import {
   DollarSign,
   ShieldAlert,
@@ -17,6 +19,7 @@ import {
   FileText,
   RotateCcw,
 } from 'lucide-react';
+
 import { DashboardSummary } from '../../../types';
 
 interface FiveTierKpiStripProps {
@@ -32,20 +35,7 @@ export const FiveTierKpiStrip: React.FC<FiveTierKpiStripProps> = ({
   onActionDrillDown,
   className = '',
 }) => {
-  const formatCurrency = (val?: number) => {
-    if (val === undefined || val === null) return 'ETB 0.0';
-    const abs = Math.abs(val);
-    if (abs >= 1e9) {
-      return `ETB ${(val / 1e9).toFixed(2)}B`;
-    }
-    if (abs >= 1e6) {
-      return `ETB ${(val / 1e6).toFixed(2)}M`;
-    }
-    if (abs >= 1e3) {
-      return `ETB ${(val / 1e3).toFixed(1)}K`;
-    }
-    return `ETB ${val.toLocaleString()}`;
-  };
+  const formatCurrency = (val?: number) => formatEtb(val);
 
   const coveragePct = Number((summary.insuranceComplianceRate ?? summary.insuranceCoveragePct ?? 0).toFixed(1));
   const concentrationPct = Number((summary.insurerConcentrationMaxPct ?? 0).toFixed(1));

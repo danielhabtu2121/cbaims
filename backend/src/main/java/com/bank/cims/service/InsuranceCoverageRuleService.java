@@ -1,6 +1,7 @@
 package com.bank.cims.service;
 
 import com.bank.cims.model.InsuranceCoverageRule;
+import com.bank.cims.model.User;
 import com.bank.cims.repository.InsuranceCoverageRuleRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,31 @@ public class InsuranceCoverageRuleService {
 
     @Autowired
     private CimsService cimsService;
+
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
+    @Autowired
+    private RoleHierarchyService roleHierarchyService;
+
+    private User requireActor() {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive()
+                || actor.getUsername() == null || actor.getUsername().isBlank()
+                || actor.getRole() == null || actor.getRole().isBlank()) {
+            throw new IllegalStateException("A signed-in user with an assigned role is required for this action.");
+        }
+        return actor;
+    }
+
+    private void assertConfiguredApprover(User actor) {
+        String configuredRole = roleHierarchyService.resolveApproverRole(
+                "INSURANCE_COVERAGE_RULE", "APPROVE_COVERAGE_RULE");
+        if (!roleHierarchyService.isAuthorizedToActOn(actor.getRole(), configuredRole)) {
+            throw new IllegalStateException("Your role " + actor.getRole()
+                    + " is not authorized to approve coverage rules routed to " + configuredRole + ".");
+        }
+    }
 
     public List<InsuranceCoverageRule> getAllRules() {
         return insuranceCoverageRuleRepository.findAll();
@@ -170,9 +196,9 @@ public class InsuranceCoverageRuleService {
      */
     @Transactional
     public InsuranceCoverageRule saveRule(InsuranceCoverageRule rule, String userId, String userRole) {
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("User identification is required to save Credit Policy coverage rules.");
-        }
+        User actor = requireActor();
+        final String effectiveUser = actor.getUsername();
+        final String effectiveRole = actor.getRole();
         if (rule.getRequiredCoveragePercentage() <= 0) {
             throw new IllegalArgumentException("Required coverage percentage must be greater than 0%.");
         }
@@ -183,7 +209,7 @@ public class InsuranceCoverageRuleService {
         if (isNew) {
             rule.setId("cov-rule-" + UUID.randomUUID().toString().substring(0, 8));
             rule.setCreatedAt(now);
-            rule.setMakerId(userId);
+            rule.setMakerId(effectiveUser);
             rule.setStatus("Pending Approval");
             rule.setCreditPolicyApproved(false);
             if (rule.getEffectiveFrom() == null || rule.getEffectiveFrom().isBlank()) {
@@ -204,7 +230,7 @@ public class InsuranceCoverageRuleService {
         rule.setUpdatedAt(now);
 
         InsuranceCoverageRule saved = insuranceCoverageRuleRepository.save(rule);
-        cimsService.logAudit(userId, userRole != null ? userRole : "MAKER", "SUBMIT_COVERAGE_RULE",
+        cimsService.logAudit(effectiveUser, effectiveRole, "SUBMIT_COVERAGE_RULE",
                 "InsuranceCoverageRule", saved.getId(), "Status", isNew ? "None" : "Active", "Pending Approval",
                 String.format("Submitted Credit Policy coverage rule: %s / %s (%.1f%%) for checker authorization.",
                         saved.getCollateralType(), saved.getBusinessSegment(), saved.getRequiredCoveragePercentage()));
@@ -213,26 +239,26 @@ public class InsuranceCoverageRuleService {
 
     @Transactional
     public InsuranceCoverageRule approveCoverageRule(String ruleId, String checkerId, String checkerRole) {
-        if (checkerId == null || checkerId.isBlank()) {
-            throw new IllegalArgumentException("Checker identification is required.");
-        }
+        User actor = requireActor();
+        assertConfiguredApprover(actor);
+        final String effectiveChecker = actor.getUsername();
         InsuranceCoverageRule rule = insuranceCoverageRuleRepository.findById(ruleId)
                 .orElseThrow(() -> new IllegalArgumentException("Coverage rule not found: " + ruleId));
 
-        if (checkerId.equalsIgnoreCase(rule.getMakerId())) {
+        if (effectiveChecker.equalsIgnoreCase(rule.getMakerId())) {
             throw new IllegalStateException("Dual Control Violation: Maker (" + rule.getMakerId() + ") cannot approve their own Credit Policy coverage rule.");
         }
 
         String now = LocalDateTime.now().toString();
         rule.setStatus("Active");
         rule.setCreditPolicyApproved(true);
-        rule.setCheckerId(checkerId);
-        rule.setApprovedBy(checkerId);
+        rule.setCheckerId(effectiveChecker);
+        rule.setApprovedBy(effectiveChecker);
         rule.setApprovedAt(now);
         rule.setUpdatedAt(now);
 
         InsuranceCoverageRule saved = insuranceCoverageRuleRepository.save(rule);
-        cimsService.logAudit(checkerId, checkerRole != null ? checkerRole : "CHECKER", "APPROVE_COVERAGE_RULE",
+        cimsService.logAudit(effectiveChecker, actor.getRole(), "APPROVE_COVERAGE_RULE",
                 "InsuranceCoverageRule", saved.getId(), "Status", "Pending Approval", "Active",
                 "Approved Credit Policy coverage rule: " + saved.getCollateralType() + " / " + saved.getBusinessSegment());
         return saved;
@@ -240,24 +266,24 @@ public class InsuranceCoverageRuleService {
 
     @Transactional
     public InsuranceCoverageRule rejectCoverageRule(String ruleId, String checkerId, String checkerRole, String reason) {
-        if (checkerId == null || checkerId.isBlank()) {
-            throw new IllegalArgumentException("Checker identification is required.");
-        }
+        User actor = requireActor();
+        assertConfiguredApprover(actor);
+        final String effectiveChecker = actor.getUsername();
         InsuranceCoverageRule rule = insuranceCoverageRuleRepository.findById(ruleId)
                 .orElseThrow(() -> new IllegalArgumentException("Coverage rule not found: " + ruleId));
 
-        if (checkerId.equalsIgnoreCase(rule.getMakerId())) {
+        if (effectiveChecker.equalsIgnoreCase(rule.getMakerId())) {
             throw new IllegalStateException("Dual Control Violation: Maker (" + rule.getMakerId() + ") cannot reject their own Credit Policy coverage rule.");
         }
 
         String now = LocalDateTime.now().toString();
         rule.setStatus("Rejected");
         rule.setCreditPolicyApproved(false);
-        rule.setCheckerId(checkerId);
+        rule.setCheckerId(effectiveChecker);
         rule.setUpdatedAt(now);
 
         InsuranceCoverageRule saved = insuranceCoverageRuleRepository.save(rule);
-        cimsService.logAudit(checkerId, checkerRole != null ? checkerRole : "CHECKER", "REJECT_COVERAGE_RULE",
+        cimsService.logAudit(effectiveChecker, actor.getRole(), "REJECT_COVERAGE_RULE",
                 "InsuranceCoverageRule", saved.getId(), "Status", "Pending Approval", "Rejected",
                 "Rejected Credit Policy coverage rule: " + (reason != null ? reason : "Rejected by checker"));
         return saved;
@@ -265,18 +291,21 @@ public class InsuranceCoverageRuleService {
 
     @Transactional
     public InsuranceCoverageRule toggleRuleStatus(String id, String userId, String userRole) {
+        User actor = requireActor();
+        final String effectiveUser = actor.getUsername();
         InsuranceCoverageRule rule = insuranceCoverageRuleRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Coverage rule not found: " + id));
 
         String oldStatus = rule.getStatus();
         String newStatus = "Active".equalsIgnoreCase(oldStatus) ? "Inactive" : "Active";
         if ("Active".equalsIgnoreCase(newStatus)) {
-            if (userId != null && userId.equalsIgnoreCase(rule.getMakerId())) {
+            assertConfiguredApprover(actor);
+            if (effectiveUser.equalsIgnoreCase(rule.getMakerId())) {
                 throw new IllegalStateException("Dual Control Violation: Maker cannot activate their own Credit Policy coverage rule.");
             }
             rule.setCreditPolicyApproved(true);
-            rule.setCheckerId(userId);
-            rule.setApprovedBy(userId);
+            rule.setCheckerId(effectiveUser);
+            rule.setApprovedBy(effectiveUser);
             rule.setApprovedAt(LocalDateTime.now().toString());
         } else {
             rule.setCreditPolicyApproved(false);
@@ -285,7 +314,7 @@ public class InsuranceCoverageRuleService {
         rule.setUpdatedAt(LocalDateTime.now().toString());
         InsuranceCoverageRule saved = insuranceCoverageRuleRepository.save(rule);
 
-        cimsService.logAudit(userId, userRole != null ? userRole : "SYSADMIN", "TOGGLE_RULE_STATUS",
+        cimsService.logAudit(effectiveUser, actor.getRole(), "TOGGLE_RULE_STATUS",
                 "InsuranceCoverageRule", saved.getId(), "Status", oldStatus, newStatus,
                 "Toggled coverage rule status to " + newStatus);
         return saved;

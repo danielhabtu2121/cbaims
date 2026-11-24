@@ -134,19 +134,18 @@ public class AdminConfigController {
     private WorkflowTaskRepository workflowTaskRepository;
 
     /**
-     * Resolves the acting user identity from header, param, or default persona.
-     * Unrestricted to allow seamless testing with the top persona dropdown.
+     * Resolves the acting administrator from the verified token identity only.
+     * Caller-supplied header/parameter values and default personas are never used.
      */
     private String resolveAndVerifyAdminUser(String headerUserId, String paramUserId) {
         if (httpRequest != null) {
             User authUser = (User) httpRequest.getAttribute("authenticatedUser");
-            if (authUser != null && authUser.getUsername() != null) {
+            if (authUser != null && authUser.isActive()
+                    && authUser.getUsername() != null && !authUser.getUsername().isBlank()) {
                 return authUser.getUsername();
             }
         }
-        String claimed = (headerUserId != null && !headerUserId.isBlank()) ? headerUserId.trim()
-                : (paramUserId != null && !paramUserId.isBlank() ? paramUserId.trim() : "sysadmin_user");
-        return claimed;
+        throw new AccessDeniedException("An authenticated system administrator is required for this configuration change.");
     }
 
     // --- Business Segments ---
@@ -205,6 +204,7 @@ public class AdminConfigController {
         m.put("branch", u.getBranch());
         m.put("segment", u.getSegment());
         m.put("active", u.isActive());
+        m.put("isAdmin", u.getRole() != null && (u.getRole().toUpperCase(Locale.ROOT).contains("SYSADMIN") || u.getRole().equalsIgnoreCase("ADMIN") || u.getRole().toUpperCase(Locale.ROOT).endsWith("_ADMIN")));
         if (u.getSegmentIds() != null && !u.getSegmentIds().isBlank()) {
             String raw = u.getSegmentIds().trim();
             if (raw.startsWith("[") && raw.endsWith("]")) {
@@ -593,15 +593,28 @@ public class AdminConfigController {
         if (rule.getDocumentType() == null || rule.getDocumentType().trim().isBlank()) {
             throw new IllegalArgumentException("Document type is mandatory for mandatory document rules.");
         }
-        // Duplicate check
+        // Blank / null segment means the rule applies to every business segment.
+        if (rule.getSegment() == null || rule.getSegment().trim().isBlank()) {
+            rule.setSegment("All Segments");
+        } else {
+            rule.setSegment(rule.getSegment().trim());
+            boolean allSegments = rule.getSegment().equalsIgnoreCase("All Segments");
+            boolean known = allSegments || businessSegmentRepository.findAll().stream()
+                    .anyMatch(s -> s.getName() != null && s.getName().equalsIgnoreCase(rule.getSegment()));
+            if (!known) {
+                throw new IllegalArgumentException("Unknown business segment '" + rule.getSegment() + "'. Select a configured segment or All Segments.");
+            }
+        }
+        // Duplicate check (same category + document type + sub-type + segment)
         mandatoryDocumentRuleRepository.findAll().stream()
                 .filter(r -> r.getCollateralCategory().trim().equalsIgnoreCase(rule.getCollateralCategory().trim())
                         && r.getDocumentType().trim().equalsIgnoreCase(rule.getDocumentType().trim())
-                        && java.util.Objects.equals(r.getCollateralType(), rule.getCollateralType()))
+                        && java.util.Objects.equals(r.getCollateralType(), rule.getCollateralType())
+                        && java.util.Objects.equals(normalizeRuleSegment(r.getSegment()), normalizeRuleSegment(rule.getSegment())))
                 .filter(r -> rule.getId() != null && !r.getId().equalsIgnoreCase(rule.getId()))
                 .findFirst()
                 .ifPresent(dup -> {
-                    throw new IllegalArgumentException("Mandatory document rule for category '" + rule.getCollateralCategory() + "' and document type '" + rule.getDocumentType() + "' already exists.");
+                    throw new IllegalArgumentException("Mandatory document rule for segment '" + rule.getSegment() + "', category '" + rule.getCollateralCategory() + "' and document type '" + rule.getDocumentType() + "' already exists.");
                 });
 
         if (rule.getId() == null || rule.getId().isBlank()) {
@@ -610,6 +623,43 @@ public class AdminConfigController {
         MandatoryDocumentRule saved = mandatoryDocumentRuleRepository.save(rule);
         cimsService.logAudit(actor, "SYSADMIN", "ADMIN_SAVE_DOCUMENT_RULE", "MandatoryDocumentRule", saved.getId(), "Rule", "Old", saved.getCollateralCategory(), "Saved mandatory doc rule");
         return ResponseEntity.ok(saved);
+    }
+
+    @DeleteMapping("/document-rules/{id}")
+    public ResponseEntity<Map<String, Object>> deleteDocumentRule(
+            @PathVariable String id,
+            @RequestHeader(value = "X-User-Id", required = false) String headerUserId,
+            @RequestParam(required = false) String adminUserId) {
+        String actor = resolveAndVerifyAdminUser(headerUserId, adminUserId);
+        mandatoryDocumentRuleRepository.findById(id).ifPresent(r -> {
+            mandatoryDocumentRuleRepository.deleteById(id);
+            cimsService.logAudit(actor, "SYSADMIN", "ADMIN_DELETE_DOCUMENT_RULE", "MandatoryDocumentRule", id, "Rule", r.getDocumentType(), null, "Deleted mandatory doc rule: " + r.getDocumentType());
+        });
+        return ResponseEntity.ok(Map.of("success", true, "message", "Document rule deleted successfully."));
+    }
+
+    @PostMapping("/document-rules/{id}/delete")
+    public ResponseEntity<Map<String, Object>> deleteDocumentRulePost(
+            @PathVariable String id,
+            @RequestHeader(value = "X-User-Id", required = false) String headerUserId,
+            @RequestParam(required = false) String adminUserId) {
+        return deleteDocumentRule(id, headerUserId, adminUserId);
+    }
+
+    @PostMapping("/document-rules/delete-all")
+    public ResponseEntity<Map<String, Object>> deleteAllDocumentRules(
+            @RequestHeader(value = "X-User-Id", required = false) String headerUserId,
+            @RequestParam(required = false) String adminUserId) {
+        String actor = resolveAndVerifyAdminUser(headerUserId, adminUserId);
+        long count = mandatoryDocumentRuleRepository.count();
+        mandatoryDocumentRuleRepository.deleteAll();
+        cimsService.logAudit(actor, "SYSADMIN", "ADMIN_DELETE_ALL_DOCUMENT_RULES", "MandatoryDocumentRule", "ALL", "Rule", String.valueOf(count), "0", "Deleted all mandatory doc rules (" + count + " rules)");
+        return ResponseEntity.ok(Map.of("success", true, "message", "All mandatory document rules removed successfully.", "count", count));
+    }
+
+    private String normalizeRuleSegment(String segment) {
+        if (segment == null || segment.isBlank()) return "all segments";
+        return segment.trim().toLowerCase();
     }
 
     @GetMapping("/escalation-rules")

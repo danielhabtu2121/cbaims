@@ -5,9 +5,6 @@ import com.bank.cims.model.*;
 import com.bank.cims.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
-import jakarta.servlet.http.HttpServletRequest;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -91,6 +88,9 @@ public class DashboardService {
     @org.springframework.context.annotation.Lazy
     private CimsService cimsService;
 
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter DISPLAY_DT_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm");
 
@@ -138,67 +138,25 @@ public class DashboardService {
     }
 
     /**
-     * Resolves the user's authorization scope strictly from authentication and organizational assignments.
-     * Permissive resolution ensures dropdown personas are authoritative and never fail with unauthenticated errors.
+     * Resolves the dashboard scope strictly from the authenticated database user.
+     * Client-supplied identity/header values are never used to widen scope.
      */
     public ResolvedScope resolveUserScope(String userId, String reqSegment, String reqDistrict, String reqBranch) {
-        String resolvedId = userId;
-        if (resolvedId == null || resolvedId.isBlank()) {
-            try {
-                ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-                if (attrs != null) {
-                    HttpServletRequest req = attrs.getRequest();
-                    String h = req.getHeader("X-User-Id");
-                    if (h != null && !h.isBlank()) resolvedId = h.trim();
-                    else {
-                        String p = req.getParameter("userId");
-                        if (p != null && !p.isBlank()) resolvedId = p.trim();
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-        final String effUserId = (resolvedId != null && !resolvedId.isBlank()) ? resolvedId.trim() : "brmgr_user";
-
-        User user = null;
-        if (userRepository != null) {
-            user = userRepository.findById(effUserId)
-                    .or(() -> userRepository.findByUsername(effUserId))
+        User user = authorizationScopeService.currentUser();
+        if (user == null && userId != null && !userId.isBlank()) {
+            String ref = userId.trim();
+            user = userRepository.findById(ref)
+                    .or(() -> userRepository.findByUsernameIgnoreCase(ref))
                     .orElse(null);
-
-            if (user == null) {
-                for (User u : userRepository.findAll()) {
-                    if (u.getUsername() != null && u.getUsername().equalsIgnoreCase(effUserId)) {
-                        user = u;
-                        break;
-                    }
-                    if (u.getId() != null && u.getId().equalsIgnoreCase(effUserId)) {
-                        user = u;
-                        break;
-                    }
-                }
-            }
         }
-
-        // SEC-01.D: Hardened resolution: operate only with authentic active users (no synthetic user creation or auto-reactivation)
         if (user == null) {
-            throw new org.springframework.security.access.AccessDeniedException("Access Denied: User account not recognized: " + effUserId);
+            throw new org.springframework.security.access.AccessDeniedException("Access Denied: authenticated user account not recognized.");
         }
-
         if (!user.isActive()) {
             throw new org.springframework.security.access.AccessDeniedException("Access Denied: User account is deactivated: " + user.getUsername());
         }
-        if (user.getBranch() == null || user.getBranch().isBlank()) {
-            user.setBranch("Bole Special Branch");
-        }
         if (user.getRole() == null || user.getRole().isBlank()) {
-            String uLower = effUserId.toLowerCase();
-            if (uLower.contains("sysadmin") || uLower.contains("admin")) user.setRole("SYSADMIN");
-            else if (uLower.contains("cro")) user.setRole("CRO");
-            else if (uLower.contains("bro")) user.setRole("BRO");
-            else if (uLower.contains("srm")) user.setRole("SRM");
-            else if (uLower.contains("distdir")) user.setRole("DISTDIR");
-            else if (uLower.contains("hodept")) user.setRole("HODEPT");
-            else user.setRole("BRMGR");
+            throw new org.springframework.security.access.AccessDeniedException("Access Denied: no role is configured for user " + user.getUsername());
         }
 
         ResolvedScope scope = new ResolvedScope();
@@ -274,10 +232,10 @@ public class DashboardService {
             case "HODEPT":
                 scope.scopeLevel = "SEGMENT";
                 scope.isBankWide = false;
-                scope.allowedSegments = userAssignedSegments.isEmpty() ? (user.getSegment() != null && !user.getSegment().isBlank() ? List.of(user.getSegment()) : (allSegments.isEmpty() ? List.of("Corporate Banking") : allSegments)) : userAssignedSegments;
-                if (scope.allowedSegments.isEmpty()) {
-                    scope.allowedSegments = List.of("Corporate Banking");
+                if (userAssignedSegments.isEmpty()) {
+                    throw new org.springframework.security.access.AccessDeniedException("Access Denied: no business segment is assigned to user " + user.getUsername());
                 }
+                scope.allowedSegments = userAssignedSegments;
                 if (reqSegment != null && !reqSegment.equalsIgnoreCase("ALL")) {
                     if (scope.allowedSegments.stream().anyMatch(s -> isSegmentMatch(s, reqSegment))) {
                         scope.effectiveSegment = reqSegment;
@@ -303,15 +261,16 @@ public class DashboardService {
                 break;
 
             case "DISTDIR":
-                if (user.getBranch() == null || user.getBranch().isBlank()) {
-                    user.setBranch("Bole Special Branch");
-                }
                 scope.scopeLevel = "DISTRICT";
                 scope.isBankWide = false;
                 scope.allowedSegments = userAssignedSegments.isEmpty() ? allSegments : userAssignedSegments;
                 scope.effectiveSegment = (reqSegment != null && !reqSegment.equalsIgnoreCase("ALL")) ? reqSegment : null;
                 String resolvedDist = resolveDistrictForBranch(user.getBranch());
-                final String assignedDistrict = (resolvedDist != null && !resolvedDist.isBlank()) ? resolvedDist : (!allDistrictNames.isEmpty() ? allDistrictNames.get(0) : "Central Addis District");
+                final String assignedDistrict = (user.getDistrict() != null && !user.getDistrict().isBlank())
+                        ? user.getDistrict() : resolvedDist;
+                if (assignedDistrict == null || assignedDistrict.isBlank()) {
+                    throw new org.springframework.security.access.AccessDeniedException("Access Denied: no district assignment is configured for user " + user.getUsername());
+                }
                 if (reqDistrict != null && !reqDistrict.equalsIgnoreCase("ALL") && !reqDistrict.equalsIgnoreCase(assignedDistrict)) {
                     throw new IllegalArgumentException("Access Denied: District Director is locked to district '" + assignedDistrict + "', cannot access district: " + reqDistrict);
                 }
@@ -341,7 +300,7 @@ public class DashboardService {
 
             case "BRMGR":
                 if (user.getBranch() == null || user.getBranch().isBlank()) {
-                    user.setBranch("Bole Special Branch");
+                    throw new org.springframework.security.access.AccessDeniedException("Access Denied: no branch assignment is configured for user " + user.getUsername());
                 }
                 if (reqBranch != null && !reqBranch.equalsIgnoreCase("ALL") && !reqBranch.equalsIgnoreCase(user.getBranch())) {
                     throw new IllegalArgumentException("Access Denied: Branch user is locked to branch '" + user.getBranch() + "', cannot access branch: " + reqBranch);
@@ -352,7 +311,8 @@ public class DashboardService {
                 scope.effectiveSegment = (reqSegment != null && !reqSegment.equalsIgnoreCase("ALL")) ? reqSegment : null;
                 scope.effectiveBranch = user.getBranch();
                 String brmgrDist = resolveDistrictForBranch(user.getBranch());
-                scope.effectiveDistrict = (brmgrDist != null && !brmgrDist.isBlank()) ? brmgrDist : (!allDistrictNames.isEmpty() ? allDistrictNames.get(0) : "Central Addis District");
+                scope.effectiveDistrict = (brmgrDist != null && !brmgrDist.isBlank())
+                        ? brmgrDist : user.getDistrict();
                 scope.lockedSegment = false;
                 scope.lockedDistrict = true;
                 scope.lockedBranch = true;
@@ -374,7 +334,7 @@ public class DashboardService {
             case "CRO":
             case "BRO":
                 if (user.getBranch() == null || user.getBranch().isBlank()) {
-                    user.setBranch("Bole Special Branch");
+                    throw new org.springframework.security.access.AccessDeniedException("Access Denied: no branch assignment is configured for user " + user.getUsername());
                 }
                 if (reqBranch != null && !reqBranch.equalsIgnoreCase("ALL") && !reqBranch.equalsIgnoreCase(user.getBranch())) {
                     throw new IllegalArgumentException("Access Denied: Relationship officer is locked to branch '" + user.getBranch() + "', cannot access branch: " + reqBranch);
@@ -385,7 +345,7 @@ public class DashboardService {
                 scope.effectiveSegment = (reqSegment != null && !reqSegment.equalsIgnoreCase("ALL")) ? reqSegment : null;
                 scope.effectiveBranch = user.getBranch();
                 String rmDist = resolveDistrictForBranch(user.getBranch());
-                scope.effectiveDistrict = (rmDist != null && !rmDist.isBlank()) ? rmDist : (!allDistrictNames.isEmpty() ? allDistrictNames.get(0) : "Central Addis District");
+                scope.effectiveDistrict = (rmDist != null && !rmDist.isBlank()) ? rmDist : user.getDistrict();
                 scope.portfolioOwner = user.getFullName() != null ? user.getFullName() : user.getUsername();
                 scope.lockedSegment = false;
                 scope.lockedDistrict = true;
@@ -416,9 +376,11 @@ public class DashboardService {
                 auth.setBankWide(isHo);
                 auth.setAllowedSegments(allSegments);
                 String defDist = resolveDistrictForBranch(user.getBranch());
-                String safeDist = (defDist != null && !defDist.isBlank()) ? defDist : (!allDistrictNames.isEmpty() ? allDistrictNames.get(0) : "Central Addis District");
-                auth.setAllowedDistricts(isHo ? allDistrictNames : List.of(safeDist));
-                auth.setAllowedBranches(isHo ? allBranchNames : List.of(user.getBranch()));
+                String safeDist = (defDist != null && !defDist.isBlank()) ? defDist : user.getDistrict();
+                auth.setAllowedDistricts(isHo ? allDistrictNames
+                        : (safeDist == null ? Collections.emptyList() : List.of(safeDist)));
+                auth.setAllowedBranches(isHo ? allBranchNames
+                        : (user.getBranch() == null ? Collections.emptyList() : List.of(user.getBranch())));
                 auth.setPermittedDrillLevels(Set.of("BANK", "SEGMENT", "DISTRICT", "AREA", "BRANCH", "CUSTOMER", "FACILITY", "COLLATERAL", "POLICY"));
                 break;
         }
@@ -1081,8 +1043,8 @@ public class DashboardService {
 
         List<MandatoryDocumentRule> allRules = mandatoryDocumentRuleRepository.findAll();
         for (Collateral c : ds.collaterals) {
-            List<MandatoryDocumentRule> rules = allRules.stream()
-                    .filter(r -> validationService.isMandatoryDocumentRuleApplicable(r, c))
+            List<MandatoryDocumentRule> rules = validationService.resolveApplicableDocumentRules(c, allRules).stream()
+                    .filter(MandatoryDocumentRule::isMandatory)
                     .toList();
             List<OwnershipDocument> colDocs = ds.documentsByCollateralId.getOrDefault(c.getId(), Collections.emptyList());
             if (rules.isEmpty()) {
@@ -1701,8 +1663,8 @@ public class DashboardService {
 
         List<MandatoryDocumentRule> allRulesForChart = mandatoryDocumentRuleRepository.findAll();
         for (Collateral c : ds.collaterals) {
-            List<MandatoryDocumentRule> rules = allRulesForChart.stream()
-                    .filter(r -> validationService.isMandatoryDocumentRuleApplicable(r, c))
+            List<MandatoryDocumentRule> rules = validationService.resolveApplicableDocumentRules(c, allRulesForChart).stream()
+                    .filter(MandatoryDocumentRule::isMandatory)
                     .toList();
             List<OwnershipDocument> colDocs = ds.documentsByCollateralId.getOrDefault(c.getId(), Collections.emptyList());
             if (rules.isEmpty()) {

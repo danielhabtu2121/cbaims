@@ -2,6 +2,7 @@ package com.bank.cims.controller;
 
 import com.bank.cims.model.*;
 import com.bank.cims.repository.*;
+import com.bank.cims.service.AuthorizationScopeService;
 import com.bank.cims.service.CbsSyncService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +34,18 @@ public class CbsSimController {
 
     @Autowired
     private CbsSyncService cbsSyncService;
+
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
+    private String currentActorUsername() {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive()
+                || actor.getUsername() == null || actor.getUsername().isBlank()) {
+            throw new IllegalArgumentException("Authentication required: a valid signed-in user could not be identified.");
+        }
+        return actor.getUsername();
+    }
 
     // --- CBS Customers ---
     @GetMapping("/cbs-sim/customers")
@@ -241,7 +254,8 @@ public class CbsSimController {
     public ResponseEntity<?> syncEntity(
             @PathVariable String entityType,
             @PathVariable String id,
-            @RequestParam(defaultValue = "SYSADMIN") String userId) {
+            @RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
 
         try {
             if ("Customer".equalsIgnoreCase(entityType)) {
@@ -258,7 +272,8 @@ public class CbsSimController {
     }
 
     @PostMapping("/cbs-integration/sync-all")
-    public ResponseEntity<?> syncAll(@RequestParam(defaultValue = "SYSADMIN") String userId) {
+    public ResponseEntity<?> syncAll(@RequestParam(required = false) String userId) {
+        userId = currentActorUsername();
         try {
             return ResponseEntity.ok(cbsSyncService.syncAllFromCbs(userId));
         } catch (Exception e) {

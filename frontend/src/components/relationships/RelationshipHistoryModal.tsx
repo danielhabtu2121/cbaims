@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useEffect, useState } from 'react';
 import { cimsApi } from '../../api/cimsApi';
 import { LoanCollateralLinkHistoryDto } from '../../types';
@@ -160,11 +161,11 @@ export const RelationshipHistoryModal: React.FC<RelationshipHistoryModalProps> =
                         <div className="text-slate-500 dark:text-slate-400 font-medium mb-1">Allocated Amount</div>
                         <div className="flex items-center gap-2">
                           <span className="text-slate-500 line-through">
-                            ETB {Number(record.previousAllocatedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(Number(record.previousAllocatedAmount || 0))}
                           </span>
                           <span className="text-slate-400">→</span>
                           <span className="font-bold text-slate-900 dark:text-white">
-                            ETB {Number(record.newAllocatedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(Number(record.newAllocatedAmount || 0))}
                           </span>
                         </div>
                       </div>

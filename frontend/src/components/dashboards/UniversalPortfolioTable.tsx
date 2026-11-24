@@ -1,4 +1,6 @@
+import { formatEtb } from '../../utils/format';
 import React, { useState, useMemo } from 'react';
+
 import {
   Search,
   ArrowUpDown,
@@ -11,6 +13,7 @@ import {
   Eye,
   SlidersHorizontal,
 } from 'lucide-react';
+
 import { DashboardPortfolioRow } from '../../types';
 
 interface UniversalPortfolioTableProps {
@@ -84,10 +87,7 @@ export const UniversalPortfolioTable: React.FC<UniversalPortfolioTableProps> = (
     }
   };
 
-  const formatCurrency = (amount?: number) => {
-    if (amount === undefined || amount === null) return '0.00';
-    return new Intl.NumberFormat('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
-  };
+  const formatCurrency = (amount?: number) => formatEtb(amount);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden mt-6">

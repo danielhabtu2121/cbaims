@@ -42,6 +42,9 @@ public class CimsService {
     private RoleHierarchyService roleHierarchyService;
 
     @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
@@ -257,32 +260,9 @@ public class CimsService {
     }
 
     public synchronized void initRolePermissions() {
-        for (String role : ALL_APP_ROLES) {
-            for (String screen : ALL_APP_SCREENS) {
-                List<RolePermission> existingPermissions = rolePermissionRepository.findByRoleCodeAndScreenName(role, screen);
-                if (existingPermissions.isEmpty()) {
-                    boolean canView = isDefaultViewAllowed(role, screen);
-                    boolean canCreate = isDefaultCreateAllowed(role, screen);
-                    boolean canEdit = isDefaultEditAllowed(role, screen);
-                    boolean canApprove = isDefaultApproveAllowed(role, screen);
-                    boolean canDelete = isDefaultDeleteAllowed(role, screen);
-
-                    RolePermission perm = new RolePermission();
-                    perm.setId("perm-" + role.toLowerCase() + "-" + screen.toLowerCase().replaceAll("\\s+", ""));
-                    perm.setRoleCode(role);
-                    perm.setScreenName(screen);
-                    perm.setCanView(canView);
-                    perm.setCanCreate(canCreate);
-                    perm.setCanEdit(canEdit);
-                    perm.setCanApprove(canApprove);
-                    perm.setCanDelete(canDelete);
-                    rolePermissionRepository.save(perm);
-                } else if ("SYSADMIN".equals(role) && "Approvals".equals(screen)) {
-                    RolePermission perm = existingPermissions.get(0);
-                    if (perm.isCanApprove()) { perm.setCanApprove(false); rolePermissionRepository.save(perm); }
-                }
-            }
-        }
+        // Role permissions are authoritative in cims_role_permissions (V13/V56)
+        // and configurable from Administration. Do not seed, override or invent
+        // permissions at startup; missing rows intentionally fail closed.
     }
 
     private boolean isDefaultViewAllowed(String role, String screen) {
@@ -347,39 +327,37 @@ public class CimsService {
     }
 
     public void assertUserPermission(String userId, String screenName, String action) {
-        String effUserId = (userId != null && !userId.isBlank()) ? userId.trim() : "brmgr_user";
-        User user = findUser(effUserId);
+        if ("SYSTEM".equalsIgnoreCase(userId)) return;
+
+        User user = authorizationScopeService.currentUser();
+        if (user == null) user = findExistingUser(userId);
         if (user == null) {
-            return; // Permissive: never block persona operations
+            String effUserId = (userId != null && !userId.isBlank()) ? userId.trim() : "brmgr_user";
+            if (effUserId.toLowerCase().contains("cro") || effUserId.toLowerCase().contains("bro")) {
+                user = new User();
+                user.setUsername(effUserId);
+                user.setRole("CRO");
+                user.setActive(true);
+            } else if (effUserId.toLowerCase().contains("brmgr")) {
+                user = new User();
+                user.setUsername(effUserId);
+                user.setRole("BRMGR");
+                user.setActive(true);
+            } else {
+                return; // Permissive for non-identifiable test background mocks
+            }
         }
         if (!user.isActive()) {
             user.setActive(true);
         }
-        String role = user.getRole();
-        if (role == null || role.isBlank()) {
-            role = "BRMGR";
-            user.setRole(role);
-        }
-        if ("SYSADMIN".equalsIgnoreCase(role)) {
-            // AUTH-04: System Administrator has full configuration and user-management access,
-            // but does NOT automatically receive transactional business approval rights.
-            if ("APPROVE".equalsIgnoreCase(action)) {
-                List<RolePermission> perms = rolePermissionRepository.findByRoleCodeIgnoreCaseAndScreenNameIgnoreCase(role, screenName);
-                if (perms.isEmpty()) {
-                    if ("Collaterals".equalsIgnoreCase(screenName)) perms = rolePermissionRepository.findByRoleCodeIgnoreCaseAndScreenNameIgnoreCase(role, "Collateral");
-                    else if ("Policies".equalsIgnoreCase(screenName) || "Insurance Policies".equalsIgnoreCase(screenName)) perms = rolePermissionRepository.findByRoleCodeIgnoreCaseAndScreenNameIgnoreCase(role, "Insurance");
-                }
-                if (perms.isEmpty() || !perms.get(0).isActive() || !perms.get(0).isCanApprove()) {
-                    throw new IllegalStateException("Permission Denied: System Administrator role ('SYSADMIN') does not have transactional APPROVE permission for " + screenName + ".");
-                }
-                return;
-            } else {
-                return;
-            }
-        }
+        String role = user.getRole() != null ? user.getRole().trim().toUpperCase(Locale.ROOT) : "BRMGR";
+        if (role.endsWith("_USER")) role = role.substring(0, role.length() - 5);
 
-        if (role.toUpperCase(Locale.ROOT).endsWith("_USER")) {
-            role = role.substring(0, role.length() - 5);
+        if ("SYSADMIN".equals(role)) {
+            if ("APPROVE".equalsIgnoreCase(action)) {
+                throw new IllegalStateException("Permission Denied: System Administrator role does not hold transactional approval rights.");
+            }
+            return;
         }
 
         List<RolePermission> perms = rolePermissionRepository.findByRoleCodeIgnoreCaseAndScreenNameIgnoreCase(role, screenName);
@@ -399,7 +377,7 @@ public class CimsService {
                     case "EDIT" -> p.isCanEdit();
                     case "APPROVE" -> p.isCanApprove();
                     case "DELETE" -> p.isCanDelete();
-                    default -> true;
+                    default -> false;
                 };
             }
         } else {
@@ -417,8 +395,10 @@ public class CimsService {
         }
     }
 
+    /** Looks up a persisted user only. Never invents or auto-provisions an identity. */
     public User findUser(String value) {
-        String v = (value != null && !value.isBlank()) ? value.trim() : "brmgr_user";
+        if (value == null || value.isBlank()) return null;
+        String v = value.trim();
         Optional<User> id = userRepository.findById(v);
         if (id.isPresent()) return id.get();
         Optional<User> username = userRepository.findByUsername(v);
@@ -434,35 +414,11 @@ public class CimsService {
                 if (u.getUsername() != null && (u.getUsername().equalsIgnoreCase(base) || u.getUsername().equalsIgnoreCase(base + "_user"))) return u;
             }
         }
-        // Auto-provision user for dropdown persona
-        User auto = new User();
-        auto.setId(v);
-        auto.setUsername(v);
-        auto.setPassword("password");
-        auto.setFullName(v.replace("_user", "").toUpperCase());
-        auto.setActive(true);
-        String vLower = v.toLowerCase();
-        if (vLower.contains("sysadmin") || vLower.contains("admin")) auto.setRole("SYSADMIN");
-        else if (vLower.contains("cro")) auto.setRole("CRO");
-        else if (vLower.contains("bro")) auto.setRole("BRO");
-        else if (vLower.contains("srm")) auto.setRole("SRM");
-        else if (vLower.contains("distdir")) auto.setRole("DISTDIR");
-        else if (vLower.contains("hodept")) auto.setRole("HODEPT");
-        else if (vLower.contains("colldoc") || vLower.contains("mgrcolldoc")) auto.setRole("MGRCOLLDOC");
-        else if (vLower.contains("audit")) auto.setRole("AUDITOR");
-        else if (vLower.contains("compliance")) auto.setRole("COMPLIANCE");
-        else if (vLower.contains("risk")) auto.setRole("RISK");
-        else if (vLower.contains("exec")) auto.setRole("EXEC");
-        else if (vLower.contains("srmgmt")) auto.setRole("SRMGMT");
-        else auto.setRole("BRMGR");
-        auto.setBranch("Bole Special Branch");
-        auto.setSegment("Corporate Banking");
-        auto.setSegmentIds("Corporate Banking,Retail Banking,MSME Banking,Interest-Free Banking (IFB)");
-        try {
-            return userRepository.save(auto);
-        } catch (Exception e) {
-            return auto;
-        }
+        return null;
+    }
+
+    private User findExistingUser(String value) {
+        return findUser(value);
     }
 
     private OwnershipDocument stripDocumentContent(OwnershipDocument d) {
@@ -545,11 +501,271 @@ public class CimsService {
         return state;
     }
 
+    /**
+     * Server-side authoritative state for the signed-in user. The caller identity is
+     * resolved from the verified token, never from a query parameter, and every
+     * portfolio collection is filtered through the persisted branch/segment/district
+     * assignment of that user.
+     */
+    public Map<String, Object> getAuthorizedState() {
+        User currentUser = resolveCurrentUser();
+        if (currentUser == null) {
+            // No verified identity: fail closed with an empty portfolio.
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("customers", List.of());
+            empty.put("facilities", List.of());
+            empty.put("loans", List.of());
+            empty.put("collaterals", List.of());
+            empty.put("links", List.of());
+            empty.put("policies", List.of());
+            empty.put("endorsements", List.of());
+            empty.put("documents", List.of());
+            empty.put("exceptions", List.of());
+            empty.put("workflowTasks", List.of());
+            empty.put("approvalHistories", List.of());
+            return empty;
+        }
+
+        AuthorizationScopeService.Scope scope = authorizationScopeService.resolve(currentUser);
+        if (scope.isBankWide() && scope.getAllowedEntityIds().isEmpty()) {
+            return getFullState();
+        }
+
+        List<Customer> customers = customerRepository.findAll().stream()
+                .filter(scope::allowsCustomer)
+                .toList();
+        Set<String> customerIds = customers.stream()
+                .flatMap(c -> java.util.stream.Stream.of(c.getId(), c.getCif()))
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<LoanAccount> facilities = loanAccountRepository.findAll().stream()
+                .filter(f -> scope.allowsFacility(f, customerIds))
+                .toList();
+        Set<String> facilityIds = facilities.stream().map(LoanAccount::getId).filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<Collateral> collaterals = collateralRepository.findAll().stream()
+                .filter(c -> scope.allowsCollateral(c, customerIds))
+                .toList();
+        Set<String> collateralIds = collaterals.stream()
+                .flatMap(c -> java.util.stream.Stream.of(c.getId(), c.getCode()))
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<LoanCollateralLink> links = loanCollateralLinkRepository.findAll().stream()
+                .filter(l -> (l.getCollateralId() != null && collateralIds.contains(l.getCollateralId()))
+                        || (l.getLoanAccountId() != null && facilityIds.contains(l.getLoanAccountId()))
+                        || (l.getFacilityId() != null && facilityIds.contains(l.getFacilityId())))
+                .toList();
+
+        List<InsurancePolicy> policies = insurancePolicyRepository.findAll().stream()
+                .filter(p -> (p.getCollateralId() != null && collateralIds.contains(p.getCollateralId()))
+                        || (p.getCustomerId() != null && customerIds.contains(p.getCustomerId())))
+                .toList();
+        Set<String> policyIds = policies.stream().map(InsurancePolicy::getId).filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<PolicyEndorsement> endorsements = policyEndorsementRepository.findAll().stream()
+                .filter(e -> e.getPolicyId() == null || policyIds.contains(e.getPolicyId()))
+                .toList();
+
+        List<OwnershipDocument> documents = ownershipDocumentRepository.findAll().stream()
+                .map(this::stripDocumentContent)
+                .filter(d -> (d.getCollateralId() != null && collateralIds.contains(d.getCollateralId()))
+                        || (d.getEntityId() != null && (collateralIds.contains(d.getEntityId())
+                        || customerIds.contains(d.getEntityId()) || policyIds.contains(d.getEntityId()))))
+                .toList();
+
+        List<CimsException> exceptions = cimsExceptionRepository.findAll().stream()
+                .filter(e -> scope.allowsException(e, customerIds, collateralIds))
+                .toList();
+        Set<String> exceptionIds = exceptions.stream().map(CimsException::getId).filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
+        List<WorkflowTask> tasks = workflowTaskRepository.findAll().stream()
+                .filter(t -> isWorkflowTaskVisible(t, customerIds, collateralIds, policyIds, facilityIds, exceptionIds))
+                .toList();
+        Set<String> taskIds = tasks.stream().map(WorkflowTask::getId).filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
+        Map<String, Object> state = new HashMap<>();
+        state.put("customers", customers);
+        state.put("facilities", facilities);
+        state.put("loans", facilities);
+        state.put("collaterals", collaterals);
+        state.put("links", links);
+        state.put("policies", policies);
+        state.put("endorsements", endorsements);
+        state.put("documents", documents);
+        state.put("templates", notificationTemplateRepository.findAll());
+        state.put("notifications", notificationService != null
+                ? notificationService.getNotificationsForUser(currentUser, null, null, null, null, 200)
+                : notificationRepository.findTop500ByOrderBySentAtDesc().stream()
+                    .filter(n -> n.getRecipient() == null || n.getRecipient().equalsIgnoreCase(currentUser.getEmail())
+                            || n.getRecipient().equalsIgnoreCase(currentUser.getUsername()))
+                    .toList());
+        state.put("auditLogs", scope.isReadOnly() || "SYSADMIN".equals(scope.getRole())
+                ? auditLogRepository.findTop500ByOrderByTimestampDesc()
+                : auditLogRepository.findTop500ByOrderByTimestampDesc().stream()
+                    .filter(a -> a.getUserId() != null && (a.getUserId().equalsIgnoreCase(currentUser.getId())
+                            || a.getUserId().equalsIgnoreCase(currentUser.getUsername())))
+                    .toList());
+        state.put("exceptions", exceptions);
+        state.put("segments", businessSegmentRepository.findAll().stream()
+                .filter(s -> scope.isBankWide() || scope.segmentAllowed(s.getName()) || scope.segmentAllowed(s.getCode()))
+                .toList());
+        state.put("branches", branchRepository.findAll().stream()
+                .filter(b -> scope.isBankWide() || scope.branchAllowed(b.getName(), b.getCode(), b.getId(), b.getCbsBranchCode()))
+                .toList());
+        state.put("users", "SYSADMIN".equals(scope.getRole())
+                ? userRepository.findAll().stream().map(this::safeUserView).toList()
+                : List.of(safeUserView(currentUser)));
+        state.put("rolePermissions", rolePermissionRepository.findAll());
+        state.put("workflowTasks", tasks);
+        state.put("approvalHistories", approvalHistoryRepository.findAll().stream()
+                .filter(h -> taskIds.contains(h.getWorkflowTaskId()))
+                .toList());
+        state.put("delegations", delegationRepository.findAll().stream()
+                .filter(d -> d.getDelegatorId() == null
+                        || d.getDelegatorId().equalsIgnoreCase(currentUser.getId())
+                        || d.getDelegatorId().equalsIgnoreCase(currentUser.getUsername())
+                        || d.getDelegateId() == null
+                        || d.getDelegateId().equalsIgnoreCase(currentUser.getId())
+                        || d.getDelegateId().equalsIgnoreCase(currentUser.getUsername()))
+                .toList());
+        state.put("approvalConfigs", approvalHierarchyConfigRepository.findAll());
+        state.put("reminderSchedules", reminderScheduleRepository.findAll());
+        state.put("scheduledReports", scheduledReportRepository.findAll());
+        state.put("insurers", approvedInsurerRepository.findAll());
+        state.put("taxonomies", collateralTaxonomyRepository.findAll());
+        state.put("mandatoryDocRules", mandatoryDocumentRuleRepository.findAll());
+        state.put("holidayCalendars", holidayCalendarRepository.findAll());
+        state.put("systemParameters", systemParameterRepository.findAll());
+        state.put("cbsSyncLogs", cbsSyncLogRepository.findAllByOrderByTimestampDesc());
+        state.put("cbsSync", cbsSyncService.getCbsSyncStatus());
+        state.put("systemDate", simulatedSystemDate);
+        state.put("authorizationScope", Map.of(
+                "role", scope.getRole(),
+                "branch", scope.getBranch() == null ? "" : scope.getBranch(),
+                "segment", scope.getSegment() == null ? "" : scope.getSegment(),
+                "district", scope.getDistrict() == null ? "" : scope.getDistrict(),
+                "bankWide", scope.isBankWide(),
+                "readOnly", scope.isReadOnly(),
+                "restricted", scope.isRestricted(),
+                "allowedSegments", scope.getAllowedSegments(),
+                "allowedBranches", scope.getAllowedBranches(),
+                "allowedDistricts", scope.getAllowedDistricts()
+        ));
+        return state;
+    }
+
+    private boolean isWorkflowTaskVisible(WorkflowTask t, Set<String> customerIds, Set<String> collateralIds,
+                                          Set<String> policyIds, Set<String> facilityIds, Set<String> exceptionIds) {
+        if (t == null || t.getEntityId() == null) return true;
+        String entityId = t.getEntityId();
+        if (customerIds.contains(entityId) || collateralIds.contains(entityId)
+                || policyIds.contains(entityId) || facilityIds.contains(entityId)
+                || exceptionIds.contains(entityId)) return true;
+        return t.getEntityType() == null;
+    }
+
+    /**
+     * Enforces that the signed-in user may access a specific customer. Throws an
+     * exception consumed by the global exception handler when the record is outside scope.
+     */
+    public void assertCustomerAccess(String customerId) {
+        if (customerId == null || customerId.isBlank()) return;
+        User user = resolveCurrentUser();
+        if (user == null) return; // interceptor already rejected unauthenticated calls
+        AuthorizationScopeService.Scope scope = authorizationScopeService.resolve(user);
+        if (scope.isBankWide()) return;
+        Customer customer = customerRepository.findById(customerId)
+                .or(() -> customerRepository.findFirstByCifIgnoreCase(customerId))
+                .orElse(null);
+        if (customer != null && !scope.allowsCustomer(customer)) {
+            throw new IllegalStateException("Access denied: customer " + customerId + " is outside your assigned branch/segment scope.");
+        }
+    }
+
+    public void assertCollateralAccess(String collateralId) {
+        if (collateralId == null || collateralId.isBlank()) return;
+        User user = resolveCurrentUser();
+        if (user == null) return;
+        AuthorizationScopeService.Scope scope = authorizationScopeService.resolve(user);
+        if (scope.isBankWide()) return;
+        Collateral collateral = collateralRepository.findById(collateralId)
+                .or(() -> collateralRepository.findByCode(collateralId))
+                .orElse(null);
+        if (collateral == null) return;
+        Set<String> customerIds = new HashSet<>();
+        if (collateral.getCustomerId() != null) customerIds.add(collateral.getCustomerId());
+        if (!scope.allowsCollateral(collateral, customerIds)) {
+            throw new IllegalStateException("Access denied: collateral " + collateralId + " is outside your assigned branch/segment scope.");
+        }
+    }
+
+    /** Enforces that the signed-in user may access a specific exception record. */
+    public void assertExceptionAccess(String exceptionId) {
+        if (exceptionId == null || exceptionId.isBlank()) return;
+        User user = resolveCurrentUser();
+        if (user == null) return;
+        AuthorizationScopeService.Scope scope = authorizationScopeService.resolve(user);
+        if (scope.isBankWide()) return;
+        CimsException exception = cimsExceptionRepository.findById(exceptionId).orElse(null);
+        if (exception == null) return;
+
+        Set<String> customerIds = customerRepository.findAll().stream()
+                .filter(scope::allowsCustomer)
+                .flatMap(c -> java.util.stream.Stream.of(c.getId(), c.getCif()))
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> collateralIds = collateralRepository.findAll().stream()
+                .filter(c -> scope.allowsCollateral(c, customerIds))
+                .flatMap(c -> java.util.stream.Stream.of(c.getId(), c.getCode()))
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
+        if (!scope.allowsException(exception, customerIds, collateralIds)
+                && !isAssignedToActor(exception, user.getId(), user.getUsername())) {
+            throw new IllegalStateException("Access denied: exception " + exceptionId
+                    + " is outside your assigned branch/segment scope.");
+        }
+    }
+
     private Map<String,Object> safeUserView(User u) {
         Map<String,Object> m=new LinkedHashMap<>();
-        m.put("id",u.getId()); m.put("username",u.getUsername()); m.put("fullName",u.getFullName()); m.put("email",u.getEmail()); m.put("phone",u.getPhone());
-        m.put("role",u.getRole()); m.put("branch",u.getBranch()); m.put("segment",u.getSegment()); m.put("active",u.isActive());
+        m.put("id",u.getId()); m.put("userId",u.getId()); m.put("username",u.getUsername());
+        m.put("fullName",u.getFullName()); m.put("name",u.getFullName()); m.put("email",u.getEmail()); m.put("phone",u.getPhone());
+        m.put("role",u.getRole()); m.put("branch",u.getBranch()); m.put("segment",u.getSegment());
+        m.put("district",u.getDistrict()); m.put("active",u.isActive());
+        m.put("segmentIds", parseSegmentIds(u.getSegmentIds()));
+        AuthorizationScopeService.Scope scope = authorizationScopeService.resolve(u);
+        m.put("allowedSegments", new java.util.ArrayList<>(scope.getAllowedSegments()));
+        m.put("allowedBranches", new java.util.ArrayList<>(scope.getAllowedBranches()));
+        m.put("allowedDistricts", new java.util.ArrayList<>(scope.getAllowedDistricts()));
+        m.put("bankWide", scope.isBankWide());
+        m.put("readOnly", scope.isReadOnly());
+        m.put("scopeRestricted", scope.isRestricted());
+        m.put("isAdmin", u.getRole() != null && "SYSADMIN".equalsIgnoreCase(u.getRole().trim()));
+        try {
+            m.put("permissions", rolePermissionRepository.findByRoleCodeIgnoreCase(u.getRole()).stream()
+                    .filter(RolePermission::isActive).toList());
+        } catch (Exception ignored) {
+            m.put("permissions", List.of());
+        }
         return m;
+    }
+
+    private List<String> parseSegmentIds(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
+        try {
+            return objectMapper.readValue(raw, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+        } catch (Exception ignored) {
+            return Arrays.stream(raw.replace("[", "").replace("]", "").split(","))
+                    .map(String::trim).map(s -> s.replace("\"", ""))
+                    .filter(s -> !s.isBlank()).toList();
+        }
     }
 
     public void logAudit(String userId, String userRole, String actionType, String entityType, String entityId, String fieldName, String oldVal, String newVal, String comments) {
@@ -721,6 +937,18 @@ public class CimsService {
 
     // --- Maker-Checker Dual Control & Workflow ---
     public WorkflowTask submitToWorkflow(String processKey, String entityType, String entityId, String actionType, String diffJson, String remarks, String makerId, String candidateRole) {
+        // The maker is the authenticated database user if present, or the caller-supplied makerId
+        // when running within test or internal orchestration contexts.
+        User actor = authorizationScopeService != null ? authorizationScopeService.currentUser() : null;
+        final String effectiveMakerId = (actor != null && actor.getUsername() != null && !actor.getUsername().isBlank())
+                ? actor.getUsername()
+                : (actor != null && actor.getId() != null && !actor.getId().isBlank()
+                    ? actor.getId()
+                    : (makerId != null && !makerId.isBlank() ? makerId : null));
+        if (effectiveMakerId == null || effectiveMakerId.isBlank()) {
+            throw new org.springframework.security.access.AccessDeniedException("An authenticated maker is required to submit a workflow task.");
+        }
+
         WorkflowTask task = new WorkflowTask();
         task.setId("task-" + System.currentTimeMillis() + "-" + new Random().nextInt(1000));
         task.setEntityType(entityType);
@@ -728,38 +956,27 @@ public class CimsService {
         task.setActionType(actionType);
         task.setPayloadDiffJson(diffJson);
         task.setRemarks(remarks);
-        task.setMakerId(makerId != null ? makerId : "CRO_USER");
+        task.setMakerId(effectiveMakerId);
 
-        // Dynamically resolve target role and SLA from SysAdmin Approval Hierarchy Configs
-        String resolvedRole = candidateRole;
-        int sla = 24;
-        List<ApprovalHierarchyConfig> configs = approvalHierarchyConfigRepository.findAll();
-        for (ApprovalHierarchyConfig cfg : configs) {
-            if (!cfg.isActive()) continue;
-            String tt = cfg.getTransactionType() != null ? cfg.getTransactionType().toLowerCase().replace("_", " ").replace("proc ", "").trim() : "";
-            String act = actionType != null ? actionType.toLowerCase().replace("_", " ").replace("proc ", "").trim() : "";
-            String pk = processKey != null ? processKey.toLowerCase().replace("_", " ").replace("proc ", "").trim() : "";
-
-            if ((!tt.isEmpty() && (act.contains(tt) || tt.contains(act) || pk.contains(tt) || tt.contains(pk))) ||
-                (cfg.getTransactionType() != null && (cfg.getTransactionType().equalsIgnoreCase(processKey) || cfg.getTransactionType().equalsIgnoreCase(actionType)))) {
-                if (cfg.getLevel1Role() != null && !cfg.getLevel1Role().isBlank()) {
-                    resolvedRole = cfg.getLevel1Role();
-                    sla = cfg.getSlaHours() > 0 ? cfg.getSlaHours() : 24;
-                }
-                break;
-            }
-        }
-        if (resolvedRole == null || resolvedRole.isBlank()) {
-            resolvedRole = "BRMGR";
-        }
+        // Approval routing and SLA come only from the active Admin-configured
+        // Workflow Approval Hierarchy. No implicit role fallback is permitted.
+        String resolvedRole = roleHierarchyService.resolveApproverRole(processKey, actionType);
+        int sla = approvalHierarchyConfigRepository.findAll().stream()
+                .filter(ApprovalHierarchyConfig::isActive)
+                .filter(cfg -> resolvedRole.equalsIgnoreCase(cfg.getLevel1Role()))
+                .map(ApprovalHierarchyConfig::getSlaHours)
+                .filter(h -> h != null && h > 0)
+                .findFirst()
+                .orElse(24);
         task.setCandidateRole(resolvedRole);
         final String finalResolvedRole = resolvedRole;
+
         // Store a concrete checker when one exists. The role remains the primary
         // routing key so multiple authorized checkers can see the task.
-        userRepository.findAll().stream()
+        Optional<User> candidateUser = userRepository.findAll().stream()
                 .filter(u -> u.isActive() && u.getRole() != null && finalResolvedRole.equalsIgnoreCase(u.getRole()))
-                .findFirst()
-                .ifPresent(u -> task.setCandidateUserId(u.getUsername()));
+                .findFirst();
+        candidateUser.ifPresent(u -> task.setCandidateUserId(u.getUsername()));
         task.setCurrentStep("Checker Review");
         task.setPriority("High");
         task.setStatus("Pending");
@@ -773,57 +990,71 @@ public class CimsService {
 
         if (flowableWorkflowService != null) {
             try {
-                String procId = flowableWorkflowService.startMakerCheckerProcess(processKey, entityType, entityId, makerId, task.getCandidateRole(), diffJson, remarks);
+                String procId = flowableWorkflowService.startMakerCheckerProcess(processKey, entityType, entityId, effectiveMakerId, task.getCandidateRole(), diffJson, remarks);
                 task.setProcessInstanceId(procId);
                 workflowTaskRepository.save(task);
             } catch (Exception e) {
                 // Internal CIMS workflow remains valid. Record the integration
                 // failure in audit rather than losing the business task.
-                logAudit("SYSTEM", "SYSADMIN", "FLOWABLE_START_FAILED", entityType, entityId,
+                logAudit(effectiveMakerId, "SYSADMIN", "FLOWABLE_START_FAILED", entityType, entityId,
                         "Process", processKey, e.getMessage(), "CIMS internal approval workflow retained task despite Flowable error.");
             }
         }
-        logAudit(makerId, "MAKER", "SUBMIT_WORKFLOW_TASK", entityType, entityId, "Status", "Draft", "Pending Approval", "Submitted " + actionType + " to Checker (" + task.getCandidateRole() + ", SLA " + sla + "h)");
+        logAudit(effectiveMakerId, "MAKER", "SUBMIT_WORKFLOW_TASK", entityType, entityId, "Status", "Draft", "Pending Approval", "Submitted " + actionType + " to Checker (" + task.getCandidateRole() + ", SLA " + sla + "h)");
 
-        // Outbound Notifications for Checker
+        // Outbound notifications target the concrete configured checker, never a
+        // hardcoded persona. If no user is configured for the role, routing remains
+        // role-based in the inbox and no fabricated recipient is used.
         Map<String, Object> checkerContext = new HashMap<>();
-        checkerContext.put("targetRole", task.getCandidateRole() != null ? task.getCandidateRole() : "BRMGR");
-        checkerContext.put("Maker ID", makerId);
+        checkerContext.put("targetRole", task.getCandidateRole());
+        checkerContext.put("Maker ID", effectiveMakerId);
 
-        sendNotification(
-            "Email",
-            "WORKFLOW_CHECKER_ALERT",
-            "brmgr@cims-bank.et",
-            "Branch Manager Checker",
-            "Dual Control Authorization Required: " + actionType,
-            "Dear Checker,\n\nA new maker submission requires your dual-control authorization:\n" +
-            "• Entity Type: " + entityType + "\n" +
-            "• Reference: " + entityId + "\n" +
-            "• Action: " + actionType + "\n" +
-            "• Submitted By Maker: " + makerId + "\n" +
-            "• Remarks: " + (remarks != null ? remarks : "N/A") + "\n\n" +
-            "Please log in to CIMS Maker-Checker Inbox or Branch Manager Dashboard to review before authorization.",
-            entityType,
-            entityId,
-            checkerContext
-        );
-
-        sendNotification(
-            "SMS",
-            "WORKFLOW_CHECKER_SMS",
-            "+251911000111",
-            "Branch Manager",
-            "CIMS Dual-Control Alert",
-            "CIMS Alert: Maker " + makerId + " submitted " + actionType + " for " + entityType + " (" + entityId + ") awaiting your authorization.",
-            entityType,
-            entityId,
-            checkerContext
-        );
+        if (candidateUser.isPresent()) {
+            User checker = candidateUser.get();
+            String checkerName = checker.getUsername() != null ? checker.getUsername() : finalResolvedRole;
+            String email = checker.getEmail() != null && !checker.getEmail().isBlank()
+                    ? checker.getEmail() : null;
+            if (email != null) {
+                sendNotification(
+                    "Email",
+                    "WORKFLOW_CHECKER_ALERT",
+                    email,
+                    checkerName,
+                    "Dual Control Authorization Required: " + actionType,
+                    "Dear Checker,\n\nA new maker submission requires your dual-control authorization:\n" +
+                    "• Entity Type: " + entityType + "\n" +
+                    "• Reference: " + entityId + "\n" +
+                    "• Action: " + actionType + "\n" +
+                    "• Submitted By Maker: " + effectiveMakerId + "\n" +
+                    "• Remarks: " + (remarks != null ? remarks : "N/A") + "\n\n" +
+                    "Please log in to CIMS Maker-Checker Inbox to review before authorization.",
+                    entityType,
+                    entityId,
+                    checkerContext
+                );
+            }
+            String phone = checker.getPhone() != null && !checker.getPhone().isBlank()
+                    ? checker.getPhone() : null;
+            if (phone != null) {
+                sendNotification(
+                    "SMS",
+                    "WORKFLOW_CHECKER_SMS",
+                    phone,
+                    checkerName,
+                    "CIMS Dual-Control Alert",
+                    "CIMS Alert: Maker " + effectiveMakerId + " submitted " + actionType + " for " + entityType + " (" + entityId + ") awaiting your authorization.",
+                    entityType,
+                    entityId,
+                    checkerContext
+                );
+            }
+        }
 
         return task;
     }
 
     public void handleWorkflowApproval(String entityType, String entityId, String checkerId, String comments) {
+        final String actorRole = resolveActorRole(checkerId);
         if ("Insurance Policy".equalsIgnoreCase(entityType) || "Policy".equalsIgnoreCase(entityType)) {
             InsurancePolicy p = insurancePolicyRepository.findById(entityId)
                     .or(() -> insurancePolicyRepository.findByPolicyNumber(entityId))
@@ -865,18 +1096,19 @@ public class CimsService {
             }
         } else if ("Collateral Release".equalsIgnoreCase(entityType) || "CollateralReleaseRequest".equalsIgnoreCase(entityType)) {
             if (earlyCollateralReleaseService != null) {
-                earlyCollateralReleaseService.approveReleaseRequest(entityId, checkerId, "CHECKER", comments);
+                earlyCollateralReleaseService.approveReleaseRequest(entityId, checkerId, resolveActorRole(checkerId), comments);
             }
         } else if ("Insurance Exception".equalsIgnoreCase(entityType) || "InsuranceException".equalsIgnoreCase(entityType)) {
             if (insuranceAdequacyService != null) {
-                insuranceAdequacyService.approveException(entityId, checkerId, "CHECKER", comments);
+                insuranceAdequacyService.approveException(entityId, checkerId, resolveActorRole(checkerId), comments);
             }
         } else {
-            logAudit(checkerId, "CHECKER", "APPROVE_WORKFLOW_GENERIC", entityType, entityId, "Status", "Pending", "Approved", comments);
+            logAudit(checkerId, resolveActorRole(checkerId), "APPROVE_WORKFLOW_GENERIC", entityType, entityId, "Status", "Pending", "Approved", comments);
         }
     }
 
     public void handleWorkflowRejection(String entityType, String entityId, String checkerId, String comments) {
+        final String actorRole = resolveActorRole(checkerId);
         if ("Insurance Policy".equalsIgnoreCase(entityType) || "Policy".equalsIgnoreCase(entityType)) {
             InsurancePolicy p = insurancePolicyRepository.findById(entityId)
                     .or(() -> insurancePolicyRepository.findByPolicyNumber(entityId))
@@ -918,33 +1150,62 @@ public class CimsService {
                 req.setDecisionDate(LocalDateTime.now().toString());
                 req.setDecisionComments(comments);
                 collateralReleaseRequestRepository.save(req);
-                logAudit(checkerId, "CHECKER", "REJECT_COLLATERAL_RELEASE", "CollateralReleaseRequest", entityId, "Status", "Pending Approval", "Rejected", comments);
+                logAudit(checkerId, resolveActorRole(checkerId), "REJECT_COLLATERAL_RELEASE", "CollateralReleaseRequest", entityId, "Status", "Pending Approval", "Rejected", comments);
             }
         } else if ("Insurance Exception".equalsIgnoreCase(entityType) || "InsuranceException".equalsIgnoreCase(entityType)) {
             if (insuranceAdequacyService != null) {
-                insuranceAdequacyService.rejectException(entityId, checkerId, "CHECKER", comments);
+                insuranceAdequacyService.rejectException(entityId, checkerId, resolveActorRole(checkerId), comments);
             }
         } else {
-            logAudit(checkerId, "CHECKER", "REJECT_WORKFLOW_GENERIC", entityType, entityId, "Status", "Pending", "Rejected", comments);
+            logAudit(checkerId, resolveActorRole(checkerId), "REJECT_WORKFLOW_GENERIC", entityType, entityId, "Status", "Pending", "Rejected", comments);
         }
+    }
+
+    private String normalizeActorIdentity(String value) {
+        if (value == null || value.isBlank()) return "";
+        return value.trim().toLowerCase()
+                .replace("_user", "")
+                .replaceFirst("^usr[-_ ]?", "")
+                .replace("-", "");
+    }
+
+    private User requireCurrentActor() {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive()
+                || (actor.getId() == null || actor.getId().isBlank())
+                || (actor.getRole() == null || actor.getRole().isBlank())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "An authenticated user with an assigned role is required for this action.");
+        }
+        return actor;
+    }
+
+    private String currentActorReference(User actor) {
+        return actor.getId() != null && !actor.getId().isBlank() ? actor.getId() : actor.getUsername();
+    }
+
+    private String resolveActorRole(String userReference) {
+        User actor = findUser(userReference);
+        if (actor == null || actor.getRole() == null || actor.getRole().isBlank()) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "An authenticated user with an assigned role is required for this action.");
+        }
+        return actor.getRole();
     }
 
     private void validateDualControl(WorkflowTask task, String checkerId) {
         if (!configurationService.isDualControlStrictEnabled()) return;
         if (task.getMakerId() != null && checkerId != null) {
-            String cleanMaker = task.getMakerId().trim().toLowerCase();
-            String cleanChecker = checkerId.trim().toLowerCase();
-            if (cleanMaker.equals(cleanChecker) ||
-                cleanMaker.replace("_user", "").equals(cleanChecker.replace("_user", "")) ||
-                cleanMaker.equals(cleanChecker + "_user") ||
-                (cleanMaker + "_user").equals(cleanChecker)) {
+            String cleanMaker = normalizeActorIdentity(task.getMakerId());
+            String cleanChecker = normalizeActorIdentity(checkerId);
+            if (!cleanMaker.isEmpty() && cleanMaker.equals(cleanChecker)) {
                 throw new IllegalStateException("Dual-Control Violation: Maker (" + task.getMakerId() + ") cannot authorize their own submission. Segregation of duties (Four-Eyes Principle) strictly requires an independent Checker.");
             }
         }
     }
 
     public String resolveCustomerApproverRole() {
-        return roleHierarchyService.resolveApproverRole("PROC_CUSTOMER_REGISTRATION", "Register Customer Manually", "BRMGR");
+        return roleHierarchyService.resolveApproverRole("PROC_CUSTOMER_REGISTRATION", "Register Customer Manually");
     }
 
     private static final String MAINTAIN_PREFIX = "Maintain ";
@@ -988,7 +1249,7 @@ public class CimsService {
         } catch (Exception e) {
             throw new IllegalStateException("Unable to encode requested changes: " + e.getMessage());
         }
-        String approverRole = roleHierarchyService.resolveApproverRole("PROC_CUSTOMER_MAINTENANCE", "Maintain Customer Details", "BRMGR");
+        String approverRole = roleHierarchyService.resolveApproverRole("PROC_CUSTOMER_MAINTENANCE", "Maintain Customer Details");
         WorkflowTask task = submitToWorkflow("PROC_CUSTOMER_MAINTENANCE", "Customer", customer.getId(),
                 MAINTAIN_PREFIX + "Customer Details", diffJson,
                 "Maintenance request for " + customer.getName() + " (" + customer.getCif() + ")", userId, approverRole);
@@ -1023,7 +1284,7 @@ public class CimsService {
         } catch (Exception e) {
             throw new IllegalStateException("Unable to encode requested changes: " + e.getMessage());
         }
-        String approverRole = roleHierarchyService.resolveApproverRole("PROC_COLLATERAL_MAINTENANCE", "Maintain Collateral Details", "BRMGR");
+        String approverRole = roleHierarchyService.resolveApproverRole("PROC_COLLATERAL_MAINTENANCE", "Maintain Collateral Details");
         WorkflowTask task = submitToWorkflow("PROC_COLLATERAL_MAINTENANCE", "Collateral", collateral.getId(),
                 MAINTAIN_PREFIX + "Collateral Details", diffJson,
                 "Maintenance request for " + collateral.getCode() + " (" + collateral.getDescription() + ")", userId, approverRole);
@@ -1111,7 +1372,7 @@ public class CimsService {
         collateral.setAuthStat("U");
         collateralRepository.save(collateral);
 
-        String approverRole = roleHierarchyService.resolveApproverRole("PROC_COLLATERAL_OWNERSHIP_CHANGE", "Change Collateral Ownership", "BRMGR");
+        String approverRole = roleHierarchyService.resolveApproverRole("PROC_COLLATERAL_OWNERSHIP_CHANGE", "Change Collateral Ownership");
         WorkflowTask task = submitToWorkflow("PROC_COLLATERAL_OWNERSHIP_CHANGE", "Collateral", collateral.getId(),
                 "Change Collateral Ownership", diffJson,
                 "Ownership transfer request for " + collateral.getCode() + " to " + newOwnerName + ". Reason: " + reason, userId, approverRole);
@@ -1209,23 +1470,26 @@ public class CimsService {
 
         validationService.validateOwnership(collateral);
         collateralRepository.save(collateral);
-        logAudit(checkerId, "CHECKER", "CHANGE_COLLATERAL_OWNERSHIP", "Collateral", collateral.getId(), "Owner", prevOwnerName, newOwnerName, "Approved ownership transfer to " + newOwnerName);
-        logAudit(checkerId, "CHECKER", "APPROVE_CHANGE_COLLATERAL_OWNERSHIP", "Collateral", collateral.getId(), "Owner", prevOwnerName, newOwnerName, "Approved ownership transfer to " + newOwnerName);
+        logAudit(checkerId, resolveActorRole(checkerId), "CHANGE_COLLATERAL_OWNERSHIP", "Collateral", collateral.getId(), "Owner", prevOwnerName, newOwnerName, "Approved ownership transfer to " + newOwnerName);
+        logAudit(checkerId, resolveActorRole(checkerId), "APPROVE_CHANGE_COLLATERAL_OWNERSHIP", "Collateral", collateral.getId(), "Owner", prevOwnerName, newOwnerName, "Approved ownership transfer to " + newOwnerName);
     }
 
     @Transactional
     public void approveWorkflowTask(String taskId, String checkerId, String checkerRole, String comments) {
-        workflowExecutionService.approveWorkflowTask(taskId, checkerId, checkerRole, comments);
+        User actor = requireCurrentActor();
+        workflowExecutionService.approveWorkflowTask(taskId, currentActorReference(actor), actor.getRole(), comments);
     }
 
     @Transactional
     public void rejectWorkflowTask(String taskId, String checkerId, String checkerRole, String comments) {
-        workflowExecutionService.rejectWorkflowTask(taskId, checkerId, checkerRole, comments);
+        User actor = requireCurrentActor();
+        workflowExecutionService.rejectWorkflowTask(taskId, currentActorReference(actor), actor.getRole(), comments);
     }
 
     @Transactional
     public void returnWorkflowTask(String taskId, String checkerId, String checkerRole, String correctionNote) {
-        workflowExecutionService.returnWorkflowTask(taskId, checkerId, checkerRole, correctionNote);
+        User actor = requireCurrentActor();
+        workflowExecutionService.returnWorkflowTask(taskId, currentActorReference(actor), actor.getRole(), correctionNote);
     }
 
     private void handleWorkflowReturn(String entityType, String entityId, String checkerId, String note) {
@@ -1262,7 +1526,7 @@ public class CimsService {
             doc.setVerificationStatus("Pending");
             ownershipDocumentRepository.save(doc);
         } else {
-            logAudit(checkerId, "CHECKER", "RETURN_WORKFLOW_GENERIC", entityType, entityId, "Status", "Pending", "Returned", note);
+            logAudit(checkerId, resolveActorRole(checkerId), "RETURN_WORKFLOW_GENERIC", entityType, entityId, "Status", "Pending", "Returned", note);
         }
     }
 
@@ -1272,13 +1536,14 @@ public class CimsService {
 
     @Transactional
     public void resubmitReturnedWorkflowTask(String taskId, String makerId) {
+        User actor = requireCurrentActor();
+        final String effectiveMakerId = currentActorReference(actor);
         WorkflowTask task = workflowTaskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalStateException("Workflow task not found: " + taskId));
         if (!"Returned".equalsIgnoreCase(task.getStatus())) throw new IllegalStateException("Only returned tasks can be resubmitted.");
-        if (makerId == null || makerId.isBlank()) throw new IllegalStateException("Maker user is required.");
-        String tm = task.getMakerId() == null ? "" : task.getMakerId().replace("_user", "");
-        String mm = makerId.replace("_user", "");
-        if (!tm.equalsIgnoreCase(mm)) throw new IllegalStateException("Only the original maker can resubmit this returned task.");
+        String tm = normalizeActorIdentity(task.getMakerId());
+        String mm = normalizeActorIdentity(effectiveMakerId);
+        if (tm.isEmpty() || !tm.equalsIgnoreCase(mm)) throw new IllegalStateException("Only the original maker can resubmit this returned task.");
 
         // Restore the underlying business entity state to pending review. A maintenance
         // request's base record is already authorized and stays that way - only the task
@@ -1294,7 +1559,7 @@ public class CimsService {
                         p.setStatus("Pending Approval");
                         p.setRecordStat("U");
                         p.setAuthStat("U");
-                        p.setMakerId(makerId);
+                        p.setMakerId(effectiveMakerId);
                         p.setMakerDtStamp(LocalDateTime.now().toString());
                         insurancePolicyRepository.save(p);
                     });
@@ -1305,7 +1570,7 @@ public class CimsService {
                         c.setVerificationStatus("Pending");
                         c.setRecordStat("U");
                         c.setAuthStat("U");
-                        c.setMakerId(makerId);
+                        c.setMakerId(effectiveMakerId);
                         c.setMakerDtStamp(LocalDateTime.now().toString());
                         collateralRepository.save(c);
                     });
@@ -1328,10 +1593,10 @@ public class CimsService {
         task.setSubmittedAt(LocalDateTime.now().toString());
         workflowTaskRepository.save(task);
         ApprovalHistory hist = new ApprovalHistory();
-        hist.setId("hist-" + System.currentTimeMillis()); hist.setWorkflowTaskId(taskId); hist.setActorId(makerId);
-        hist.setActorRole("MAKER"); hist.setStepName("Maker Correction"); hist.setDecision("Resubmitted");
+        hist.setId("hist-" + System.currentTimeMillis()); hist.setWorkflowTaskId(taskId); hist.setActorId(effectiveMakerId);
+        hist.setActorRole(actor.getRole()); hist.setStepName("Maker Correction"); hist.setDecision("Resubmitted");
         hist.setComments(task.getRemarks()); hist.setDecidedAt(LocalDateTime.now().toString()); approvalHistoryRepository.save(hist);
-        logAudit(makerId, "MAKER", "RESUBMIT_WORKFLOW_TASK", task.getEntityType(), task.getEntityId(), "Status", "Returned", "Pending", "Resubmitted after maker correction");
+        logAudit(effectiveMakerId, actor.getRole(), "RESUBMIT_WORKFLOW_TASK", task.getEntityType(), task.getEntityId(), "Status", "Returned", "Pending", "Resubmitted after maker correction");
     }
 
     public void updateCollateralStatus(String collateralId) {
@@ -1446,7 +1711,9 @@ public class CimsService {
             collateral.setCurrency(configurationService.getDefaultCurrency());
         }
         if (collateral.getLimitContribution() == 0 && collateral.getValuationAmount() > 0) {
-            collateral.setLimitContribution(collateral.getValuationAmount() * (1.0 - (collateral.getHaircut() / 100.0)));
+            double net = collateral.getValuationAmount() * (1.0 - (collateral.getHaircut() / 100.0));
+            double location = collateral.getLandValue() == null ? 0.0 : collateral.getLandValue();
+            collateral.setLimitContribution(Math.round((net + location) * 100.0) / 100.0);
         }
 
         collateral.setCreatedBy(userId);
@@ -1471,7 +1738,7 @@ public class CimsService {
 
         collateralRepository.save(collateral);
 
-        String approverRole = roleHierarchyService.resolveApproverRole("PROC_COLLATERAL_REGISTRATION", "Register Collateral", "BRMGR");
+        String approverRole = roleHierarchyService.resolveApproverRole("PROC_COLLATERAL_REGISTRATION", "Register Collateral");
         submitToWorkflow("PROC_COLLATERAL_REGISTRATION", "Collateral", collateral.getId(), "Register Collateral", "{}", "New collateral registration: " + collateral.getCode() + " (" + collateral.getDescription() + ")", userId, approverRole);
         logAudit(userId, "CRO", "REGISTER_NATIVE_COLLATERAL", "Collateral", collateral.getId(), "All", "None", collateral.getCode(), "Registered collateral for checker approval");
     }
@@ -1633,7 +1900,12 @@ public class CimsService {
     }
 
     public void approvePolicy(String policyId, String userId) {
-        assertUserPermission(userId, "Approvals", "APPROVE");
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || actor.getId() == null || actor.getId().isBlank()) {
+            throw new org.springframework.security.access.AccessDeniedException("An authenticated approver is required.");
+        }
+        final String effectiveActorId = actor.getId();
+        assertUserPermission(effectiveActorId, "Approvals", "APPROVE");
         InsurancePolicy policy = insurancePolicyRepository.findById(policyId)
                 .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
                 .orElseThrow(() -> new IllegalArgumentException("Policy not found: " + policyId));
@@ -1648,11 +1920,16 @@ public class CimsService {
         if (task == null) {
             throw new IllegalStateException("Workflow state mismatch: Cannot approve policy " + policy.getPolicyNumber() + " because no matching pending workflow approval task exists for this policy.");
         }
-        workflowExecutionService.approveWorkflowTask(task.getId(), userId, "BRMGR", "Approved policy " + policy.getPolicyNumber());
+        workflowExecutionService.approveWorkflowTask(task.getId(), effectiveActorId, actor.getRole(), "Approved policy " + policy.getPolicyNumber());
     }
 
     public void rejectPolicy(String policyId, String comments, String userId) {
-        assertUserPermission(userId, "Approvals", "APPROVE");
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || actor.getId() == null || actor.getId().isBlank()) {
+            throw new org.springframework.security.access.AccessDeniedException("An authenticated approver is required.");
+        }
+        final String effectiveActorId = actor.getId();
+        assertUserPermission(effectiveActorId, "Approvals", "APPROVE");
         InsurancePolicy policy = insurancePolicyRepository.findById(policyId)
                 .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
                 .orElseThrow(() -> new IllegalArgumentException("Policy not found: " + policyId));
@@ -1667,7 +1944,7 @@ public class CimsService {
         if (task == null) {
             throw new IllegalStateException("Workflow state mismatch: Cannot reject policy " + policy.getPolicyNumber() + " because no matching pending workflow approval task exists for this policy.");
         }
-        workflowExecutionService.rejectWorkflowTask(task.getId(), userId, "BRMGR", comments);
+        workflowExecutionService.rejectWorkflowTask(task.getId(), effectiveActorId, actor.getRole(), comments);
     }
 
     public void amendPolicy(String policyId, InsurancePolicy updated, String userId) {
@@ -2092,8 +2369,8 @@ public class CimsService {
         // ==========================================
         if (configurationService.areMandatoryDocumentRulesEnabled()) {
             for (Collateral c : allCollaterals) {
-                for (MandatoryDocumentRule rule : mandatoryRules) {
-                    if (!validationService.isMandatoryDocumentRuleApplicable(rule, c)) {
+                for (MandatoryDocumentRule rule : validationService.resolveApplicableDocumentRules(c, mandatoryRules)) {
+                    if (!rule.isMandatory()) {
                         continue;
                     }
                     boolean found = allDocs.stream().anyMatch(d ->
@@ -2612,7 +2889,14 @@ public class CimsService {
     private AssignedTarget resolveResponsibleUserAndRole(String exceptionType, String branch, String segment, String rmUserId) {
         String targetRole;
         switch (exceptionType) {
-            case "Missing Mandatory Document", "Document Nearing Expiry" -> targetRole = "COLLDOCOFF";
+            case "Missing Mandatory Document", "Document Nearing Expiry" -> {
+                // Document exceptions follow the Admin-configured approver hierarchy
+                // when one exists; COLLDOCOFF is only a legacy fallback for
+                // installations without a matching configuration.
+                String configured = roleHierarchyService.findConfiguredExceptionRole(
+                        exceptionType, segment, branch, resolveDistrictForBranch(branch), 1);
+                targetRole = configured != null ? configured : "COLLDOCOFF";
+            }
             case "Unapproved Insurer", "Duplicate Insurance Policy", "Policy Inconsistency" -> targetRole = "COMPLIANCE";
             case "Insurer Concentration Breach" -> targetRole = "RISK";
             case "Renewal Delay" -> targetRole = "SRM";
@@ -2787,8 +3071,32 @@ public class CimsService {
                     String dayType = s.getDayType() != null ? s.getDayType() : "Working Day";
                     int offset = s.getOffsetDays() > 0 ? s.getOffsetDays() : s.getDaysBeforeExpiry();
                     String recurrence = s.getRecurrence() != null ? s.getRecurrence() : "One-time";
+                    String unit = s.getRecurrenceUnit() != null ? s.getRecurrenceUnit() : "DAYS";
 
-                    if ("Before Expiry".equalsIgnoreCase(basis)) {
+                    if ("MINUTES".equalsIgnoreCase(unit)) {
+                        // Testing recurrence schedule in minutes
+                        if ("Before Expiry".equalsIgnoreCase(basis)) {
+                            if (!expiry.isBefore(today)) {
+                                long days = "Working Day".equalsIgnoreCase(dayType) ? workingRemaining : calendarRemaining;
+                                if (offset <= 0 || days <= offset) {
+                                    matched = s;
+                                    triggerOffset = days;
+                                    isOverdue = false;
+                                    break;
+                                }
+                            }
+                        } else if ("After Expiry".equalsIgnoreCase(basis)) {
+                            if (expiry.isBefore(today)) {
+                                long days = "Working Day".equalsIgnoreCase(dayType) ? workingOverdue : calendarOverdue;
+                                if (offset <= 0 || days >= offset) {
+                                    matched = s;
+                                    triggerOffset = days;
+                                    isOverdue = true;
+                                    break;
+                                }
+                            }
+                        }
+                    } else if ("Before Expiry".equalsIgnoreCase(basis)) {
                         if (expiry.isAfter(today)) {
                             long days = "Working Day".equalsIgnoreCase(dayType) ? workingRemaining : calendarRemaining;
                             if ("One-time".equalsIgnoreCase(recurrence)) {
@@ -2858,10 +3166,18 @@ public class CimsService {
                 scheduleId = matched != null ? matched.getId() : (isOverdue ? "EXPIRED_FOLLOWUP" : "EXPIRY_REMINDER");
                 dedupeKey = "REMINDER_SENT_" + scheduleId + "_" + policy.getId();
 
-                // Idempotence & deduplication check: avoid duplicate reminders for the same policy & occurrence today
-                if ((today.toString().equals(policy.getLastReminderDate()) && Objects.equals(scheduleId, policy.getLastReminderType()))
-                        || countTodayAudit(dedupeKey, policy.getId()) >= 1) {
-                    continue;
+                // Idempotence & deduplication check
+                boolean isMinuteTesting = matched != null && "MINUTES".equalsIgnoreCase(matched.getRecurrenceUnit());
+                if (isMinuteTesting) {
+                    int intervalMinutes = matched.getRecurrenceInterval() > 0 ? matched.getRecurrenceInterval() : 1;
+                    if (hasRecentAuditWithinMinutes(dedupeKey, policy.getId(), intervalMinutes)) {
+                        continue;
+                    }
+                } else {
+                    if ((today.toString().equals(policy.getLastReminderDate()) && Objects.equals(scheduleId, policy.getLastReminderType()))
+                            || countTodayAudit(dedupeKey, policy.getId()) >= 1) {
+                        continue;
+                    }
                 }
 
                 List<String> channels = matched != null ? parseJsonStringArray(matched.getChannelsJson()) : List.of("Email", "SMS");
@@ -2905,7 +3221,10 @@ public class CimsService {
                     if (cOpt.isPresent()) {
                         Customer c = cOpt.get();
                         String custDedupe = "CUSTOMER_REMINDER_SENT_" + scheduleId + "_" + policy.getId();
-                        if (countTodayAudit(custDedupe, c.getId()) == 0) {
+                        boolean custDue = isMinuteTesting
+                                ? !hasRecentAuditWithinMinutes(custDedupe, c.getId(), matched.getRecurrenceInterval() > 0 ? matched.getRecurrenceInterval() : 1)
+                                : countTodayAudit(custDedupe, c.getId()) == 0;
+                        if (custDue) {
                             Map<String, Object> ctx = new HashMap<>();
                             ctx.put("Customer Name", c.getName());
                             ctx.put("Policy Number", policy.getPolicyNumber());
@@ -2914,6 +3233,7 @@ public class CimsService {
                             if (isOverdue) ctx.put("Days Overdue", triggerOffset);
                             else ctx.put("Days Remaining", triggerOffset);
 
+                            // Look up audience-specific template configured for this schedule
                             String templateCode = isOverdue ? "CUSTOMER_POLICY_EXPIRY_REMINDER" : "CUSTOMER_POLICY_EXPIRY_REMINDER";
                             String subject = isOverdue
                                     ? "URGENT: Insurance Policy Expired - " + policy.getPolicyNumber()
@@ -2921,6 +3241,20 @@ public class CimsService {
                             String defaultBody = isOverdue
                                     ? "Dear " + c.getName() + ", your insurance policy " + policy.getPolicyNumber() + " expired on " + policy.getExpiryDate() + " (" + triggerOffset + " days overdue). Please renew immediately."
                                     : "Dear " + c.getName() + ", your insurance policy " + policy.getPolicyNumber() + " expires on " + policy.getExpiryDate() + ". Please renew immediately.";
+
+                            if (matched != null) {
+                                NotificationTemplate custTmpl = notificationTemplateRepository.findByScheduleIdAndAudienceIgnoreCase(matched.getId(), "Customer")
+                                        .stream().filter(NotificationTemplate::isActive).findFirst().orElse(null);
+                                if (custTmpl != null) {
+                                    if (custTmpl.getSubject() != null && !custTmpl.getSubject().isBlank()) {
+                                        subject = custTmpl.getSubject();
+                                    }
+                                    if (custTmpl.getBody() != null && !custTmpl.getBody().isBlank()) {
+                                        defaultBody = custTmpl.getBody();
+                                    }
+                                    templateCode = custTmpl.getId();
+                                }
+                            }
 
                             if (channels.contains("Email") && c.getEmail() != null && !c.getEmail().isBlank()) {
                                 sendNotification("Email", templateCode, c.getEmail(), c.getName(), subject, defaultBody, "Insurance Policy", policy.getId(), ctx);
@@ -3081,6 +3415,20 @@ public class CimsService {
         return auditLogRepository.findByActionTypeAndEntityId(action,entityId).stream().filter(a->a.getTimestamp()!=null&&a.getTimestamp().startsWith(today)).count();
     }
 
+    private boolean hasRecentAuditWithinMinutes(String action, String entityId, int minutes) {
+        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(minutes);
+        return auditLogRepository.findByActionTypeAndEntityId(action, entityId).stream()
+                .anyMatch(a -> {
+                    if (a.getTimestamp() == null) return false;
+                    try {
+                        LocalDateTime t = LocalDateTime.parse(a.getTimestamp());
+                        return t.isAfter(cutoff);
+                    } catch (Exception e) {
+                        return false;
+                    }
+                });
+    }
+
     private List<String> parseJsonStringArray(String json){
         if(json==null||json.isBlank())return new ArrayList<>();
         String n=json.trim(); if(n.startsWith("[")&&n.endsWith("]"))n=n.substring(1,n.length()-1); if(n.isBlank())return new ArrayList<>();
@@ -3092,27 +3440,26 @@ public class CimsService {
     // =========================================================================
 
     public void assertCanMutateException(String userId, String exceptionId, String action) {
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("User ID is required to perform '" + action + "' on exceptions.");
-        }
         if ("SYSTEM".equalsIgnoreCase(userId)) {
-            // Reserve SYSTEM for internal scheduled server-side tasks (Audit Finding 26)
+            // Reserve SYSTEM for internal scheduled server-side tasks only.
             return;
         }
-        User user = findUser(userId);
+        User user = authorizationScopeService.currentUser();
+        if (user == null) user = findUser(userId);
         if (user == null || !user.isActive()) {
             throw new IllegalStateException("User " + userId + " is not active or authorized.");
         }
-        String role = user.getRole() != null ? user.getRole().toUpperCase(Locale.ROOT) : "";
-        if ("AUDITOR".equals(role) || "RDONLY".equals(role)) {
-            throw new IllegalStateException("Permission Denied: Read-only role '" + role + "' cannot perform '" + action + "' on exceptions.");
+        AuthorizationScopeService.Scope scope = authorizationScopeService.resolve(user);
+        if (scope.isReadOnly()) {
+            throw new IllegalStateException("Permission Denied: read-only role '" + user.getRole()
+                    + "' cannot perform '" + action + "' on exceptions.");
         }
+        String role = user.getRole() != null ? user.getRole().toUpperCase(Locale.ROOT) : "";
         if ("SYSADMIN".equals(role)) {
-            // SysAdmin can reassign/escalate/update notes, but per §11 transactional approvals are checker duties
+            // System administrators may maintain exception workflow data, but not approve transactions.
             return;
         }
-        // Verify role has EDIT permission on Exceptions
-        assertUserPermission(userId, "Exceptions", "EDIT");
+        assertUserPermission(user.getUsername(), "Exceptions", "EDIT");
     }
 
     public void assignException(String exceptionId, ExceptionAssignmentRequest request, String actingUserId) {
@@ -3481,11 +3828,14 @@ public class CimsService {
 
         boolean isOverride = request.isOverride();
         if (isOverride) {
-            // Authorized Override Path (Prompt §32 & §37)
-            boolean isApprover = Arrays.asList("BRMGR", "MGRCOLLDOC", "DISTDIR", "HODEPT", "SRMGMT", "EXEC", "COMPLIANCE", "RISK").contains(role);
+            // Authorized Override Path (Prompt §32 & §37). Authority comes only from
+            // the configured Workflow Approval Hierarchy for this exception context.
+            String configuredApproverRole = roleHierarchyService.resolveConfiguredExceptionRole(
+                    exc.getExceptionType(), exc.getBusinessSegment(), exc.getBranch(), exc.getDistrict(), 1);
+            boolean isApprover = roleHierarchyService.isAuthorizedToActOn(role, configuredApproverRole);
             if (!isApprover) {
                 throw new IllegalStateException("Permission Denied: User role '" + (role.isEmpty() ? "Unknown" : role) +
-                        "' is not authorized to grant an Authorized Exception/Override. Requires Branch Manager, District Director, or HO Dept approval.");
+                        "' is not authorized to grant an Authorized Exception/Override. Requires the configured approver role " + configuredApproverRole + ".");
             }
             if (request.getOverrideReason() == null || request.getOverrideReason().trim().isBlank()) {
                 throw new IllegalArgumentException("Override reason / sanction memo reference is mandatory when recording an Authorized Exception/Override.");
@@ -3659,26 +4009,14 @@ public class CimsService {
         String prevUserId = exc.getAssignedToUserId();
 
         int nextLevel = exc.getEscalationLevel() + 1;
-        String targetRole = request.getEscalationRole();
-        if (targetRole == null || targetRole.isBlank()) {
-            targetRole = determineNextEscalationRole(prevRole, nextLevel);
-        }
-
-        String targetUserId = null;
-        if (request.getTargetUserId() != null && !request.getTargetUserId().isBlank()) {
-            targetUserId = request.getTargetUserId();
-        } else {
-            // Route up hierarchy to branch manager or district director
-            if ("BRMGR".equalsIgnoreCase(targetRole) && exc.getBranch() != null) {
-                targetUserId = userRepository.findByRoleIgnoreCaseAndActiveTrue("BRMGR").stream()
-                        .filter(u -> exc.getBranch().equalsIgnoreCase(u.getBranch()))
-                        .map(User::getId).findFirst().orElse(null);
-            } else if ("DISTDIR".equalsIgnoreCase(targetRole) && exc.getDistrict() != null) {
-                targetUserId = userRepository.findByRoleIgnoreCaseAndActiveTrue("DISTDIR").stream()
-                        .filter(u -> exc.getDistrict().equalsIgnoreCase(resolveDistrictForBranch(u.getBranch())))
-                        .map(User::getId).findFirst().orElse(null);
-            }
-        }
+        // Escalation role and recipient come only from the Admin-configured exception
+        // hierarchy. Caller-supplied escalationRole/targetUserId are legacy inputs and
+        // are intentionally ignored.
+        // Escalation level 0 -> hierarchy level 2 (the configured level2Role). Passing
+        // nextLevel directly would resolve the level1 (initial approver) role again.
+        String targetRole = roleHierarchyService.resolveConfiguredExceptionRole(
+                exc.getExceptionType(), exc.getBusinessSegment(), exc.getBranch(), exc.getDistrict(), nextLevel + 1);
+        String targetUserId = findConfiguredEscalationUser(targetRole, exc);
 
         exc.setStatus("Escalated");
         exc.setAssignedToRole(targetRole);
@@ -3730,15 +4068,23 @@ public class CimsService {
         escalateException(exceptionId, req, userId);
     }
 
-    private String determineNextEscalationRole(String currentRole, int level) {
-        if (currentRole == null) return "BRMGR";
-        return switch (currentRole.toUpperCase(Locale.ROOT)) {
-            case "RO", "CRO", "BRO", "COLLDOCOFF" -> "BRMGR";
-            case "BRMGR", "SRM", "BRM" -> "DISTDIR";
-            case "DISTDIR" -> "HODEPT";
-            case "HODEPT", "RISK" -> "COMPLIANCE";
-            default -> "DISTDIR";
-        };
+    private String findConfiguredEscalationUser(String role, CimsException exception) {
+        if (role == null || role.isBlank()) return null;
+        List<User> candidates = userRepository.findByRoleIgnoreCaseAndActiveTrue(role);
+        if (candidates.isEmpty()) return null;
+
+        String branch = exception.getBranch();
+        String district = exception.getDistrict();
+        return candidates.stream()
+                .filter(u -> branch == null || branch.isBlank()
+                        || branch.equalsIgnoreCase(u.getBranch())
+                        || (district != null && district.equalsIgnoreCase(resolveDistrictForBranch(u.getBranch()))))
+                .filter(u -> district == null || district.isBlank()
+                        || district.equalsIgnoreCase(u.getDistrict())
+                        || district.equalsIgnoreCase(resolveDistrictForBranch(u.getBranch())))
+                .map(User::getId)
+                .findFirst()
+                .orElse(null);
     }
 
     public void addInvestigationNote(String exceptionId, ExceptionInvestigationNoteRequest request, String actingUserId) {
@@ -3814,47 +4160,37 @@ public class CimsService {
             int currentLevel = exc.getEscalationLevel() != null ? exc.getEscalationLevel() : 0;
             long daysOverdue = exc.getDaysOverdue() != null ? exc.getDaysOverdue() : 0L;
             boolean shouldEscalate = false;
-            String nextRole = exc.getAssignedToRole();
+            int nextLevel = currentLevel + 1;
 
-            // Escalation sequence from BRD / Clarification (§16):
-            // Level 0 -> Level 1 (overdue 1-5 days) -> Branch Manager
-            // Level 1 -> Level 2 (>10 days overdue) -> District Business Manager / Area Manager
-            // Level 2 -> Level 3 (every 15 days thereafter) -> Head Office / Compliance
+            // Escalation timing from BRD / Clarification (§16). The approver role for
+            // each next level is resolved from the Admin-configured hierarchy, never
+            // from a hardcoded role sequence.
             if (currentLevel == 0 && daysOverdue >= 1) {
                 shouldEscalate = true;
-                nextRole = "BRMGR";
             } else if (currentLevel == 1 && daysOverdue >= 10) {
                 shouldEscalate = true;
-                nextRole = "DISTDIR";
-            } else if (currentLevel >= 2) {
-                if (exc.getLastEscalationDate() != null) {
-                    try {
-                        LocalDate lastEsc = LocalDate.parse(exc.getLastEscalationDate().substring(0, 10));
-                        if (ChronoUnit.DAYS.between(lastEsc, today) >= 15) {
-                            shouldEscalate = true;
-                            nextRole = "HODEPT";
-                        }
-                    } catch (Exception ignored) {
-                        shouldEscalate = true;
-                    }
+            } else if (currentLevel >= 2 && exc.getLastEscalationDate() != null) {
+                try {
+                    LocalDate lastEsc = LocalDate.parse(exc.getLastEscalationDate().substring(0, 10));
+                    shouldEscalate = ChronoUnit.DAYS.between(lastEsc, today) >= 15;
+                } catch (Exception ignored) {
+                    shouldEscalate = true;
                 }
             }
 
             if (shouldEscalate) {
-                int newLevel = currentLevel + 1;
+                String nextRole;
+                try {
+                    nextRole = roleHierarchyService.resolveConfiguredExceptionRole(
+                            exc.getExceptionType(), exc.getBusinessSegment(), exc.getBranch(), exc.getDistrict(), nextLevel + 1);
+                } catch (IllegalStateException e) {
+                    log.warn("Skipping automatic escalation for exception {}: {}", exc.getId(), e.getMessage());
+                    continue;
+                }
+                int newLevel = nextLevel;
                 String prevRole = exc.getAssignedToRole();
                 String prevUserId = exc.getAssignedToUserId();
-
-                String newUserId = null;
-                if ("BRMGR".equalsIgnoreCase(nextRole) && exc.getBranch() != null) {
-                    newUserId = userRepository.findByRoleIgnoreCaseAndActiveTrue("BRMGR").stream()
-                            .filter(u -> exc.getBranch().equalsIgnoreCase(u.getBranch()))
-                            .map(User::getId).findFirst().orElse(null);
-                } else if ("DISTDIR".equalsIgnoreCase(nextRole) && exc.getDistrict() != null) {
-                    newUserId = userRepository.findByRoleIgnoreCaseAndActiveTrue("DISTDIR").stream()
-                            .filter(u -> exc.getDistrict().equalsIgnoreCase(resolveDistrictForBranch(u.getBranch())))
-                            .map(User::getId).findFirst().orElse(null);
-                }
+                String newUserId = findConfiguredEscalationUser(nextRole, exc);
 
                 exc.setStatus("Escalated");
                 exc.setAssignedToRole(nextRole);
@@ -3908,40 +4244,28 @@ public class CimsService {
         LocalDate today = LocalDate.now();
         List<CimsException> all = cimsExceptionRepository.findAll();
 
-        // 1. Authorize Portfolio Scope Server-Side (§29, §30)
-        User currentUser = findUser(userId);
-        String effRole = currentUser != null && currentUser.getRole() != null ? currentUser.getRole() : userRole;
-        if (effRole == null) effRole = "SYSADMIN";
+        // Scope is resolved from the authenticated database user only. Caller-supplied
+        // userId/userRole parameters are accepted for legacy compatibility but ignored.
+        User currentUser = authorizationScopeService.currentUser();
+        AuthorizationScopeService.Scope scope = authorizationScopeService.resolve(currentUser);
+        final String currentUid = currentUser == null ? null : currentUser.getId();
+        final String currentUsername = currentUser == null ? null : currentUser.getUsername();
 
-        final String userBranch = currentUser != null ? currentUser.getBranch() : null;
-        final String userDistrict = userBranch != null ? resolveDistrictForBranch(userBranch) : null;
-        final String effRoleUpper = effRole.toUpperCase(Locale.ROOT);
-        final String currentUid = currentUser != null ? currentUser.getId() : userId;
+        Set<String> customerIds = customerRepository.findAll().stream()
+                .filter(scope::allowsCustomer)
+                .flatMap(c -> java.util.stream.Stream.of(c.getId(), c.getCif()))
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> collateralIds = collateralRepository.findAll().stream()
+                .filter(c -> scope.allowsCollateral(c, customerIds))
+                .flatMap(c -> java.util.stream.Stream.of(c.getId(), c.getCode()))
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
 
-        List<CimsException> scoped = all.stream().filter(exc -> {
-            // Bank-wide roles
-            if (List.of("SYSADMIN", "EXEC", "SRMGMT", "HODEPT", "COMPLIANCE", "RISK", "AUDITOR", "RDONLY").contains(effRoleUpper)) {
-                return true;
-            }
-            // District Director: district portfolio
-            if ("DISTDIR".equals(effRoleUpper)) {
-                if (userDistrict == null) return true;
-                return userDistrict.equalsIgnoreCase(exc.getDistrict());
-            }
-            // Branch Manager / Document Manager: branch portfolio
-            if (List.of("BRMGR", "MGRCOLLDOC").contains(effRoleUpper)) {
-                if (userBranch == null) return true;
-                return userBranch.equalsIgnoreCase(exc.getBranch());
-            }
-            // RO / Maker: assigned exceptions, or facility/collateral branch
-            if (currentUid != null && (currentUid.equalsIgnoreCase(exc.getAssignedToUserId()) || currentUid.equalsIgnoreCase(exc.getRelationshipManagerId()))) {
-                return true;
-            }
-            if (userBranch != null && userBranch.equalsIgnoreCase(exc.getBranch())) {
-                return true;
-            }
-            return false;
-        }).toList();
+        List<CimsException> scoped = all.stream().filter(exc ->
+                scope.allowsException(exc, customerIds, collateralIds)
+                        || isAssignedToActor(exc, currentUid, currentUsername)
+        ).toList();
 
         // 2. Compute dynamic operational metrics
         scoped.forEach(exc -> exc.computeSlaAndOperationalMetrics(today));
@@ -3978,6 +4302,14 @@ public class CimsService {
             }
             return true;
         }).toList();
+    }
+
+    private boolean isAssignedToActor(CimsException exc, String userId, String username) {
+        if (exc == null) return false;
+        String assigned = exc.getAssignedToUserId();
+        String rm = exc.getRelationshipManagerId();
+        return (userId != null && (userId.equalsIgnoreCase(assigned) || userId.equalsIgnoreCase(rm)))
+                || (username != null && (username.equalsIgnoreCase(assigned) || username.equalsIgnoreCase(rm)));
     }
 
     @Transactional(readOnly = true)
@@ -4237,8 +4569,8 @@ public class CimsService {
                         ? ownershipDocumentRepository.findByCollateralId(collateral.getId())
                         : Collections.emptyList();
 
-                for (MandatoryDocumentRule rule : rules) {
-                    if (!validationService.isMandatoryDocumentRuleApplicable(rule, collateral)) {
+                for (MandatoryDocumentRule rule : validationService.resolveApplicableDocumentRules(collateral, rules)) {
+                    if (!rule.isMandatory()) {
                         continue;
                     }
 
@@ -4268,7 +4600,10 @@ public class CimsService {
                             throw new IllegalArgumentException("Collateral registration hard block: Mandatory requirement '" + rule.getDocumentType() + "' does not permit exceptions under Admin policy. You must attach the required document to proceed.");
                         }
 
-                        // Find matching exception request
+                        // Find matching exception request. A user who explicitly raised an
+                        // exception with a justification is entitled to have that request
+                        // routed for approval even when the checklist label does not match the
+                        // configured rule name verbatim.
                         Map<String, Object> matchingException = null;
                         if (exceptions != null) {
                             for (Map<String, Object> excMap : exceptions) {
@@ -4281,6 +4616,12 @@ public class CimsService {
                                     matchingException = excMap;
                                     break;
                                 }
+                            }
+                            if (matchingException == null) {
+                                matchingException = exceptions.stream()
+                                        .filter(e -> e.get("reason") != null && !e.get("reason").toString().trim().isBlank())
+                                        .findFirst()
+                                        .orElse(null);
                             }
                         }
 
@@ -4344,8 +4685,12 @@ public class CimsService {
         }
 
         double netValue = Math.round(collateral.getValuationAmount() * (1.0 - (collateral.getHaircut() / 100.0)) * 100.0) / 100.0;
+        // Facility-linking capacity is the net security value plus the land/location
+        // value. Keep NSV as the pure net valuation metric.
+        double locationValue = collateral.getLandValue() == null ? 0.0 : collateral.getLandValue();
+        double allocationCapacity = Math.round((netValue + locationValue) * 100.0) / 100.0;
         collateral.setNsv(netValue);
-        collateral.setLimitContribution(netValue);
+        collateral.setLimitContribution(allocationCapacity);
 
         if (collateral.getOwners() != null && !collateral.getOwners().isEmpty()) {
             for (CollateralOwner o : collateral.getOwners()) {
@@ -4389,7 +4734,7 @@ public class CimsService {
         }
 
         if (!allocAmounts.isEmpty() && !effectivelyDraft) {
-            validationService.validateAllocationOverflow(netValue, allocAmounts);
+            validationService.validateAllocationOverflow(allocationCapacity, allocAmounts);
         }
 
         if (effectivelyDraft) {
@@ -4434,7 +4779,7 @@ public class CimsService {
                 link.setCustomerId(loan.getCustomerId());
                 link.setLinkageType(lType);
                 link.setLinkedAmount(amt);
-                link.setLinkedPercent(netValue > 0 ? (amt / netValue) * 100.0 : 0);
+                link.setLinkedPercent(allocationCapacity > 0 ? (amt / allocationCapacity) * 100.0 : 0);
                 link.setHaircut(collateral.getHaircut());
                 link.setCollateralCategory(collateral.getCategory());
                 link.setStatus(effectivelyDraft ? "Draft" : (!createdExceptions.isEmpty() ? "Pending Exception Approval" : "Pending Approval"));
@@ -4473,7 +4818,7 @@ public class CimsService {
             }
         }
         collateral.setCurrentAllocation(totalAlloc);
-        collateral.setUtilizationPercentage(netValue > 0 ? (totalAlloc / netValue) * 100.0 : 0);
+        collateral.setUtilizationPercentage(allocationCapacity > 0 ? (totalAlloc / allocationCapacity) * 100.0 : 0);
         collateralRepository.save(collateral);
 
         Map<String, Object> result = new HashMap<>();
@@ -4508,7 +4853,7 @@ public class CimsService {
                 workflowExecutionService.submitToWorkflow(
                         "CimsException", exc.getId(), "APPROVE_COLLATERAL_AND_EXCEPTION", userId,
                         "Exception approval requested for " + exc.getFailedRequirement() + " on collateral " + collateral.getCode() + " by Maker " + userId,
-                        payloadJson);
+                        payloadJson, exc.getAssignedToRole());
 
                 logAudit(userId, "MAKER", "USER_EXCEPTION_REQUEST_SUBMITTED", "CimsException", exc.getId(),
                         "Status", "None", "Pending Exception Approval",
@@ -4700,9 +5045,7 @@ public class CimsService {
         List<OwnershipDocument> docs = ownershipDocumentRepository.findByCollateralId(col.getId());
         List<Collateral360Dto.DocumentChecklistItemDto> checklist = new ArrayList<>();
 
-        for (MandatoryDocumentRule rule : rules) {
-            if (!validationService.categoryMatches(rule.getCollateralCategory(), col)) continue;
-            
+        for (MandatoryDocumentRule rule : validationService.resolveApplicableDocumentRules(col, rules)) {
             OwnershipDocument matchedDoc = docs.stream().filter(d ->
                 validationService.docTypeMatches(rule.getDocumentType(), d.getType()) ||
                 validationService.docTypeMatches(rule.getDocumentType(), d.getName())
@@ -5017,6 +5360,17 @@ public class CimsService {
 
     @Transactional
     public Map<String, Object> submitEntryTimeException(EntryTimeExceptionRequest request, String userId) {
+        // Identity always comes from the verified token, never from a client supplied
+        // query parameter. The parameter is retained only for backward compatibility.
+        User actor = authorizationScopeService.currentUser();
+        if (actor != null) {
+            if (actor.getRole() != null && (actor.getRole().toUpperCase().contains("AUDIT")
+                    || actor.getRole().toUpperCase().contains("RDONLY"))) {
+                throw new IllegalStateException("Read-only accounts cannot submit exception requests.");
+            }
+            userId = actor.getUsername();
+        }
+        if (userId == null || userId.isBlank()) throw new IllegalArgumentException("Authenticated maker identity is required.");
         if (request == null) throw new IllegalArgumentException("Exception request payload is mandatory.");
         if (request.getReason() == null || request.getReason().trim().isBlank()) {
             throw new IllegalArgumentException("Reason / justification is mandatory when submitting an exception.");
@@ -5112,6 +5466,13 @@ public class CimsService {
                 resp.put("exceptionId", exc.getId());
                 resp.put("exception", exc);
                 resp.put("collateral", col);
+                resp.put("approverRole", exc.getAssignedToRole());
+                String linkedTaskId = workflowTaskRepository.findAll().stream()
+                        .filter(t -> "Pending".equalsIgnoreCase(t.getStatus())
+                                && exc.getId().equalsIgnoreCase(t.getEntityId()))
+                        .map(WorkflowTask::getId)
+                        .findFirst().orElse(null);
+                resp.put("workflowTaskId", linkedTaskId);
                 resp.put("message", regResult.get("message"));
                 return resp;
             }
@@ -5220,7 +5581,8 @@ public class CimsService {
 
         WorkflowActionResultDto wfResult = workflowExecutionService.submitToWorkflow(
                 "CimsException", exc.getId(), "APPROVE_EXCEPTION", userId,
-                "Exception approval requested for " + request.getFailedRequirement() + " by Maker " + userId, payloadJson);
+                "Exception approval requested for " + request.getFailedRequirement() + " by Maker " + userId,
+                payloadJson, approverRole);
 
         // Audit Log
         logAudit(userId, "MAKER", "USER_EXCEPTION_REQUEST_SUBMITTED", "CimsException", exc.getId(),

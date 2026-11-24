@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../../utils/format.ts';
 import React, { useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
@@ -266,7 +267,7 @@ export const EnterprisePortfolioAnalytics: React.FC<EnterprisePortfolioAnalytics
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
               <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active Exposure</div>
               <div className="text-lg font-black text-[#101828] mt-1 font-mono">
-                ETB {activeExposureM.toLocaleString()}M
+                ETB {formatEtbNumber(activeExposureM)}M
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">Disbursed Facility Balances</div>
             </div>
@@ -274,7 +275,7 @@ export const EnterprisePortfolioAnalytics: React.FC<EnterprisePortfolioAnalytics
             <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3.5">
               <div className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wider">Active Protection</div>
               <div className="text-lg font-black text-emerald-700 mt-1 font-mono">
-                ETB {activeProtectionM.toLocaleString()}M
+                ETB {formatEtbNumber(activeProtectionM)}M
               </div>
               <div className="text-[10px] text-emerald-600 mt-0.5">Valid Unexpired Cover</div>
             </div>
@@ -282,7 +283,7 @@ export const EnterprisePortfolioAnalytics: React.FC<EnterprisePortfolioAnalytics
             <div className="bg-rose-50/60 border border-rose-200 rounded-xl p-3.5">
               <div className="text-[11px] font-semibold text-rose-800 uppercase tracking-wider">Net Insurance Gap</div>
               <div className="text-lg font-black text-rose-700 mt-1 font-mono">
-                ETB {protectionGapM.toLocaleString()}M
+                ETB {formatEtbNumber(protectionGapM)}M
               </div>
               <div className="text-[10px] text-rose-600 mt-0.5">Required Cover Deficit</div>
             </div>

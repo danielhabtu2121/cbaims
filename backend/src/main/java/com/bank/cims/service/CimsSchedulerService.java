@@ -15,6 +15,7 @@ public class CimsSchedulerService {
     @Autowired private CimsService cimsService;
     @Autowired private RenewalEscalationService renewalEscalationService;
     @Autowired private FirstDegreeSecondDegreeService firstDegreeSecondDegreeService;
+    @Autowired private ReminderConfigurationService reminderConfigurationService;
 
     private final AtomicLong lastReminderRun = new AtomicLong(0);
     private final AtomicLong lastExceptionRun = new AtomicLong(0);
@@ -29,7 +30,11 @@ public class CimsSchedulerService {
     public void scheduledProcessing() {
         long now=Instant.now().toEpochMilli();
         if(configurationService.isReminderSchedulerEnabled()){
-            long interval=configurationService.getReminderSchedulerIntervalMinutes()*60_000L;
+            boolean hasMinuteSchedule = reminderConfigurationService != null && reminderConfigurationService.getAll().stream()
+                    .anyMatch(s -> s.isActive() && "MINUTES".equalsIgnoreCase(s.getRecurrenceUnit()));
+            long interval = hasMinuteSchedule
+                    ? 60_000L
+                    : configurationService.getReminderSchedulerIntervalMinutes()*60_000L;
             if(now-lastReminderRun.get()>=interval){
                 try{ cimsService.runPolicyExpiryReminders(); renewalEscalationService.run(); lastReminderRun.set(now); }
                 catch(Exception e){ cimsService.logAudit("SYSTEM","SYSADMIN","SCHEDULER_REMINDER_ERROR","Scheduler","REMINDERS","Error","",e.getMessage(),"Scheduled reminder/escalation run failed"); }

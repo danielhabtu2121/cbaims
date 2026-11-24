@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   RotateCw,
@@ -42,6 +43,7 @@ import {
 import { DataGrid, ColumnDef } from '../layout/DataGrid';
 import { StatusChip } from '../layout/StatusChip';
 import { cimsApi } from '../../api/cimsApi';
+import { canApproveAction, isReadOnlyUser } from '../../auth/session';
 
 const TYPE_CORRECTIVE_ACTIONS: Record<string, string[]> = {
   'Expired Policy': [
@@ -219,12 +221,8 @@ export const ExceptionManager: React.FC<ExceptionManagerProps> = ({
     return facilities.find((f) => f.id === targetId || f.loanReference === targetId) || null;
   }, [selectedExc, facilities]);
 
-  const canGrantOverride = useMemo(() => {
-    return (
-      currentUser.canApprove === true &&
-      ['BRMGR', 'MGRCOLLDOC', 'DISTDIR', 'HODEPT', 'SRMGMT', 'EXEC', 'COMPLIANCE', 'RISK'].includes(currentUser.role)
-    );
-  }, [currentUser]);
+  // Override authority comes from the backend permission matrix and Admin-configured approval authority.
+  const canGrantOverride = useMemo(() => canApproveAction(currentUser), [currentUser]);
 
   // Load summary metrics from backend
   const refreshSummary = async () => {
@@ -455,8 +453,8 @@ export const ExceptionManager: React.FC<ExceptionManagerProps> = ({
 
 
 
-  // Check if current user is read-only
-  const isReadOnly = currentUser.role === 'AUDITOR' || currentUser.role === 'RDONLY';
+  // Read-only status is authoritative from the backend user scope.
+  const isReadOnly = isReadOnlyUser(currentUser);
 
   // Table Columns
   const exceptionColumns: ColumnDef<CimsException>[] = [
@@ -895,26 +893,26 @@ export const ExceptionManager: React.FC<ExceptionManagerProps> = ({
                   <div className="space-y-2 text-xs">
                     <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded text-amber-900 leading-relaxed font-medium">
                       Collateral <strong className="text-[#00205B]">{matchedCollateral?.code || selectedExc.collateralId}</strong> requires insurance coverage of{' '}
-                      <strong>ETB {(matchedCollateral?.valuationAmount || 0).toLocaleString()}</strong> based on central adequacy policy. Currently recognized active insurance coverage is{' '}
-                      <strong>ETB {(matchedCollateral?.insuredAmount || 0).toLocaleString()}</strong> (<strong>{(matchedCollateral?.netInsuranceCoveragePct || 0).toFixed(1)}%</strong> of valuation), resulting in an active insurance shortfall of{' '}
-                      <strong className="text-red-700 font-bold">ETB {Math.max(0, (matchedCollateral?.valuationAmount || 0) - (matchedCollateral?.insuredAmount || 0)).toLocaleString()}</strong>.
+                      <strong>ETB {formatEtbNumber((matchedCollateral?.valuationAmount || 0))}</strong> based on central adequacy policy. Currently recognized active insurance coverage is{' '}
+                      <strong>ETB {formatEtbNumber((matchedCollateral?.insuredAmount || 0))}</strong> (<strong>{(matchedCollateral?.netInsuranceCoveragePct || 0).toFixed(1)}%</strong> of valuation), resulting in an active insurance shortfall of{' '}
+                      <strong className="text-red-700 font-bold">ETB {formatEtbNumber(Math.max(0, (matchedCollateral?.valuationAmount || 0) - (matchedCollateral?.insuredAmount || 0)))}</strong>.
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-2 bg-slate-50 border border-slate-200 rounded text-[11px]">
                       <div>
                         <span className="text-[#5B6472] block text-[10px]">Valuation Amount</span>
-                        <strong className="text-[#00205B]">ETB {(matchedCollateral?.valuationAmount || 0).toLocaleString()}</strong>
+                        <strong className="text-[#00205B]">ETB {formatEtbNumber((matchedCollateral?.valuationAmount || 0))}</strong>
                       </div>
                       <div>
                         <span className="text-[#5B6472] block text-[10px]">Haircut / NSV</span>
-                        <strong className="text-[#00205B]">{matchedCollateral?.haircut || 0}% / ETB {(matchedCollateral?.nsv || 0).toLocaleString()}</strong>
+                        <strong className="text-[#00205B]">{matchedCollateral?.haircut || 0}% / ETB {formatEtbNumber((matchedCollateral?.nsv || 0))}</strong>
                       </div>
                       <div>
                         <span className="text-[#5B6472] block text-[10px]">Sum Insured</span>
-                        <strong className="text-emerald-800">ETB {(matchedCollateral?.insuredAmount || 0).toLocaleString()}</strong>
+                        <strong className="text-emerald-800">ETB {formatEtbNumber((matchedCollateral?.insuredAmount || 0))}</strong>
                       </div>
                       <div>
                         <span className="text-[#5B6472] block text-[10px]">Coverage Deficit Gap</span>
-                        <strong className="text-red-700 font-bold">ETB {Math.max(0, (matchedCollateral?.valuationAmount || 0) - (matchedCollateral?.insuredAmount || 0)).toLocaleString()}</strong>
+                        <strong className="text-red-700 font-bold">ETB {formatEtbNumber(Math.max(0, (matchedCollateral?.valuationAmount || 0) - (matchedCollateral?.insuredAmount || 0)))}</strong>
                       </div>
                     </div>
                   </div>
@@ -938,7 +936,7 @@ export const ExceptionManager: React.FC<ExceptionManagerProps> = ({
                       </div>
                       <div>
                         <span className="text-[#5B6472] block text-[10px]">Insured Amount</span>
-                        <strong className="text-[#00205B]">ETB {(matchedPolicy?.insuredAmount || 0).toLocaleString()}</strong>
+                        <strong className="text-[#00205B]">ETB {formatEtbNumber((matchedPolicy?.insuredAmount || 0))}</strong>
                       </div>
                       <div>
                         <span className="text-[#5B6472] block text-[10px]">Expiry Date</span>

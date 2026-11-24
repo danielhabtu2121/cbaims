@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useState, useEffect } from 'react';
 import {
   AlertTriangle,
@@ -154,13 +155,13 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
       header: 'Approved Limit',
       accessorKey: 'approvedLimit',
       align: 'right',
-      cell: (r) => `${r.lineCurrency} ${r.approvedLimit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+      cell: (r) => `${r.lineCurrency}${formatEtbNumber(r.approvedLimit)}`,
     },
     {
       header: 'Outstanding',
       accessorKey: 'outstandingAmount',
       align: 'right',
-      cell: (r) => `${r.lineCurrency} ${r.outstandingAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+      cell: (r) => `${r.lineCurrency}${formatEtbNumber(r.outstandingAmount)}`,
     },
     { header: 'Segment', accessorKey: 'businessSegment' },
     { header: 'Branch', accessorKey: 'branch' },
@@ -212,7 +213,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
       header: 'Collateral Value',
       accessorKey: 'collateralValue',
       align: 'right',
-      cell: (r) => `${r.currency} ${r.collateralValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+      cell: (r) => `${r.currency}${formatEtbNumber(r.collateralValue)}`,
     },
     {
       header: 'Haircut %',

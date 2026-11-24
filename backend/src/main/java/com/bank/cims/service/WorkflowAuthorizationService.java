@@ -67,22 +67,27 @@ public class WorkflowAuthorizationService {
             if (activePerms.isEmpty() || !activePerms.get(0).isCanApprove()) {
                 throw new IllegalStateException("User does not have approval permission for the Approvals module (permission inactive or approval not granted).");
             }
-        } else {
-            boolean defaultAllowed = java.util.Arrays.asList("BRMGR", "EXEC", "SRMGMT", "HODEPT", "DISTDIR", "MGRCOLLDOC", "CRM", "SRM", "BRM")
-                    .contains(user.getRole().toUpperCase());
-            if (!defaultAllowed) {
-                throw new IllegalStateException("User does not have approval permission for the Approvals module.");
-            }
         }
+        // No hardcoded approver allow-list: when no explicit module permission row exists,
+        // authority is decided solely by the configured workflow hierarchy check above.
         return user;
     }
 
     private boolean isSamePerson(String makerId, User checker) {
         if (makerId == null || checker == null) return false;
-        String maker = makerId.trim().toLowerCase().replace("_user", "");
-        String checkerUsername = checker.getUsername() == null ? "" : checker.getUsername().trim().toLowerCase().replace("_user", "");
-        String checkerId = checker.getId() == null ? "" : checker.getId().trim().toLowerCase().replace("_user", "");
-        return maker.equals(checkerUsername) || maker.equals(checkerId);
+        String maker = normalizeIdentity(makerId);
+        String checkerUsername = normalizeIdentity(checker.getUsername());
+        String checkerId = normalizeIdentity(checker.getId());
+        return !maker.isEmpty() && (maker.equals(checkerUsername) || maker.equals(checkerId));
+    }
+
+    /** Normalizes ids such as usr-cro and usernames such as cro_user to the same person key. */
+    private String normalizeIdentity(String value) {
+        if (value == null || value.isBlank()) return "";
+        return value.trim().toLowerCase()
+                .replace("_user", "")
+                .replaceFirst("^usr[-_ ]?", "")
+                .replace("-", "");
     }
 
     public User findUser(String value) {
@@ -104,10 +109,6 @@ public class WorkflowAuthorizationService {
                 if (u.getUsername() != null && (u.getUsername().equalsIgnoreCase(base) || u.getUsername().equalsIgnoreCase(base + "_user"))) return u;
                 if (u.getRole() != null && u.getRole().equalsIgnoreCase(base)) return u;
             }
-        }
-
-        for (User u : userRepository.findAll()) {
-            if (u.getRole() != null && u.getRole().equalsIgnoreCase(v) && u.isActive()) return u;
         }
 
         return null;

@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../../utils/format.ts';
 import React from 'react';
 import { X, Calculator, AlertTriangle, ArrowRight, ShieldAlert, Sparkles, Building, Layers } from 'lucide-react';
 import { KpiExplanation } from '../../../types';
@@ -133,16 +134,16 @@ export const KpiWhyModal: React.FC<KpiWhyModalProps> = ({
                                 {sub.collateralCount}
                               </td>
                               <td className="p-2.5 text-right text-slate-700">
-                                {Number(sub.exposure ?? 0).toLocaleString()}
+                                {formatEtbNumber(sub.exposure ?? 0)}
                               </td>
                               <td className="p-2.5 text-right font-semibold text-slate-900">
-                                {Number(sub.insuranceRequired ?? 0).toLocaleString()}
+                                {formatEtbNumber(sub.insuranceRequired ?? 0)}
                               </td>
                               <td className="p-2.5 text-right text-emerald-700 font-semibold">
-                                {Number(sub.activeInsurance ?? 0).toLocaleString()}
+                                {formatEtbNumber(sub.activeInsurance ?? 0)}
                               </td>
                               <td className="p-2.5 text-right font-bold text-red-600">
-                                {sub.gap > 0 ? Number(sub.gap).toLocaleString() : '—'}
+                                {sub.gap > 0 ? formatEtbNumber(sub.gap) : '—'}
                               </td>
                               <td className="p-2.5 text-right">
                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${covBadge}`}>
@@ -189,7 +190,7 @@ export const KpiWhyModal: React.FC<KpiWhyModalProps> = ({
                             <span>•</span>
                             <span>Segment: <strong className="text-slate-700">{item.segment}</strong></span>
                             <span>•</span>
-                            <span>Required: <strong>ETB {Number(item.amount ?? 0).toLocaleString()}</strong></span>
+                            <span>Required: <strong>ETB {formatEtbNumber(Number(item.amount ?? 0))}</strong></span>
                           </div>
                         </div>
 
@@ -197,7 +198,7 @@ export const KpiWhyModal: React.FC<KpiWhyModalProps> = ({
                           <div>
                             <div className="text-[10px] uppercase font-bold text-slate-400">Deficit Gap</div>
                             <div className="text-xs font-extrabold text-red-600">
-                              ETB {Number(item.gap ?? 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(item.gap ?? 0))}
                             </div>
                           </div>
 

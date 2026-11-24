@@ -60,6 +60,30 @@ public class EarlyCollateralReleaseService {
     @Autowired
     private CimsService cimsService;
 
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
+    @Autowired
+    private RoleHierarchyService roleHierarchyService;
+
+    @Autowired
+    private WorkflowAuthorizationService workflowAuthorizationService;
+
+    private User requireApprovalActor() {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive()
+                || (actor.getId() == null || actor.getId().isBlank())
+                || (actor.getRole() == null || actor.getRole().isBlank())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "An authenticated user with an assigned role is required to decide a collateral release request.");
+        }
+        return actor;
+    }
+
+    private String actorReference(User actor) {
+        return actor.getId() != null && !actor.getId().isBlank() ? actor.getId() : actor.getUsername();
+    }
+
     /**
      * Pre-Release Impact Assessment (BR-03, Section 5.3, 5.4)
      * Calculates position of all affected cross-collateralized facilities before and after proposed release.
@@ -415,10 +439,11 @@ public class EarlyCollateralReleaseService {
         collateral.setActiveReleaseRequestId(saved.getId());
         collateralRepository.save(collateral);
 
-        // Submit to workflow inbox for dual control authorization
+        // Submit to the checker role configured on the Administration > Workflow Approval Hierarchy screen.
+        String approverRole = roleHierarchyService.resolveApproverRole("PROC_COLLATERAL_RELEASE", "APPROVE_COLLATERAL_RELEASE");
         WorkflowTask task = cimsService.submitToWorkflow("COLLATERAL_RELEASE", "Collateral Release", saved.getId(),
                 "APPROVE_COLLATERAL_RELEASE", "{\"releaseRequestId\":\"" + saved.getId() + "\",\"collateralCode\":\"" + collateral.getCode() + "\"}",
-                "Early Release Request: " + saved.getReason(), requesterId, "BRMGR");
+                "Early Release Request: " + saved.getReason(), requesterId, approverRole);
 
         saved.setWorkflowTaskId(task.getId());
         collateralReleaseRequestRepository.save(saved);
@@ -436,19 +461,20 @@ public class EarlyCollateralReleaseService {
      */
     @Transactional
     public CollateralReleaseRequest approveReleaseRequest(String requestId, String approverId, String approverRole, String comments) {
+        User actor = requireApprovalActor();
+        final String effectiveApprover = actorReference(actor);
+        final String effectiveRole = actor.getRole();
         CollateralReleaseRequest request = collateralReleaseRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Release request not found: " + requestId));
+        assertReleaseAccess(request);
+        assertReleaseApprovalAuthority(request, effectiveApprover);
 
         if (!"PENDING_APPROVAL".equalsIgnoreCase(request.getStatus()) && !"PENDING".equalsIgnoreCase(request.getStatus())) {
             throw new IllegalStateException("Invalid state transition: Release request " + requestId + " is in '" + request.getStatus() + "' status and cannot be approved. Only PENDING_APPROVAL requests can be approved.");
         }
 
-        if (approverId != null && approverId.equalsIgnoreCase(request.getRequesterId())) {
+        if (effectiveApprover.equalsIgnoreCase(request.getRequesterId())) {
             throw new IllegalArgumentException("Maker-checker violation: Requester cannot approve their own release request.");
-        }
-
-        if ("SYSADMIN".equalsIgnoreCase(approverRole) || "ADMIN".equalsIgnoreCase(approverRole)) {
-            throw new IllegalArgumentException("System Administrator role does not hold credit approval rights for collateral release.");
         }
 
         // Re-run impact assessment at time of approval
@@ -465,12 +491,12 @@ public class EarlyCollateralReleaseService {
 
         request.setStatus("APPROVED");
         request.setCbsUpdateStatus("PENDING"); // CBS update remains a MANUAL action!
-        request.setApproverId(approverId);
+        request.setApproverId(effectiveApprover);
         request.setDecisionDate(LocalDateTime.now().toString());
         request.setDecisionComments(comments);
         CollateralReleaseRequest saved = collateralReleaseRequestRepository.save(request);
 
-        cimsService.logAudit(approverId, approverRole != null ? approverRole : "CHECKER", "APPROVE_COLLATERAL_RELEASE",
+        cimsService.logAudit(effectiveApprover, effectiveRole, "APPROVE_COLLATERAL_RELEASE",
                 "CollateralReleaseRequest", saved.getId(), "Status", "Pending Approval", "Approved",
                 "Approved collateral release. CBS linkage removal must now be executed manually.");
 
@@ -482,19 +508,24 @@ public class EarlyCollateralReleaseService {
      */
     @Transactional
     public CollateralReleaseRequest rejectReleaseRequest(String requestId, String approverId, String approverRole, String comments) {
+        User actor = requireApprovalActor();
+        final String effectiveApprover = actorReference(actor);
+        final String effectiveRole = actor.getRole();
         CollateralReleaseRequest request = collateralReleaseRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Release request not found: " + requestId));
+        assertReleaseAccess(request);
+        assertReleaseApprovalAuthority(request, effectiveApprover);
 
         if (!"PENDING_APPROVAL".equalsIgnoreCase(request.getStatus()) && !"PENDING".equalsIgnoreCase(request.getStatus())) {
             throw new IllegalStateException("Invalid state transition: Release request " + requestId + " is in '" + request.getStatus() + "' status and cannot be rejected. Only PENDING_APPROVAL requests can be rejected.");
         }
 
-        if (approverId != null && approverId.equalsIgnoreCase(request.getRequesterId())) {
+        if (effectiveApprover.equalsIgnoreCase(request.getRequesterId())) {
             throw new IllegalArgumentException("Maker-checker violation: Requester cannot reject their own release request.");
         }
 
         request.setStatus("REJECTED");
-        request.setApproverId(approverId);
+        request.setApproverId(effectiveApprover);
         request.setDecisionDate(LocalDateTime.now().toString());
         request.setDecisionComments(comments);
         CollateralReleaseRequest saved = collateralReleaseRequestRepository.save(request);
@@ -505,7 +536,7 @@ public class EarlyCollateralReleaseService {
             collateralRepository.save(c);
         });
 
-        cimsService.logAudit(approverId, approverRole != null ? approverRole : "CHECKER", "REJECT_COLLATERAL_RELEASE",
+        cimsService.logAudit(effectiveApprover, effectiveRole, "REJECT_COLLATERAL_RELEASE",
                 "CollateralReleaseRequest", saved.getId(), "Status", "Pending Approval", "Rejected",
                 "Rejected collateral release request: " + comments);
 
@@ -517,19 +548,24 @@ public class EarlyCollateralReleaseService {
      */
     @Transactional
     public CollateralReleaseRequest returnReleaseRequest(String requestId, String approverId, String approverRole, String comments) {
+        User actor = requireApprovalActor();
+        final String effectiveApprover = actorReference(actor);
+        final String effectiveRole = actor.getRole();
         CollateralReleaseRequest request = collateralReleaseRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Release request not found: " + requestId));
+        assertReleaseAccess(request);
+        assertReleaseApprovalAuthority(request, effectiveApprover);
 
         if (!"PENDING_APPROVAL".equalsIgnoreCase(request.getStatus()) && !"PENDING".equalsIgnoreCase(request.getStatus())) {
             throw new IllegalStateException("Invalid state transition: Release request " + requestId + " is in '" + request.getStatus() + "' status and cannot be returned. Only PENDING_APPROVAL requests can be returned.");
         }
 
-        if (approverId != null && approverId.equalsIgnoreCase(request.getRequesterId())) {
+        if (effectiveApprover.equalsIgnoreCase(request.getRequesterId())) {
             throw new IllegalArgumentException("Maker-checker violation: Requester cannot return their own release request.");
         }
 
         request.setStatus("RETURNED");
-        request.setApproverId(approverId);
+        request.setApproverId(effectiveApprover);
         request.setDecisionDate(LocalDateTime.now().toString());
         request.setDecisionComments(comments);
         CollateralReleaseRequest saved = collateralReleaseRequestRepository.save(request);
@@ -540,7 +576,7 @@ public class EarlyCollateralReleaseService {
             collateralRepository.save(c);
         });
 
-        cimsService.logAudit(approverId, approverRole != null ? approverRole : "CHECKER", "RETURN_COLLATERAL_RELEASE",
+        cimsService.logAudit(effectiveApprover, effectiveRole, "RETURN_COLLATERAL_RELEASE",
                 "CollateralReleaseRequest", saved.getId(), "Status", "Pending Approval", "Returned",
                 "Returned collateral release request for correction: " + comments);
 
@@ -624,11 +660,47 @@ public class EarlyCollateralReleaseService {
     }
 
     public List<CollateralReleaseRequest> getAllReleaseRequests() {
-        return collateralReleaseRequestRepository.findAll();
+        AuthorizationScopeService.Scope scope = authorizationScopeService.currentScope();
+        if (scope.isBankWide()) return collateralReleaseRequestRepository.findAll();
+        return collateralReleaseRequestRepository.findAll().stream()
+                .filter(r -> isReleaseVisible(r, scope))
+                .toList();
     }
 
     public Optional<CollateralReleaseRequest> getReleaseRequestById(String id) {
-        return collateralReleaseRequestRepository.findById(id);
+        Optional<CollateralReleaseRequest> result = collateralReleaseRequestRepository.findById(id);
+        if (result.isEmpty()) return result;
+        AuthorizationScopeService.Scope scope = authorizationScopeService.currentScope();
+        if (scope.isBankWide() || isReleaseVisible(result.get(), scope)) return result;
+        return Optional.empty();
+    }
+
+    private boolean isReleaseVisible(CollateralReleaseRequest request, AuthorizationScopeService.Scope scope) {
+        if (request == null || request.getCollateralId() == null) return false;
+        Collateral collateral = collateralRepository.findById(request.getCollateralId())
+                .or(() -> collateralRepository.findByCode(request.getCollateralId()))
+                .orElse(null);
+        if (collateral == null) return false;
+        Set<String> customerIds = collateral.getCustomerId() == null
+                ? Set.of() : Set.of(collateral.getCustomerId());
+        return scope.allowsCollateral(collateral, customerIds);
+    }
+
+    private void assertReleaseAccess(CollateralReleaseRequest request) {
+        if (request == null) return;
+        AuthorizationScopeService.Scope scope = authorizationScopeService.currentScope();
+        if (!scope.isBankWide() && !isReleaseVisible(request, scope)) {
+            throw new IllegalStateException("Access denied: collateral release request "
+                    + request.getId() + " is outside your assigned branch/segment scope.");
+        }
+    }
+
+    private void assertReleaseApprovalAuthority(CollateralReleaseRequest request, String approverId) {
+        String taskId = request == null ? null : request.getWorkflowTaskId();
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalStateException("Release request has no workflow task; approval authority cannot be verified.");
+        }
+        workflowAuthorizationService.assertCanApprove(approverId, taskId);
     }
     private List<LoanCollateralLink> findLinksForCollateral(Collateral col) {
         if (col == null) return Collections.emptyList();

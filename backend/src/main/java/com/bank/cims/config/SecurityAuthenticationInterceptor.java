@@ -13,16 +13,13 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 @Component
 public class SecurityAuthenticationInterceptor implements HandlerInterceptor {
 
     @Autowired private UserRepository userRepository;
     @Autowired private TokenService tokenService;
-
-    private static final List<String> APPROVER_ROLES = Arrays.asList(
-            "BRMGR", "SRMGMT", "HODEPT", "DISTDIR", "EXEC", "MGRCOLLDOC", "COMPLIANCE", "RISK", "SRM", "BRM"
-    );
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -76,17 +73,24 @@ public class SecurityAuthenticationInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // 6. Enforce Backend Role-Based Approval Protection
+        // 6. Administration endpoints are restricted to configured system administrators.
+        // Frontend routing hides/disables the Admin page for everyone else; this is the
+        // authoritative backend guard for direct API calls.
+        if (uri.startsWith("/api/admin/") && !isAdminRole(user.getRole())) {
+            writeError(response, HttpServletResponse.SC_FORBIDDEN,
+                    "Access denied: administrative configuration is restricted to system administrators.");
+            return false;
+        }
+
+        // 7. Backend-enforced read-only guarantee for audit / governance inspection roles.
+        // Approval authority itself is validated per task by WorkflowAuthorizationService
+        // against the Admin-configured Approval Hierarchy - there is no hardcoded role list here.
         String method = request.getMethod().toUpperCase();
-        if ("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method)) {
-            boolean isApprovalAction = uri.endsWith("/approve") || uri.contains("/approve/") || uri.endsWith("/decision") || uri.endsWith("/authorize");
-            if (isApprovalAction) {
-                String role = user.getRole();
-                if (role == null || !APPROVER_ROLES.contains(role.toUpperCase())) {
-                    writeError(response, HttpServletResponse.SC_FORBIDDEN, "Permission Denied: User role '" + role + "' does not hold approval authority for this transaction.");
-                    return false;
-                }
-            }
+        boolean mutating = "POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method) || "DELETE".equals(method);
+        if (mutating && isReadOnlyRole(user.getRole()) && !isSelfServiceEndpoint(uri)) {
+            writeError(response, HttpServletResponse.SC_FORBIDDEN,
+                    "Read-only account: role '" + user.getRole() + "' cannot modify records. Audit access is strictly read-only.");
+            return false;
         }
 
         // Bind verified identity into request and Spring Security Context
@@ -109,10 +113,29 @@ public class SecurityAuthenticationInterceptor implements HandlerInterceptor {
         return uri.equals("/api/auth/login")
                 || uri.equals("/api/auth/forgot-password")
                 || uri.equals("/api/auth/reset-password")
-                || uri.equals("/api/auth/policy")
-                || uri.endsWith("/health")
-                || uri.endsWith("/health/dependencies")
-                || uri.endsWith("/runtime");
+                || uri.equals("/api/auth/policy");
+    }
+
+    private boolean isAdminRole(String role) {
+        if (role == null || role.isBlank()) return false;
+        String r = role.trim().toUpperCase(Locale.ROOT);
+        return r.contains("SYSADMIN") || r.equals("ADMIN") || r.endsWith("_ADMIN");
+    }
+
+    private boolean isReadOnlyRole(String role) {
+        if (role == null) return true;
+        String r = role.trim().toUpperCase();
+        return r.equals("AUDITOR") || r.equals("AUDIT") || r.equals("RDONLY")
+                || r.startsWith("TEST_AUDIT") || r.equals("TEST_RISK_VIEW")
+                || r.equals("TEST_COMPLIANCE_VIEW") || r.equals("TEST_SYSADMIN");
+    }
+
+    private boolean isSelfServiceEndpoint(String uri) {
+        return uri.equals("/api/auth/logout")
+                || uri.equals("/api/auth/change-password")
+                || uri.equals("/api/auth/session/refresh")
+                || uri.equals("/api/auth/session/validate")
+                || uri.startsWith("/api/notifications/") && uri.endsWith("/read");
     }
 
     private User findUser(String value) {

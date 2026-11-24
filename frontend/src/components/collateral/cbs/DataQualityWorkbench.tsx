@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../../utils/format.ts';
 import React, { useState, useEffect } from 'react';
 import {
   Layers,
@@ -331,7 +332,7 @@ export const DataQualityWorkbench: React.FC<DataQualityWorkbenchProps> = ({
                             <td className="py-2.5 px-3">{col.type || col.category}</td>
                             <td className="py-2.5 px-3">{col.branch} ({col.owningSegment})</td>
                             <td className="py-2.5 px-3 font-semibold text-slate-800">
-                              {col.currency || 'ETB'} {col.valuationAmount?.toLocaleString()}
+                              {col.currency || 'ETB'} {formatEtbNumber(col.valuationAmount)}
                             </td>
                             <td className="py-2.5 px-3">
                               <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
@@ -518,7 +519,7 @@ export const DataQualityWorkbench: React.FC<DataQualityWorkbenchProps> = ({
                             <td className="py-2.5 px-3 font-mono text-blue-700">{link.accountNumber || '—'}</td>
                             <td className="py-2.5 px-3">{link.branchCode || '—'}</td>
                             <td className="py-2.5 px-3 font-semibold text-slate-800">
-                              ETB {link.linkedAmount?.toLocaleString() ?? 0}
+                              ETB {formatEtbNumber(link.linkedAmount ?? 0)}
                             </td>
                             <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-[200px] truncate">{link.notes}</td>
                             <td className="py-2.5 px-3 text-right">
@@ -884,7 +885,7 @@ export const DataQualityWorkbench: React.FC<DataQualityWorkbenchProps> = ({
                   <option value="">-- Choose Loan Account --</option>
                   {facilities.map((fac) => (
                     <option key={fac.id} value={fac.id}>
-                      {fac.loanReference} — {fac.facilityType || fac.lineCode} (Bal: ETB {fac.outstandingBalance?.toLocaleString()})
+                      {fac.loanReference} — {fac.facilityType || fac.lineCode} (Bal: ETB {formatEtbNumber(fac.outstandingBalance)})
                     </option>
                   ))}
                 </select>

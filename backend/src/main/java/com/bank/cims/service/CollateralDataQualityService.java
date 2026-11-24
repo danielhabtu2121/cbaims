@@ -177,7 +177,8 @@ public class CollateralDataQualityService {
         }
 
         // 6. Mandatory Documents Verification & Exception Handling (Section 13)
-        List<MandatoryDocumentRule> applicableRules = mandatoryDocumentRuleRepository.findByActiveTrue();
+        List<MandatoryDocumentRule> applicableRules = validationService.resolveApplicableDocumentRules(
+                collateral, mandatoryDocumentRuleRepository.findByActiveTrue());
         List<OwnershipDocument> existingDocs = new ArrayList<>();
         if (collateral.getId() != null) {
             existingDocs.addAll(ownershipDocumentRepository.findByCollateralId(collateral.getId()));
@@ -192,7 +193,7 @@ public class CollateralDataQualityService {
                 : Collections.emptyList();
 
         for (MandatoryDocumentRule rule : applicableRules) {
-            if (validationService.isMandatoryDocumentRuleApplicable(rule, collateral)) {
+            if (rule.isMandatory()) {
                 boolean docFound = false;
                 for (OwnershipDocument doc : existingDocs) {
                     if (!"Rejected".equalsIgnoreCase(doc.getVerificationStatus()) &&

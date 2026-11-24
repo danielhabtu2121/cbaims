@@ -148,7 +148,13 @@ public class AuthController {
         if (claims == null || authUser == null) {
             return ResponseEntity.status(401).body(Map.of("valid", false, "message", "Session is expired or revoked."));
         }
-        return ResponseEntity.ok(Map.of("valid", true, "active", authUser.isActive(), "username", authUser.getUsername(), "role", authUser.getRole()));
+        return ResponseEntity.ok(Map.of(
+                "valid", true,
+                "active", authUser.isActive(),
+                "username", authUser.getUsername(),
+                "role", authUser.getRole(),
+                "user", authService.safeUser(authUser)
+        ));
     }
 
     @GetMapping("/policy")

@@ -3,6 +3,8 @@ package com.bank.cims.controller;
 import com.bank.cims.dto.InsuranceAdequacyAssessmentDto;
 import com.bank.cims.model.InsuranceCoverageRule;
 import com.bank.cims.model.InsuranceException;
+import com.bank.cims.model.User;
+import com.bank.cims.service.AuthorizationScopeService;
 import com.bank.cims.service.InsuranceAdequacyService;
 import com.bank.cims.service.InsuranceCoverageRuleService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +25,19 @@ public class InsuranceAdequacyController {
     @Autowired
     private InsuranceCoverageRuleService insuranceCoverageRuleService;
 
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
+    private User currentActor() {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive()
+                || actor.getUsername() == null || actor.getUsername().isBlank()
+                || actor.getRole() == null || actor.getRole().isBlank()) {
+            throw new IllegalArgumentException("Authentication required: a valid signed-in user with an assigned role could not be identified.");
+        }
+        return actor;
+    }
+
     @GetMapping("/{collateralId}")
     public ResponseEntity<InsuranceAdequacyAssessmentDto> getAdequacyAssessment(@PathVariable String collateralId) {
         return ResponseEntity.ok(insuranceAdequacyService.evaluateAdequacy(collateralId));
@@ -40,8 +55,8 @@ public class InsuranceAdequacyController {
             @RequestBody InsuranceCoverageRule rule,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String userRole) {
-        String actor = userId != null && !userId.isBlank() ? userId : "SYSADMIN";
-        return ResponseEntity.ok(insuranceCoverageRuleService.saveRule(rule, actor, userRole != null ? userRole : "SYSADMIN"));
+        User actor = currentActor();
+        return ResponseEntity.ok(insuranceCoverageRuleService.saveRule(rule, actor.getUsername(), actor.getRole()));
     }
 
     @PostMapping("/rules/{id}/approve")
@@ -49,10 +64,8 @@ public class InsuranceAdequacyController {
             @PathVariable String id,
             @RequestHeader(value = "X-User-Id", required = false) String checkerId,
             @RequestHeader(value = "X-User-Role", required = false) String checkerRole) {
-        if (checkerId == null || checkerId.isBlank()) {
-            throw new IllegalArgumentException("Checker identification header (X-User-Id) is required.");
-        }
-        return ResponseEntity.ok(insuranceCoverageRuleService.approveCoverageRule(id, checkerId, checkerRole != null ? checkerRole : "CHECKER"));
+        User actor = currentActor();
+        return ResponseEntity.ok(insuranceCoverageRuleService.approveCoverageRule(id, actor.getUsername(), actor.getRole()));
     }
 
     @PostMapping("/rules/{id}/reject")
@@ -61,10 +74,8 @@ public class InsuranceAdequacyController {
             @RequestParam(required = false) String reason,
             @RequestHeader(value = "X-User-Id", required = false) String checkerId,
             @RequestHeader(value = "X-User-Role", required = false) String checkerRole) {
-        if (checkerId == null || checkerId.isBlank()) {
-            throw new IllegalArgumentException("Checker identification header (X-User-Id) is required.");
-        }
-        return ResponseEntity.ok(insuranceCoverageRuleService.rejectCoverageRule(id, checkerId, checkerRole != null ? checkerRole : "CHECKER", reason));
+        User actor = currentActor();
+        return ResponseEntity.ok(insuranceCoverageRuleService.rejectCoverageRule(id, actor.getUsername(), actor.getRole(), reason));
     }
 
     @PostMapping("/rules/{id}/toggle")
@@ -72,8 +83,8 @@ public class InsuranceAdequacyController {
             @PathVariable String id,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String userRole) {
-        String actor = userId != null && !userId.isBlank() ? userId : "SYSADMIN";
-        return ResponseEntity.ok(insuranceCoverageRuleService.toggleRuleStatus(id, actor, userRole != null ? userRole : "SYSADMIN"));
+        User actor = currentActor();
+        return ResponseEntity.ok(insuranceCoverageRuleService.toggleRuleStatus(id, actor.getUsername(), actor.getRole()));
     }
 
     // --- Insurance Exceptions Workflow (BR-07, BR-12) ---
@@ -82,10 +93,8 @@ public class InsuranceAdequacyController {
     public ResponseEntity<InsuranceException> submitException(
             @RequestBody InsuranceException exception,
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("Maker user identification header (X-User-Id) is required.");
-        }
-        return ResponseEntity.ok(insuranceAdequacyService.submitException(exception, userId));
+        User actor = currentActor();
+        return ResponseEntity.ok(insuranceAdequacyService.submitException(exception, actor.getUsername()));
     }
 
     @PostMapping("/exceptions/{id}/approve")
@@ -94,10 +103,8 @@ public class InsuranceAdequacyController {
             @RequestParam(required = false, defaultValue = "Approved under supervisor discretion") String comments,
             @RequestHeader(value = "X-User-Id", required = false) String supervisorId,
             @RequestHeader(value = "X-User-Role", required = false) String supervisorRole) {
-        if (supervisorId == null || supervisorId.isBlank()) {
-            throw new IllegalArgumentException("Supervisor checker identification header (X-User-Id) is required.");
-        }
-        return ResponseEntity.ok(insuranceAdequacyService.approveException(id, supervisorId, supervisorRole != null ? supervisorRole : "BRMGR", comments));
+        User actor = currentActor();
+        return ResponseEntity.ok(insuranceAdequacyService.approveException(id, actor.getUsername(), actor.getRole(), comments));
     }
 
     @PostMapping("/exceptions/{id}/reject")
@@ -106,10 +113,8 @@ public class InsuranceAdequacyController {
             @RequestParam String comments,
             @RequestHeader(value = "X-User-Id", required = false) String supervisorId,
             @RequestHeader(value = "X-User-Role", required = false) String supervisorRole) {
-        if (supervisorId == null || supervisorId.isBlank()) {
-            throw new IllegalArgumentException("Supervisor checker identification header (X-User-Id) is required.");
-        }
-        return ResponseEntity.ok(insuranceAdequacyService.rejectException(id, supervisorId, supervisorRole != null ? supervisorRole : "BRMGR", comments));
+        User actor = currentActor();
+        return ResponseEntity.ok(insuranceAdequacyService.rejectException(id, actor.getUsername(), actor.getRole(), comments));
     }
 
     @PostMapping("/exceptions/{id}/resolve")
@@ -117,9 +122,7 @@ public class InsuranceAdequacyController {
             @PathVariable String id,
             @RequestParam(required = false, defaultValue = "Exception condition resolved.") String notes,
             @RequestHeader(value = "X-User-Id", required = false) String resolvedBy) {
-        if (resolvedBy == null || resolvedBy.isBlank()) {
-            throw new IllegalArgumentException("Resolving officer identification header (X-User-Id) is required.");
-        }
-        return ResponseEntity.ok(insuranceAdequacyService.resolveException(id, resolvedBy, notes));
+        User actor = currentActor();
+        return ResponseEntity.ok(insuranceAdequacyService.resolveException(id, actor.getUsername(), notes));
     }
 }

@@ -1,3 +1,5 @@
+import { AmountInput } from '../common/AmountInput';
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   FileCheck,
@@ -56,6 +58,7 @@ import { StatusChip } from '../layout/StatusChip';
 import { CircularProgress } from '../layout/CircularProgress';
 import { cimsApi } from '../../api/cimsApi';
 import { DocumentPreviewModal } from '../documents/DocumentPreviewModal';
+import { canMutate } from '../../auth/session';
 
 interface WizardDocItem {
   id: string;
@@ -444,7 +447,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
   const [batchDragOver, setBatchDragOver] = useState<boolean>(false);
   const [uninsuredFilterOnly, setUninsuredFilterOnly] = useState<boolean>(false);
 
-  const isMaker = currentUser.canCreate !== false;
+  const isMaker = canMutate(currentUser, 'canCreate');
   const coverageThreshold = Number(systemParameters.find((p) => p.paramKey === 'min_coverage_adequacy_pct')?.paramValue ?? 100);
 
   const selectedCustomer = customers.find(
@@ -1082,7 +1085,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
       const hasActiveException = wizardAdequacy?.hasActiveException;
       if (!hasActiveException) {
         errors.push(
-          `Under-insurance is prohibited. Combined active insurance (${defaultCurrency} ${totalActive.toLocaleString()}) does not meet required coverage (${defaultCurrency} ${requiredInsuranceAmount.toLocaleString()}). Remaining deficit: ${defaultCurrency} ${(requiredInsuranceAmount - totalActive).toLocaleString()}. Please adjust policy sum insured or request an authorized insurance exception.`
+          `Under-insurance is prohibited. Combined active insurance (${defaultCurrency}${formatEtbNumber(totalActive)}) does not meet required coverage (${defaultCurrency}${formatEtbNumber(requiredInsuranceAmount)}). Remaining deficit: ${defaultCurrency}${formatEtbNumber((requiredInsuranceAmount - totalActive))}. Please adjust policy sum insured or request an authorized insurance exception.`
         );
       }
     }
@@ -1110,10 +1113,10 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
     if (requiredInsuranceAmount > 0 && insAmt < requiredInsuranceAmount) {
       alert(
         `Cannot submit: Under-insurance is strictly prohibited by Credit Policy.\n\n` +
-        `• Required Sum Insured: ${defaultCurrency} ${requiredInsuranceAmount.toLocaleString()}\n` +
-        `• Current Insured Amount: ${defaultCurrency} ${insAmt.toLocaleString()}\n` +
-        `• Shortfall Deficit: ${defaultCurrency} ${(requiredInsuranceAmount - insAmt).toLocaleString()}\n\n` +
-        `Please increase the insured amount to at least ${defaultCurrency} ${requiredInsuranceAmount.toLocaleString()} before submitting.`
+        `• Required Sum Insured: ${defaultCurrency}${formatEtbNumber(requiredInsuranceAmount)}\n` +
+        `• Current Insured Amount: ${defaultCurrency}${formatEtbNumber(insAmt)}\n` +
+        `• Shortfall Deficit: ${defaultCurrency}${formatEtbNumber((requiredInsuranceAmount - insAmt))}\n\n` +
+        `Please increase the insured amount to at least ${defaultCurrency}${formatEtbNumber(requiredInsuranceAmount)} before submitting.`
       );
       setWizardStep(4);
       return;
@@ -1192,7 +1195,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
       accessorKey: 'insuredAmount',
       cell: (p) => (
         <div className="tabular-nums font-bold text-emerald-700">
-          {defaultCurrency} {p.insuredAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          {defaultCurrency} {formatEtbNumber(p.insuredAmount)}
         </div>
       ),
     },
@@ -1201,7 +1204,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
       accessorKey: 'premium',
       cell: (p) => (
         <div className="tabular-nums font-semibold text-[#101828]">
-          {defaultCurrency} {p.premium?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          {defaultCurrency} {formatEtbNumber(p.premium)}
         </div>
       ),
     },
@@ -1603,13 +1606,13 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                       <div>
                         <span className="text-[#5B6472] block text-[10px] font-semibold">REQUIRED SUM INSURED</span>
                         <strong className="text-[#00205B] font-mono text-sm">
-                          {defaultCurrency} {(detailCompliance?.requiredInsuranceAmount ?? 0).toLocaleString()}
+                          {defaultCurrency} {formatEtbNumber((detailCompliance?.requiredInsuranceAmount ?? 0))}
                         </strong>
                       </div>
                       <div>
                         <span className="text-[#5B6472] block text-[10px] font-semibold">POLICY COVERAGE</span>
                         <strong className="text-emerald-700 font-mono text-sm">
-                          {defaultCurrency} {(detailCompliance?.insuredAmount ?? selectedPolicy.insuredAmount ?? 0).toLocaleString()}
+                          {defaultCurrency} {formatEtbNumber((detailCompliance?.insuredAmount ?? selectedPolicy.insuredAmount ?? 0))}
                         </strong>
                       </div>
                       <div>
@@ -1630,7 +1633,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                             }`}
                         >
                           {(detailCompliance?.coverageGap ?? 0) > 0
-                            ? `ETB ${detailCompliance?.coverageGap.toLocaleString()}`
+                            ? `ETB ${formatEtbNumber(detailCompliance?.coverageGap)}`
                             : 'None (Adequate)'}
                         </strong>
                       </div>
@@ -1673,13 +1676,13 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                       <div>
                         <span className="text-[#5B6472]">Insured Amount:</span>{' '}
                         <strong className="text-emerald-700 tabular-nums">
-                          {defaultCurrency} {selectedPolicy.insuredAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          {defaultCurrency} {formatEtbNumber(selectedPolicy.insuredAmount)}
                         </strong>
                       </div>
                       <div>
                         <span className="text-[#5B6472]">Annual Premium:</span>{' '}
                         <strong className="tabular-nums">
-                          {defaultCurrency} {selectedPolicy.premium?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          {defaultCurrency} {formatEtbNumber(selectedPolicy.premium)}
                         </strong>
                       </div>
                       <div>
@@ -2042,12 +2045,12 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                                       Version: <strong>v{item.version}</strong>
                                       {item.insuredAmount && (
                                         <span className="ml-2">
-                                          Insured: <strong>{defaultCurrency} {Number(item.insuredAmount).toLocaleString()}</strong>
+                                          Insured: <strong>{defaultCurrency} {formatEtbNumber(Number(item.insuredAmount))}</strong>
                                         </span>
                                       )}
                                       {item.premium && (
                                         <span className="ml-2">
-                                          Premium: <strong>{defaultCurrency} {Number(item.premium).toLocaleString()}</strong>
+                                          Premium: <strong>{defaultCurrency} {formatEtbNumber(Number(item.premium))}</strong>
                                         </span>
                                       )}
                                     </div>
@@ -2254,7 +2257,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                                 <div className="text-right">
                                   <div className="text-[10px] text-[#5B6472]">Market Valuation</div>
                                   <div className="text-xs font-bold text-[#00205B]">
-                                    ETB {c.valuationAmount?.toLocaleString()}
+                                    ETB {formatEtbNumber(c.valuationAmount)}
                                   </div>
                                 </div>
                               </div>
@@ -2331,7 +2334,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                       <div>
                         <span className="text-[#5B6472] block text-[10px]">MARKET VALUATION</span>
                         <strong className="text-base font-bold text-[#00205B] font-mono">
-                          ETB {wizardCol.valuationAmount?.toLocaleString()}
+                          ETB {formatEtbNumber(wizardCol.valuationAmount)}
                         </strong>
                       </div>
                       <div>
@@ -2343,7 +2346,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                       <div>
                         <span className="text-[#5B6472] block text-[10px]">NET SECURITY VALUE (NSV)</span>
                         <strong className="text-base font-bold text-emerald-700 font-mono">
-                          ETB {((wizardCol.valuationAmount || 0) * (1 - (wizardCol.haircut || 0) / 100)).toLocaleString()}
+                          ETB {formatEtbNumber(((wizardCol.valuationAmount || 0) * (1 - (wizardCol.haircut || 0) / 100)))}
                         </strong>
                       </div>
                     </div>
@@ -2411,7 +2414,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                         <div className="p-3 bg-slate-50 border-b border-[#E2E8F0] font-bold text-xs flex justify-between items-center">
                           <span>Secured Core Banking Credit Facilities</span>
                           <span className="font-mono text-red-700">
-                            Total Secured Exposure: ETB {outstandingExposure.toLocaleString()}
+                            Total Secured Exposure: ETB {formatEtbNumber(outstandingExposure)}
                           </span>
                         </div>
 
@@ -2424,8 +2427,8 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                                   <span className="text-[#5B6472] ml-2">({fac.facilityType || 'Term Loan'})</span>
                                 </div>
                                 <div className="flex gap-4">
-                                  <span className="text-[#5B6472]">Limit: ETB {(fac.approvedLimit || 0).toLocaleString()}</span>
-                                  <span>Outstanding: <strong className="text-red-700 font-mono">ETB {(fac.outstandingBalance || 0).toLocaleString()}</strong></span>
+                                  <span className="text-[#5B6472]">Limit: ETB {formatEtbNumber((fac.approvedLimit || 0))}</span>
+                                  <span>Outstanding: <strong className="text-red-700 font-mono">ETB {formatEtbNumber((fac.outstandingBalance || 0))}</strong></span>
                                 </div>
                               </div>
                             ))}
@@ -2451,28 +2454,28 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                         <div className="grid grid-cols-4 gap-3 text-xs pt-1">
                           <div>
                             <span className="text-[#5B6472] block text-[10px]">BANK-ASSESSED INSURABLE VALUE</span>
-                            <strong className="font-mono text-[#00205B] text-sm">ETB {insurableStructureVal.toLocaleString()}</strong>
+                            <strong className="font-mono text-[#00205B] text-sm">ETB {formatEtbNumber(insurableStructureVal)}</strong>
                           </div>
                           <div>
                             <span className="text-[#5B6472] block text-[10px]">REQUIRED PRIMARY COVERAGE</span>
-                            <strong className="font-mono text-emerald-700 text-sm font-bold">ETB {requiredInsuranceAmount.toLocaleString()}</strong>
+                            <strong className="font-mono text-emerald-700 text-sm font-bold">ETB {formatEtbNumber(requiredInsuranceAmount)}</strong>
                           </div>
                           <div>
                             <span className="text-[#5B6472] block text-[10px]">TOTAL SECURED EXPOSURE</span>
-                            <strong className="font-mono text-red-700 text-sm">ETB {outstandingExposure.toLocaleString()}</strong>
+                            <strong className="font-mono text-red-700 text-sm">ETB {formatEtbNumber(outstandingExposure)}</strong>
                           </div>
                           <div>
                             <span className="text-[#5B6472] block text-[10px]">EXISTING ACTIVE INSURANCE</span>
-                            <strong className="font-mono text-blue-700 text-sm">ETB {existingActiveInsurance.toLocaleString()}</strong>
+                            <strong className="font-mono text-blue-700 text-sm">ETB {formatEtbNumber(existingActiveInsurance)}</strong>
                           </div>
                         </div>
 
                         <div className="p-2.5 bg-white border border-[#DCE9F5] rounded text-[11px] text-[#00205B] space-y-1">
                           <div>
-                            <strong>Primary Adequacy Test:</strong> Bank-assessed Insurable Value (excluding land for buildings) × Required Coverage % = <strong>ETB {requiredInsuranceAmount.toLocaleString()}</strong>
+                            <strong>Primary Adequacy Test:</strong> Bank-assessed Insurable Value (excluding land for buildings) × Required Coverage % = <strong>ETB {formatEtbNumber(requiredInsuranceAmount)}</strong>
                           </div>
                           <div>
-                            <strong>Secondary Adequacy Test:</strong> Combined Active Insurance across policies must secure Aggregate Outstanding Facility Exposure = <strong>ETB {outstandingExposure.toLocaleString()}</strong>
+                            <strong>Secondary Adequacy Test:</strong> Combined Active Insurance across policies must secure Aggregate Outstanding Facility Exposure = <strong>ETB {formatEtbNumber(outstandingExposure)}</strong>
                           </div>
                           {wizardAdequacy?.applicableRuleDescription && (
                             <div className="text-slate-600 text-[10px] font-mono">
@@ -2596,7 +2599,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                             }
                             className="text-[10px] text-blue-700 hover:text-blue-900 underline font-semibold cursor-pointer"
                           >
-                            Set to Required: ETB {requiredInsuranceAmount.toLocaleString()}
+                            Set to Required: ETB {formatEtbNumber(requiredInsuranceAmount)}
                           </button>
                         )}
                       </div>
@@ -2680,7 +2683,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                       </div>
                       {isUnderinsured && (
                         <div className="text-[11px] text-red-600 font-semibold mt-0.5">
-                          ⚠️ Shortfall: Deficit of ETB {(requiredInsuranceAmount - wizardInsAmount).toLocaleString()}. Under-insurance is strictly prohibited.
+                          ⚠️ Shortfall: Deficit of ETB {formatEtbNumber((requiredInsuranceAmount - wizardInsAmount))}. Under-insurance is strictly prohibited.
                         </div>
                       )}
                     </div>
@@ -3121,13 +3124,13 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                         <div>
                           <span className="text-[#5B6472] block text-[10px] font-semibold">REQUIRED SUM INSURED</span>
                           <strong className="text-[#00205B] font-mono text-sm">
-                            ETB {requiredInsuranceAmount.toLocaleString()}
+                            ETB {formatEtbNumber(requiredInsuranceAmount)}
                           </strong>
                         </div>
                         <div>
                           <span className="text-[#5B6472] block text-[10px] font-semibold">PROPOSED SUM INSURED</span>
                           <strong className="text-emerald-700 font-mono text-sm">
-                            ETB {wizardInsAmount.toLocaleString()}
+                            ETB {formatEtbNumber(wizardInsAmount)}
                           </strong>
                         </div>
                         <div>
@@ -3679,7 +3682,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                   <div>
                     <div className="text-[10px] text-[#5B6472]">Insured Amount</div>
                     <div className="font-semibold text-emerald-700">
-                      {defaultCurrency} {selectedPolicy.insuredAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {defaultCurrency} {formatEtbNumber(selectedPolicy.insuredAmount)}
                     </div>
                   </div>
                   <div>
@@ -3697,7 +3700,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                   <div>
                     <div className="text-[10px] text-[#5B6472]">Annual Premium</div>
                     <div className="font-semibold text-[#101828]">
-                      {defaultCurrency} {selectedPolicy.premium?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {defaultCurrency} {formatEtbNumber(selectedPolicy.premium)}
                     </div>
                   </div>
                   <div>
@@ -3807,8 +3810,8 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                   <div><span className="text-[#5B6472]">Insurer:</span> <span className="font-semibold text-[#101828]">{selectedPolicy.insurerName}</span></div>
                   <div><span className="text-[#5B6472]">Coverage Type:</span> <span className="font-semibold text-[#101828]">{selectedPolicy.coverageType}</span></div>
                   <div><span className="text-[#5B6472]">Current Expiry:</span> <span className="font-semibold text-amber-700">{selectedPolicy.expiryDate}</span></div>
-                  <div><span className="text-[#5B6472]">Current Insured:</span> <span className="font-semibold text-[#101828]">{defaultCurrency} {selectedPolicy.insuredAmount?.toLocaleString()}</span></div>
-                  <div><span className="text-[#5B6472]">Current Premium:</span> <span className="font-semibold text-[#101828]">{defaultCurrency} {selectedPolicy.premium?.toLocaleString()}</span></div>
+                  <div><span className="text-[#5B6472]">Current Insured:</span> <span className="font-semibold text-[#101828]">{defaultCurrency} {formatEtbNumber(selectedPolicy.insuredAmount)}</span></div>
+                  <div><span className="text-[#5B6472]">Current Premium:</span> <span className="font-semibold text-[#101828]">{defaultCurrency} {formatEtbNumber(selectedPolicy.premium)}</span></div>
                 </div>
                 <div className="text-[10px] text-blue-700 pt-1 border-t border-[#B9D5F0]">
                   🔗 New policy record will be linked with <code className="font-mono bg-blue-100 px-1 rounded">renewedFromPolicyId: {selectedPolicy.id}</code> retaining full renewal history.
@@ -3817,22 +3820,20 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
 
               <div>
                 <label className="block font-semibold text-[#101828] mb-1">Renewed Insured Amount ({defaultCurrency}) <span className="text-red-600">*</span></label>
-                <input
-                  type="number"
-                  min="1"
-                  value={renewAmount !== undefined ? renewAmount : (selectedPolicy.insuredAmount ?? '')}
-                  onChange={(e) => setRenewAmount(e.target.value === '' ? ('' as any) : Number(e.target.value))}
-                  className="w-full p-2 border border-[#E2E8F0] rounded font-bold tabular-nums"
+                <AmountInput
+                  value={renewAmount !== undefined ? (typeof renewAmount === 'number' ? renewAmount : undefined) : selectedPolicy.insuredAmount}
+                  onChange={(val) => setRenewAmount(val ?? 0)}
+                  placeholder="Enter renewed insured amount"
+                  required
                 />
               </div>
               <div>
                 <label className="block font-semibold text-[#101828] mb-1">Renewed Annual Premium ({defaultCurrency}) <span className="text-red-600">*</span></label>
-                <input
-                  type="number"
-                  min="0"
-                  value={renewPremium !== undefined ? renewPremium : (selectedPolicy.premium ?? '')}
-                  onChange={(e) => setRenewPremium(e.target.value === '' ? ('' as any) : Number(e.target.value))}
-                  className="w-full p-2 border border-[#E2E8F0] rounded font-bold tabular-nums"
+                <AmountInput
+                  value={renewPremium !== undefined ? (typeof renewPremium === 'number' ? renewPremium : undefined) : selectedPolicy.premium}
+                  onChange={(val) => setRenewPremium(val ?? 0)}
+                  placeholder="Enter renewed annual premium"
+                  required
                 />
               </div>
               <div>
@@ -4014,7 +4015,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div><span className="text-[#5B6472]">Old Policy:</span> <span className="font-mono font-semibold">{selectedPolicy.policyNumber}</span></div>
                   <div><span className="text-[#5B6472]">Old Insurer:</span> <span className="font-semibold">{selectedPolicy.insurerName}</span></div>
-                  <div><span className="text-[#5B6472]">Old Amount:</span> <span className="font-semibold">{defaultCurrency} {selectedPolicy.insuredAmount?.toLocaleString()}</span></div>
+                  <div><span className="text-[#5B6472]">Old Amount:</span> <span className="font-semibold">{defaultCurrency} {formatEtbNumber(selectedPolicy.insuredAmount)}</span></div>
                   <div><span className="text-[#5B6472]">Old Expiry:</span> <span className="font-semibold">{selectedPolicy.expiryDate}</span></div>
                 </div>
               </div>
@@ -4070,22 +4071,19 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-[#101828] mb-1">New Insured Amount ({defaultCurrency}) <span className="text-red-600">*</span></label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={replacementPolicy.insuredAmount !== undefined ? replacementPolicy.insuredAmount : (selectedPolicy.insuredAmount ?? '')}
-                    onChange={(e) => setReplacementPolicy({ ...replacementPolicy, insuredAmount: e.target.value === '' ? undefined : Number(e.target.value) })}
-                    className="w-full p-2 border border-[#E2E8F0] rounded font-bold tabular-nums"
+                  <AmountInput
+                    value={replacementPolicy.insuredAmount !== undefined ? replacementPolicy.insuredAmount : selectedPolicy.insuredAmount}
+                    onChange={(val) => setReplacementPolicy({ ...replacementPolicy, insuredAmount: val })}
+                    placeholder="Enter insured amount"
+                    required
                   />
                 </div>
                 <div>
                   <label className="block font-semibold text-[#101828] mb-1">New Premium ({defaultCurrency})</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={replacementPolicy.premium !== undefined ? replacementPolicy.premium : (selectedPolicy.premium ?? '')}
-                    onChange={(e) => setReplacementPolicy({ ...replacementPolicy, premium: e.target.value === '' ? undefined : Number(e.target.value) })}
-                    className="w-full p-2 border border-[#E2E8F0] rounded font-bold tabular-nums"
+                  <AmountInput
+                    value={replacementPolicy.premium !== undefined ? replacementPolicy.premium : selectedPolicy.premium}
+                    onChange={(val) => setReplacementPolicy({ ...replacementPolicy, premium: val })}
+                    placeholder="Enter premium amount"
                   />
                 </div>
               </div>

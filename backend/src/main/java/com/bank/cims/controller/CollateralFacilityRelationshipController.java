@@ -3,6 +3,8 @@ package com.bank.cims.controller;
 import com.bank.cims.dto.*;
 import com.bank.cims.model.LoanAccount;
 import com.bank.cims.model.LoanCollateralLinkHistory;
+import com.bank.cims.model.User;
+import com.bank.cims.service.AuthorizationScopeService;
 import com.bank.cims.service.CollateralFacilityRelationshipService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +20,18 @@ public class CollateralFacilityRelationshipController {
 
     @Autowired
     private CollateralFacilityRelationshipService relationshipService;
+
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
+    private String resolveEffectiveUserId(String headerUserId, String paramUserId) {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive()
+                || actor.getUsername() == null || actor.getUsername().isBlank()) {
+            throw new IllegalArgumentException("Authentication required: a valid signed-in user could not be identified.");
+        }
+        return actor.getUsername();
+    }
 
     // --- Query Relationships ---
     @GetMapping("/collateral-facility-links")
@@ -86,12 +100,6 @@ public class CollateralFacilityRelationshipController {
             @RequestParam(required = false) String userId) {
         String effectiveUser = resolveEffectiveUserId(headerUserId, userId);
         return ResponseEntity.ok(relationshipService.getEligibleCollateralsForFacility(id, effectiveUser));
-    }
-
-    private String resolveEffectiveUserId(String headerUserId, String paramUserId) {
-        if (headerUserId != null && !headerUserId.isBlank()) return headerUserId.trim();
-        if (paramUserId != null && !paramUserId.isBlank()) return paramUserId.trim();
-        return "CRO_USER";
     }
 
     // --- Create Relationship (Section 20 & 32) ---

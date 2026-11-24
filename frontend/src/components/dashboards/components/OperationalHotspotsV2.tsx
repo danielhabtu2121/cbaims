@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../../utils/format.ts';
 import React, { useState, useMemo } from 'react';
 import {
   AlertTriangle,
@@ -299,7 +300,7 @@ export const OperationalHotspotsV2: React.FC<OperationalHotspotsV2Props> = ({
                     </td>
                     <td className="p-3 font-bold text-slate-800 whitespace-nowrap">
                       {item.amount && item.amount > 0
-                        ? `ETB ${Number(item.amount).toLocaleString()}`
+                        ? `ETB ${formatEtbNumber(Number(item.amount))}`
                         : '—'}
                     </td>
                     <td className="p-3 text-slate-600 text-[11px]">

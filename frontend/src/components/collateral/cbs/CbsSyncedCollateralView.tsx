@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatEtbNumber } from '../../../utils/format.ts';
 import {
   Database,
   Filter,
@@ -359,7 +360,7 @@ export const CbsSyncedCollateralView: React.FC<CbsSyncedCollateralViewProps> = (
 
                     <td className="py-3 px-3">
                       <div className="font-semibold text-slate-900">
-                        {col.currency || 'ETB'} {col.valuationAmount?.toLocaleString() ?? 0}
+                        {col.currency || 'ETB'} {formatEtbNumber(col.valuationAmount ?? 0)}
                       </div>
                       <div className="text-[11px] text-slate-500">Haircut: {col.haircut ?? 0}%</div>
                     </td>

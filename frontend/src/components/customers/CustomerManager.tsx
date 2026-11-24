@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Users, Eye, Plus, ShieldCheck, CreditCard, Building2, FileCheck, FolderOpen, History, AlertTriangle, CheckCircle, RefreshCw, ArrowUpRight, Shield, ExternalLink } from 'lucide-react';
 import { Customer, LoanAccount, Collateral, InsurancePolicy, OwnershipDocument, UserSession, BusinessSegment, Branch, Customer360, WorkflowTask, CimsException, AuditLog, LoanCollateralLink } from '../../types';
@@ -260,26 +261,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
         columns={customerColumns}
         keyExtractor={(c) => c.id}
         onRowClick={(c) => load360Data(c)}
-        actions={
-          isMakerRole ? (
-            <button
-              onClick={() => {
-                setNewCust({
-                  cif: '',
-                  customerType: 'Individual',
-                  segment: 'Corporate Banking',
-                  branch: currentUser.branch || 'Bole Special Branch',
-                  status: 'Active',
-                });
-                setShowManualRegModal(true);
-              }}
-              className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Register Customer Manually
-            </button>
-          ) : undefined
-        }
+
       />
 
       {/* Customer 360 Modal */}
@@ -329,19 +311,19 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
             <div className="grid grid-cols-2 md:grid-cols-4 bg-slate-50 border-b border-slate-200 p-3.5 text-center text-xs shrink-0 gap-3">
               <div className="min-w-0">
                 <div className="text-slate-500 text-[11px] font-semibold truncate">Total Approved Limits</div>
-                <div className="text-[#00205B] font-bold text-sm tabular-nums truncate">ETB {totalFacilityLimit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                <div className="text-[#00205B] font-bold text-sm tabular-nums truncate">ETB {formatEtbNumber(totalFacilityLimit)}</div>
               </div>
               <div className="min-w-0">
                 <div className="text-slate-500 text-[11px] font-semibold truncate">Total Outstanding Exposure</div>
-                <div className="text-[#00205B] font-bold text-sm tabular-nums truncate">ETB {totalOutstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                <div className="text-[#00205B] font-bold text-sm tabular-nums truncate">ETB {formatEtbNumber(totalOutstanding)}</div>
               </div>
               <div className="min-w-0">
                 <div className="text-slate-500 text-[11px] font-semibold truncate">Collateral Valuation</div>
-                <div className="text-emerald-700 font-bold text-sm tabular-nums truncate">ETB {totalCollateralVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                <div className="text-emerald-700 font-bold text-sm tabular-nums truncate">ETB {formatEtbNumber(totalCollateralVal)}</div>
               </div>
               <div className="min-w-0">
                 <div className="text-slate-500 text-[11px] font-semibold truncate">Insured Coverage</div>
-                <div className="text-[#00205B] font-bold text-sm tabular-nums truncate">ETB {totalInsuredAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                <div className="text-[#00205B] font-bold text-sm tabular-nums truncate">ETB {formatEtbNumber(totalInsuredAmt)}</div>
               </div>
             </div>
 
@@ -431,13 +413,13 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                             </td>
                             <td className="p-2.5">{f.facilityType}</td>
                             <td className="p-2.5 text-right tabular-nums font-semibold">
-                              {f.lineCurrency || 'ETB'} {f.approvedLimit?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              {f.lineCurrency || 'ETB'} {formatEtbNumber(f.approvedLimit)}
                             </td>
                             <td className="p-2.5 text-right tabular-nums">
-                              {f.lineCurrency || 'ETB'} {f.outstandingBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              {f.lineCurrency || 'ETB'} {formatEtbNumber(f.outstandingBalance)}
                             </td>
                             <td className="p-2.5 text-right tabular-nums">
-                              {f.lineCurrency || 'ETB'} {f.availableAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              {f.lineCurrency || 'ETB'} {formatEtbNumber(f.availableAmount)}
                             </td>
                             <td className="p-2.5">{f.lineExpiryDate || (f as any).maturityDate || '—'}</td>
                             <td className="p-2.5"><StatusChip label={f.status} /></td>
@@ -547,14 +529,14 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                                 </td>
                                 <td className="p-2.5 whitespace-nowrap">{c.category}</td>
                                 <td className="p-2.5 text-right tabular-nums whitespace-nowrap">
-                                  {c.currency || 'ETB'} {c.valuationAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  {c.currency || 'ETB'} {formatEtbNumber(c.valuationAmount)}
                                 </td>
                                 <td className="p-2.5 text-center font-semibold whitespace-nowrap">{c.haircut || 0}%</td>
                                 <td className="p-2.5 text-right tabular-nums font-semibold text-[#00205B] whitespace-nowrap">
-                                  {c.currency || 'ETB'} {net.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  {c.currency || 'ETB'} {formatEtbNumber(net)}
                                 </td>
                                 <td className="p-2.5 text-right tabular-nums whitespace-nowrap">
-                                  {c.currency || 'ETB'} {(c.currentAllocation || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  {c.currency || 'ETB'} {formatEtbNumber((c.currentAllocation || 0))}
                                 </td>
                                 <td className="p-2.5 whitespace-nowrap">
                                   {colPolicy ? (
@@ -641,7 +623,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                                   </button>
                                 </td>
                                 <td className="p-1.5 whitespace-nowrap">{lnk.linkageType || 'Primary'}</td>
-                                <td className="p-1.5 text-right tabular-nums font-semibold whitespace-nowrap">ETB {(lnk.linkedAmount || lnk.allocatedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                <td className="p-1.5 text-right tabular-nums font-semibold whitespace-nowrap">ETB {formatEtbNumber((lnk.linkedAmount || lnk.allocatedAmount || 0))}</td>
                                 <td className="p-1.5 whitespace-nowrap"><StatusChip label={lnk.status || 'Active'} /></td>
                                 <td className="p-1.5 text-right whitespace-nowrap">
                                   <button
@@ -723,10 +705,10 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                               <td className="p-2.5">{p.insurerName}</td>
                               <td className="p-2.5">{p.coverageType}</td>
                               <td className="p-2.5 text-right tabular-nums font-semibold text-emerald-700">
-                                ETB {p.insuredAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                ETB {formatEtbNumber(p.insuredAmount)}
                               </td>
                               <td className="p-2.5 text-right tabular-nums">
-                                ETB {p.premium?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                ETB {formatEtbNumber(p.premium)}
                               </td>
                               <td className="p-2.5">{p.expiryDate}</td>
                               <td className="p-2.5 text-center">
@@ -934,13 +916,13 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                 <div>
                   <span className="text-slate-500">Sum Insured:</span>
                   <div className="font-bold text-sm text-emerald-700 tabular-nums">
-                    ETB {selected360Policy.insuredAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    ETB {formatEtbNumber(selected360Policy.insuredAmount)}
                   </div>
                 </div>
                 <div>
                   <span className="text-slate-500">Annual Premium:</span>
                   <div className="font-bold text-sm text-[#00205B] tabular-nums">
-                    ETB {selected360Policy.premium?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    ETB {formatEtbNumber(selected360Policy.premium)}
                   </div>
                 </div>
                 <div>
@@ -979,7 +961,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div><span className="text-slate-500">Category:</span> {matchedCol.category}</div>
-                      <div><span className="text-slate-500">Market Value:</span> ETB {matchedCol.valuationAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                      <div><span className="text-slate-500">Market Value:</span> ETB {formatEtbNumber(matchedCol.valuationAmount)}</div>
                       <div className="col-span-2"><span className="text-slate-500">Asset Description:</span> {matchedCol.description}</div>
                       <div className="col-span-2 pt-1 border-t border-slate-200 flex items-center justify-between">
                         <span className="text-slate-500">Insurance Coverage Ratio:</span>
@@ -1021,231 +1003,6 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Register Customer Manually Modal (Maker Action) */}
-      {showManualRegModal && (
-        <div className="fixed inset-0 bg-[#00205B]/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden">
-            <div className="p-4 bg-gradient-to-r from-[#00205B] to-[#0E284E] text-white flex justify-between items-center">
-              <div>
-                <h3 className="text-sm font-bold">Register Customer Manually</h3>
-                <p className="text-[11px] text-slate-300">Routes to Checker Approval before activation</p>
-              </div>
-              <button onClick={() => setShowManualRegModal(false)} className="text-slate-300 hover:text-white">✕</button>
-            </div>
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const cleanCif = newCust.cif?.trim() ? newCust.cif.trim() : undefined;
-                if (!cleanCif && !newCust.nationalId?.trim() && !newCust.taxIdNo?.trim() && !newCust.businessRegNo?.trim()) {
-                  alert('National ID, TIN, or Business Registration Number is required when registering a non-CIF third-party owner.');
-                  return;
-                }
-                const cleanCust = {
-                  ...newCust,
-                  cif: cleanCif,
-                  identificationType: cleanCif ? 'CBS_CIF' : (newCust.nationalId?.trim() ? 'NATIONAL_ID' : (newCust.taxIdNo?.trim() ? 'TIN' : 'UNREGISTERED_THIRD_PARTY')),
-                };
-                await onRegisterManualCustomer(cleanCust);
-                setShowManualRegModal(false);
-              }}
-              className="p-5 space-y-4 max-h-[80vh] overflow-y-auto text-xs"
-            >
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-[#101828] mb-1">
-                    CIF (Customer ID) <span className="font-normal text-slate-500 text-[10px]">(Optional for 3rd-Party Owners)</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. CIF-102934 (Leave blank if third-party owner)"
-                    value={newCust.cif || ''}
-                    onChange={(e) => setNewCust({ ...newCust, cif: e.target.value })}
-                    className="w-full p-2 border border-[#E2E8F0] rounded"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#101828] mb-1">Customer Type (M)</label>
-                  <select
-                    value={newCust.customerType || 'Individual'}
-                    onChange={(e) => setNewCust({ ...newCust, customerType: e.target.value as any })}
-                    className="w-full p-2 border border-[#E2E8F0] rounded"
-                  >
-                    <option value="Individual">Individual</option>
-                    <option value="Business Organization">Business Organization</option>
-                    <option value="Government Entity">Government Entity</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-[#101828] mb-1">Full Name / Business Name (M)</label>
-                <input
-                  type="text"
-                  required
-                  value={newCust.name || ''}
-                  onChange={(e) => setNewCust({ ...newCust, name: e.target.value })}
-                  className="w-full p-2 border border-[#E2E8F0] rounded"
-                />
-              </div>
-
-              {/* Conditional fields based on Customer Type */}
-              {newCust.customerType === 'Individual' ? (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-[#101828] mb-1">Date of Birth</label>
-                      <input
-                        type="date"
-                        value={newCust.dobOrIncorp || ''}
-                        onChange={(e) => setNewCust({ ...newCust, dobOrIncorp: e.target.value })}
-                        className="w-full p-2 border border-[#E2E8F0] rounded"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-[#101828] mb-1">Gender</label>
-                      <select
-                        value={newCust.gender || ''}
-                        onChange={(e) => setNewCust({ ...newCust, gender: e.target.value })}
-                        className="w-full p-2 border border-[#E2E8F0] rounded"
-                      >
-                        <option value="">Select Gender</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Other">Other</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-[#101828] mb-1">National ID / Passport</label>
-                      <input
-                        type="text"
-                        value={newCust.nationalId || ''}
-                        onChange={(e) => setNewCust({ ...newCust, nationalId: e.target.value })}
-                        className="w-full p-2 border border-[#E2E8F0] rounded"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-[#101828] mb-1">Tax ID / TIN</label>
-                      <input
-                        type="text"
-                        value={newCust.taxIdNo || ''}
-                        onChange={(e) => setNewCust({ ...newCust, taxIdNo: e.target.value })}
-                        className="w-full p-2 border border-[#E2E8F0] rounded"
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-[#101828] mb-1">Date of Incorporation</label>
-                      <input
-                        type="date"
-                        value={newCust.dobOrIncorp || ''}
-                        onChange={(e) => setNewCust({ ...newCust, dobOrIncorp: e.target.value })}
-                        className="w-full p-2 border border-[#E2E8F0] rounded"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-[#101828] mb-1">Business Registration Number</label>
-                      <input
-                        type="text"
-                        value={newCust.businessRegNo || ''}
-                        onChange={(e) => setNewCust({ ...newCust, businessRegNo: e.target.value })}
-                        className="w-full p-2 border border-[#E2E8F0] rounded"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-[#101828] mb-1">Tax ID / TIN</label>
-                    <input
-                      type="text"
-                      value={newCust.taxIdNo || ''}
-                      onChange={(e) => setNewCust({ ...newCust, taxIdNo: e.target.value })}
-                      className="w-full p-2 border border-[#E2E8F0] rounded"
-                    />
-                  </div>
-                </>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-[#101828] mb-1">Phone Number (M)</label>
-                  <input
-                    type="text"
-                    required
-                    value={newCust.phone || ''}
-                    onChange={(e) => setNewCust({ ...newCust, phone: e.target.value })}
-                    className="w-full p-2 border border-[#E2E8F0] rounded"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#101828] mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    value={newCust.email || ''}
-                    onChange={(e) => setNewCust({ ...newCust, email: e.target.value })}
-                    className="w-full p-2 border border-[#E2E8F0] rounded"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-[#101828] mb-1">Address / Registered Location</label>
-                <textarea
-                  value={newCust.address || ''}
-                  onChange={(e) => setNewCust({ ...newCust, address: e.target.value })}
-                  className="w-full p-2 border border-[#E2E8F0] rounded"
-                  rows={2}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-[#101828] mb-1">Business Segment (M)</label>
-                  <select
-                    value={newCust.segment || 'Corporate Banking'}
-                    onChange={(e) => setNewCust({ ...newCust, segment: e.target.value as any })}
-                    className="w-full p-2 border border-[#E2E8F0] rounded"
-                  >
-                    {availableSegments.map(s => (
-                      <option key={s.id} value={s.name}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold text-[#101828] mb-1">Operating Branch (M)</label>
-                  <select
-                    value={newCust.branch || currentUser.branch || 'Bole Special Branch'}
-                    onChange={(e) => setNewCust({ ...newCust, branch: e.target.value })}
-                    className="w-full p-2 border border-[#E2E8F0] rounded"
-                  >
-                    {availableBranches.map(b => (
-                      <option key={b.id} value={b.name}>{b.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="p-2.5 bg-blue-50 border border-blue-100 rounded text-[11px] text-blue-800">
-                <strong>Controlled Organizational Assignment:</strong> District, RM, and RO are assigned systematically via organizational portfolio structures upon checker authorization.
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#E2E8F0]">
-                <button type="button" onClick={() => setShowManualRegModal(false)} className="btn-secondary">
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  Submit to Checker
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useEffect, useState } from 'react';
 import { cimsApi } from '../../api/cimsApi';
 import { CbsRelationshipReconciliationDto, CbsRelationshipReconciliationItem } from '../../types';
@@ -247,12 +248,12 @@ export const CbsRelationshipReconcileModal: React.FC<CbsRelationshipReconcileMod
                       </td>
                       <td className="py-2.5 px-3 text-right tabular-nums text-slate-700 dark:text-slate-300">
                         {item.cbsLinkedAmount > 0
-                          ? `ETB ${Number(item.cbsLinkedAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                          ? `ETB ${formatEtbNumber(Number(item.cbsLinkedAmount))}`
                           : '—'}
                       </td>
                       <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-slate-900 dark:text-white">
                         {item.cimsAllocatedAmount > 0
-                          ? `ETB ${Number(item.cimsAllocatedAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                          ? `ETB ${formatEtbNumber(Number(item.cimsAllocatedAmount))}`
                           : '—'}
                       </td>
                       <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">

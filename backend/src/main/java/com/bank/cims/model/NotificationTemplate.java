@@ -23,6 +23,12 @@ public class NotificationTemplate {
     @Column(name = "trigger_days_before", nullable = false)
     private int triggerDaysBefore;
 
+    @Column(name = "schedule_id")
+    private String scheduleId;
+
+    @Column(name = "audience")
+    private String audience;
+
     private String subject;
 
     @Column(nullable = false)
@@ -44,6 +50,12 @@ public class NotificationTemplate {
         this.active = active;
     }
 
+    public NotificationTemplate(String id, String name, String type, int triggerDaysBefore, String scheduleId, String audience, String subject, String body, boolean active) {
+        this(id, name, type, triggerDaysBefore, subject, body, active);
+        this.scheduleId = scheduleId;
+        this.audience = audience;
+    }
+
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
     public String getName() { return name; }
@@ -56,6 +68,10 @@ public class NotificationTemplate {
     public void setChannel(String channel) { this.channel = channel; }
     public int getTriggerDaysBefore() { return triggerDaysBefore; }
     public void setTriggerDaysBefore(int triggerDaysBefore) { this.triggerDaysBefore = triggerDaysBefore; }
+    public String getScheduleId() { return scheduleId; }
+    public void setScheduleId(String scheduleId) { this.scheduleId = scheduleId; }
+    public String getAudience() { return audience; }
+    public void setAudience(String audience) { this.audience = audience; }
     public String getSubject() { return subject; }
     public void setSubject(String subject) { this.subject = subject; }
     public String getBody() { return body; }

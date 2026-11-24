@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../utils/format.ts';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Building2,
@@ -429,7 +430,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         <div className="text-[11px] text-[#5B6472] line-clamp-1">{item.description}</div>
                       </td>
                       <td className="p-3 font-bold text-slate-800">
-                        {item.amount > 0 ? `ETB ${Number(item.amount).toLocaleString()}` : '—'}
+                        {item.amount > 0 ? `ETB ${formatEtbNumber(Number(item.amount))}` : '—'}
                       </td>
                       <td className="p-3 text-[#5B6472] text-[11px]">
                         {item.recommendedAction}
@@ -520,7 +521,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                       </td>
                       <td className="p-3 font-medium text-slate-700">{sc.collateralType || sc.category}</td>
                       <td className="p-3 font-bold text-[#101828]">
-                        ETB {Number(sc.marketValue ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(sc.marketValue ?? 0))}
                         <div className="text-[10px] text-slate-400 font-normal">Single-counted</div>
                       </td>
                       <td className="p-3">
@@ -534,10 +535,10 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         </div>
                       </td>
                       <td className="p-3 font-semibold text-slate-800">
-                        ETB {Number(sc.aggregateSecuredExposure ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(sc.aggregateSecuredExposure ?? 0))}
                       </td>
                       <td className="p-3 font-semibold text-slate-800">
-                        ETB {Number(sc.allocatedSecurity ?? sc.totalAllocatedSecurity ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(sc.allocatedSecurity ?? sc.totalAllocatedSecurity ?? 0))}
                       </td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-1 max-w-[160px]">
@@ -552,13 +553,13 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         {Array.isArray(sc.branches) && sc.branches.length > 0 ? sc.branches.join(', ') : (sc.branch || '—')}
                       </td>
                       <td className="p-3 font-bold text-emerald-700">
-                        ETB {Number(sc.activeInsurance ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(sc.activeInsurance ?? 0))}
                       </td>
                       <td className="p-3 font-bold text-slate-800">
-                        ETB {Number(sc.insuranceRequirement ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(sc.insuranceRequirement ?? 0))}
                       </td>
                       <td className="p-3 font-bold text-rose-700">
-                        ETB {Number(sc.insuranceGap ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(sc.insuranceGap ?? 0))}
                       </td>
                       <td className="p-3">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${covColor}`}>
@@ -894,7 +895,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
                         <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                         <Tooltip
-                          formatter={((value: any, name: any) => [`ETB ${Number(value).toLocaleString()}M`, name]) as any}
+                          formatter={((value: any, name: any) => [`ETB ${formatEtbNumber(Number(value))}M`, name]) as any}
                           labelFormatter={(label, payload) => `Segment: ${payload?.[0]?.payload?.fullName || label}`}
                           contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                         />
@@ -967,7 +968,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                           <XAxis type="number" stroke="#64748b" fontSize={10} tickFormatter={(v) => `ETB ${(v / 1e6).toFixed(0)}M`} />
                           <YAxis dataKey="insurer" type="category" stroke="#64748b" fontSize={10} width={100} />
                           <Tooltip
-                            formatter={((val: any) => [`ETB ${Number(val).toLocaleString()}`, 'Active Insurance']) as any}
+                            formatter={((val: any) => [`ETB ${formatEtbNumber(Number(val))}`, 'Active Insurance']) as any}
                             contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                           />
                           <Bar dataKey="activeInsurance" name="Active Insurance" fill="#1F4E7A" radius={[0, 4, 4, 0]} />
@@ -1083,7 +1084,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                           <XAxis type="number" stroke="#64748b" fontSize={10} tickFormatter={(v) => `ETB ${(v / 1e6).toFixed(0)}M`} />
                           <YAxis dataKey="type" type="category" stroke="#64748b" fontSize={10} width={90} />
                           <Tooltip
-                            formatter={((val: any) => [`ETB ${Number(val).toLocaleString()}`, 'Secured Exposure']) as any}
+                            formatter={((val: any) => [`ETB ${formatEtbNumber(Number(val))}`, 'Secured Exposure']) as any}
                             contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                           />
                           <Bar dataKey="exposure" name="Secured Exposure" fill="#0D9488" radius={[0, 4, 4, 0]} />
@@ -1386,7 +1387,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                         <Tooltip
                           formatter={((value: any, name: any, item: any) => {
-                            const valStr = `ETB ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`;
+                            const valStr = `ETB ${formatEtbNumber(Number(value))}M`;
                             const key = item?.dataKey || name;
                             if (key === 'exposure' || name === 'Exposure') return [valStr, 'Outstanding Exposure'];
                             if (key === 'activeInsurance' || name === 'Active Cover' || name === 'Active Insurance') return [valStr, 'Active Insurance Cover'];
@@ -1606,7 +1607,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                         <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                         <Tooltip
                           formatter={((value: any, name: any, item: any) => {
-                            const valStr = `ETB ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`;
+                            const valStr = `ETB ${formatEtbNumber(Number(value))}M`;
                             const key = item?.dataKey || name;
                             if (key === 'exposure' || name === 'Exposure') return [valStr, 'Outstanding Exposure'];
                             if (key === 'activeInsurance' || name === 'Active Cover' || name === 'Active Insurance') return [valStr, 'Active Insurance Cover'];
@@ -1783,7 +1784,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                           <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
                           <Tooltip
                             formatter={((value: any, name: any, item: any) => {
-                              const valStr = `ETB ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`;
+                              const valStr = `ETB ${formatEtbNumber(Number(value))}M`;
                               const key = item?.dataKey || name;
                               if (key === 'exposure' || name === 'Exposure') return [valStr, 'Outstanding Exposure'];
                               if (key === 'activeInsurance' || name === 'Active Cover' || name === 'Active Insurance') return [valStr, 'Active Insurance Cover'];
@@ -2145,7 +2146,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                           <XAxis type="number" stroke="#64748b" fontSize={10} tickFormatter={(v) => `ETB ${(v / 1e6).toFixed(0)}M`} />
                           <YAxis dataKey="insurer" type="category" stroke="#64748b" fontSize={10} width={90} />
-                          <Tooltip formatter={((val: any) => [`ETB ${Number(val).toLocaleString()}`, 'Active Insurance']) as any} />
+                          <Tooltip formatter={((val: any) => [`ETB ${formatEtbNumber(Number(val))}`, 'Active Insurance']) as any} />
                           <Bar dataKey="activeInsurance" name="Active Insurance" fill="#1F4E7A" radius={[0, 4, 4, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -2320,30 +2321,30 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
                   <div className="text-xs font-semibold text-[#5B6472]">Total Credit Exposure</div>
                   <div className="text-xl font-black text-[#1F4E7A] mt-1">
-                    ETB {Number(data.summary?.totalExposure ?? 0).toLocaleString()}
+                    ETB {formatEtbNumber(Number(data.summary?.totalExposure ?? 0))}
                   </div>
                   <div className="text-[11px] text-[#5B6472] mt-1">
-                    Approved Limits: ETB {Number(data.summary?.approvedLimits ?? 0).toLocaleString()}
+                    Approved Limits: ETB {formatEtbNumber(Number(data.summary?.approvedLimits ?? 0))}
                   </div>
                 </div>
 
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
                   <div className="text-xs font-semibold text-[#5B6472]">Collateral Market Value</div>
                   <div className="text-xl font-black text-[#101828] mt-1">
-                    ETB {Number(data.summary?.collateralMarketValue ?? 0).toLocaleString()}
+                    ETB {formatEtbNumber(Number(data.summary?.collateralMarketValue ?? 0))}
                   </div>
                   <div className="text-[11px] text-[#5B6472] mt-1">
-                    Net Security: ETB {Number(data.summary?.netSecurityValue ?? 0).toLocaleString()}
+                    Net Security: ETB {formatEtbNumber(Number(data.summary?.netSecurityValue ?? 0))}
                   </div>
                 </div>
 
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
                   <div className="text-xs font-semibold text-[#5B6472]">Insurance Protection</div>
                   <div className="text-xl font-black text-emerald-700 mt-1">
-                    ETB {Number(data.summary?.activeValidInsurance ?? 0).toLocaleString()}
+                    ETB {formatEtbNumber(Number(data.summary?.activeValidInsurance ?? 0))}
                   </div>
                   <div className="text-[11px] text-[#5B6472] mt-1">
-                    Required: ETB {Number(data.summary?.insuranceRequired ?? 0).toLocaleString()}
+                    Required: ETB {formatEtbNumber(Number(data.summary?.insuranceRequired ?? 0))}
                   </div>
                 </div>
 
@@ -2354,7 +2355,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                       {data.summary?.coveragePct ?? 0}%
                     </span>
                     <span className="text-xs font-bold text-red-600">
-                      (Gap: ETB {Number(data.summary?.insuranceGap ?? 0).toLocaleString()})
+                      (Gap: ETB {formatEtbNumber(Number(data.summary?.insuranceGap ?? 0))})
                     </span>
                   </div>
                   <div className="text-[11px] text-[#5B6472] mt-1 flex items-center gap-2">
@@ -2447,19 +2448,19 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                           <tr key={f.id} className="hover:bg-slate-50 transition-colors">
                             <td className="p-3 font-mono font-bold text-[#1F4E7A]">{f.facilityReference || f.loanReference || f.lineCode}</td>
                             <td className="p-3 font-semibold">{f.facilityType}</td>
-                            <td className="p-3 font-bold">ETB {Number(f.approvedLimit ?? 0).toLocaleString()}</td>
-                            <td className="p-3 font-bold text-[#1F4E7A]">ETB {Number(f.outstandingBalance ?? 0).toLocaleString()}</td>
+                            <td className="p-3 font-bold">ETB {formatEtbNumber(Number(f.approvedLimit ?? 0))}</td>
+                            <td className="p-3 font-bold text-[#1F4E7A]">ETB {formatEtbNumber(Number(f.outstandingBalance ?? 0))}</td>
                             <td className="p-3 font-semibold text-slate-800">
-                              {f.securityValue !== undefined ? `ETB ${Number(f.securityValue).toLocaleString()}` : '—'}
+                              {f.securityValue !== undefined ? `ETB ${formatEtbNumber(Number(f.securityValue))}` : '—'}
                             </td>
                             <td className="p-3 font-bold text-slate-800">
-                              {f.insuranceRequirement !== undefined ? `ETB ${Number(f.insuranceRequirement).toLocaleString()}` : '—'}
+                              {f.insuranceRequirement !== undefined ? `ETB ${formatEtbNumber(Number(f.insuranceRequirement))}` : '—'}
                             </td>
                             <td className="p-3 font-bold text-emerald-700">
-                              {f.insuranceCoverage !== undefined ? `ETB ${Number(f.insuranceCoverage).toLocaleString()}` : '—'}
+                              {f.insuranceCoverage !== undefined ? `ETB ${formatEtbNumber(Number(f.insuranceCoverage))}` : '—'}
                             </td>
                             <td className="p-3 font-bold text-red-600">
-                              {f.insuranceGap !== undefined ? `ETB ${Number(f.insuranceGap).toLocaleString()}` : '—'}
+                              {f.insuranceGap !== undefined ? `ETB ${formatEtbNumber(Number(f.insuranceGap))}` : '—'}
                             </td>
                             <td className="p-3 font-bold text-emerald-700">{f.status}</td>
                             <td className="p-3 text-right">
@@ -2510,16 +2511,16 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                             <td className="p-3 font-mono font-bold text-[#1F4E7A] whitespace-nowrap">{c.code || c.id}</td>
                             <td className="p-3 whitespace-nowrap">{c.category}</td>
                             <td className="p-3 max-w-xs truncate" title={c.description}>{c.description}</td>
-                            <td className="p-3 font-bold whitespace-nowrap">ETB {Number(c.marketValue || c.valuationAmount || 0).toLocaleString()}</td>
+                            <td className="p-3 font-bold whitespace-nowrap">ETB {formatEtbNumber(Number(c.marketValue || c.valuationAmount || 0))}</td>
                             <td className="p-3 whitespace-nowrap">{c.haircut}%</td>
                             <td className="p-3 font-bold text-slate-800 whitespace-nowrap">
-                              ETB {Number(c.netSecurityValue || ((c.valuationAmount ?? 0) * (1 - (c.haircut ?? 0) / 100))).toLocaleString()}
+                              ETB {formatEtbNumber(Number(c.netSecurityValue || ((c.valuationAmount ?? 0) * (1 - (c.haircut ?? 0) / 100))))}
                             </td>
                             <td className="p-3 font-bold text-slate-800 whitespace-nowrap">
-                              {c.insuranceRequired !== undefined ? `ETB ${Number(c.insuranceRequired).toLocaleString()}` : '—'}
+                              {c.insuranceRequired !== undefined ? `ETB ${formatEtbNumber(Number(c.insuranceRequired))}` : '—'}
                             </td>
                             <td className="p-3 font-bold text-emerald-700 whitespace-nowrap">
-                              {c.activeInsurance !== undefined ? `ETB ${Number(c.activeInsurance).toLocaleString()}` : '—'}
+                              {c.activeInsurance !== undefined ? `ETB ${formatEtbNumber(Number(c.activeInsurance))}` : '—'}
                             </td>
                             <td className="p-3 font-semibold whitespace-nowrap">
                               {c.coveragePct !== undefined ? `${c.coveragePct}%` : '—'}
@@ -2581,10 +2582,10 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                             <td className="p-3 font-semibold">{p.insurerName}</td>
                             <td className="p-3">{p.coverageType}</td>
                             <td className="p-3 font-bold text-slate-800">
-                              ETB {Number(p.sumInsured || p.insuredAmount || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(p.sumInsured || p.insuredAmount || 0))}
                             </td>
                             <td className="p-3 font-bold text-emerald-700">
-                              ETB {Number(p.effectiveContribution || p.insuredAmount || 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(p.effectiveContribution || p.insuredAmount || 0))}
                             </td>
                             <td className="p-3">{p.effectiveDate}</td>
                             <td className="p-3 font-semibold">{p.expiryDate}</td>
@@ -2653,17 +2654,17 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
                   <div className="text-xs font-semibold text-[#5B6472]">Approved Facility Limit</div>
                   <div className="text-xl font-black text-[#101828] mt-1">
-                    ETB {Number(data.financialKpis?.approvedLimit ?? data.facility?.approvedLimit ?? 0).toLocaleString()}
+                    ETB {formatEtbNumber(Number(data.financialKpis?.approvedLimit ?? data.facility?.approvedLimit ?? 0))}
                   </div>
                   <div className="text-[11px] text-[#1F4E7A] font-bold mt-1">
-                    Outstanding: ETB {Number(data.financialKpis?.outstandingBalance ?? data.facility?.outstandingBalance ?? 0).toLocaleString()}
+                    Outstanding: ETB {formatEtbNumber(Number(data.financialKpis?.outstandingBalance ?? data.facility?.outstandingBalance ?? 0))}
                   </div>
                 </div>
 
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
                   <div className="text-xs font-semibold text-[#5B6472]">Allocated Net Security</div>
                   <div className="text-xl font-black text-slate-800 mt-1">
-                    ETB {Number(data.financialKpis?.allocatedSecurity ?? 0).toLocaleString()}
+                    ETB {formatEtbNumber(Number(data.financialKpis?.allocatedSecurity ?? 0))}
                   </div>
                   <div className="text-[11px] text-[#5B6472] mt-1">
                     Security Coverage: <strong className="text-slate-800">{data.financialKpis?.securityCoverageRatio ?? 0}%</strong>
@@ -2673,7 +2674,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
                   <div className="text-xs font-semibold text-[#5B6472]">Insurance Requirement</div>
                   <div className="text-xl font-black text-slate-900 mt-1">
-                    ETB {Number(data.financialKpis?.insuranceRequirement ?? 0).toLocaleString()}
+                    ETB {formatEtbNumber(Number(data.financialKpis?.insuranceRequirement ?? 0))}
                   </div>
                   <div className="text-[11px] text-[#5B6472] mt-1">
                     Rule: MAX(Outstanding, Market Value)
@@ -2683,10 +2684,10 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
                   <div className="text-xs font-semibold text-[#5B6472]">Effective Active Insurance</div>
                   <div className="text-xl font-black text-emerald-700 mt-1">
-                    ETB {Number(data.financialKpis?.effectiveInsurance ?? 0).toLocaleString()}
+                    ETB {formatEtbNumber(Number(data.financialKpis?.effectiveInsurance ?? 0))}
                   </div>
                   <div className="text-[11px] text-red-600 font-bold mt-1">
-                    Gap: ETB {Number(data.financialKpis?.insuranceGap ?? 0).toLocaleString()} ({data.financialKpis?.insuranceCoverageRatio ?? 0}% Covered)
+                    Gap: ETB {formatEtbNumber(Number(data.financialKpis?.insuranceGap ?? 0))} ({data.financialKpis?.insuranceCoverageRatio ?? 0}% Covered)
                   </div>
                 </div>
               </div>
@@ -2738,13 +2739,13 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                           <td className="p-3 font-mono font-bold text-[#1F4E7A]">{col.collateralCode}</td>
                           <td className="p-3">{col.category}</td>
                           <td className="p-3 max-w-xs truncate">{col.description}</td>
-                          <td className="p-3 font-bold">ETB {Number(col.marketValue || col.valuationAmount || 0).toLocaleString()}</td>
+                          <td className="p-3 font-bold">ETB {formatEtbNumber(Number(col.marketValue || col.valuationAmount || 0))}</td>
                           <td className="p-3">{col.haircut}%</td>
                           <td className="p-3 font-bold text-slate-800">
-                            ETB {Number(col.netSecurityValue ?? 0).toLocaleString()}
+                            ETB {formatEtbNumber(Number(col.netSecurityValue ?? 0))}
                           </td>
                           <td className="p-3 font-bold text-emerald-700">
-                            ETB {Number(col.allocatedAmount ?? 0).toLocaleString()}
+                            ETB {formatEtbNumber(Number(col.allocatedAmount ?? 0))}
                           </td>
                           <td className="p-3">{col.linkageType}</td>
                           <td className="p-3">
@@ -2757,10 +2758,10 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                             )}
                           </td>
                           <td className="p-3 font-bold">
-                            ETB {Number(col.insuranceRequired ?? 0).toLocaleString()}
+                            ETB {formatEtbNumber(Number(col.insuranceRequired ?? 0))}
                           </td>
                           <td className="p-3 font-bold text-emerald-700">
-                            ETB {Number(col.activeInsurance ?? 0).toLocaleString()}
+                            ETB {formatEtbNumber(Number(col.activeInsurance ?? 0))}
                           </td>
                           <td className="p-3">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${col.status === 'Adequate' || col.status === 'Compliant'
@@ -2880,7 +2881,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                     <div className="p-3 bg-slate-50 rounded-lg">
                       <div className="text-[11px] text-[#5B6472]">Market Value</div>
                       <div className="text-base font-black text-[#101828] mt-0.5">
-                        ETB {Number(data.valuationPanel?.marketValue ?? data.collateral?.valuationAmount ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(data.valuationPanel?.marketValue ?? data.collateral?.valuationAmount ?? 0))}
                       </div>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg">
@@ -2892,7 +2893,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                     <div className="p-3 bg-[#EFF5FB] rounded-lg border border-[#B9D3EB]">
                       <div className="text-[11px] text-[#1F4E7A] font-bold">Net Security Value</div>
                       <div className="text-base font-black text-[#1F4E7A] mt-0.5">
-                        ETB {Number(data.valuationPanel?.netSecurityValue ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(data.valuationPanel?.netSecurityValue ?? 0))}
                       </div>
                     </div>
                   </div>
@@ -2919,19 +2920,19 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                     <div className="p-3 bg-slate-50 rounded-lg">
                       <div className="text-[11px] text-[#5B6472]">Required Cover</div>
                       <div className="text-base font-black text-slate-900 mt-0.5">
-                        ETB {Number(data.insuranceProtection?.insuranceRequired ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(data.insuranceProtection?.insuranceRequired ?? 0))}
                       </div>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg">
                       <div className="text-[11px] text-[#5B6472]">Active Valid Cover</div>
                       <div className="text-base font-black text-emerald-700 mt-0.5">
-                        ETB {Number(data.insuranceProtection?.activeValidInsurance ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(data.insuranceProtection?.activeValidInsurance ?? 0))}
                       </div>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg">
                       <div className="text-[11px] text-[#5B6472]">Protection Gap</div>
                       <div className="text-base font-black text-red-600 mt-0.5">
-                        ETB {Number(data.insuranceProtection?.insuranceGap ?? 0).toLocaleString()}
+                        ETB {formatEtbNumber(Number(data.insuranceProtection?.insuranceGap ?? 0))}
                       </div>
                     </div>
                   </div>
@@ -2955,7 +2956,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                   <div>
                     <div className="font-bold text-xs">Cross-Facility Shared Collateral Asset</div>
                     <div className="text-[11px] text-indigo-700 mt-0.5">
-                      This asset secures {data.sharedCollateral.facilitiesCount} facilities across {data.sharedCollateral.customersCount} customer(s) and {data.sharedCollateral.segmentsCount} business segment(s). Total allocated security: ETB {Number(data.sharedCollateral.allocatedSecurity ?? 0).toLocaleString()} of physical ETB {Number(data.sharedCollateral.totalMarketValue ?? 0).toLocaleString()} market value.
+                      This asset secures {data.sharedCollateral.facilitiesCount} facilities across {data.sharedCollateral.customersCount} customer(s) and {data.sharedCollateral.segmentsCount} business segment(s). Total allocated security: ETB {formatEtbNumber(Number(data.sharedCollateral.allocatedSecurity ?? 0))} of physical ETB {formatEtbNumber(Number(data.sharedCollateral.totalMarketValue ?? 0))} market value.
                     </div>
                   </div>
                 </div>
@@ -2994,10 +2995,10 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                             </span>
                           </td>
                           <td className="p-3 font-bold text-[#1F4E7A]">
-                            ETB {Number(fac.outstandingBalance ?? 0).toLocaleString()}
+                            ETB {formatEtbNumber(Number(fac.outstandingBalance ?? 0))}
                           </td>
                           <td className="p-3 font-bold text-emerald-700">
-                            ETB {Number(fac.allocatedSecurity ?? fac.outstandingBalance ?? 0).toLocaleString()}
+                            ETB {formatEtbNumber(Number(fac.allocatedSecurity ?? fac.outstandingBalance ?? 0))}
                           </td>
                           <td className="p-3 font-semibold">
                             {fac.shareOfCollateralPct !== undefined ? `${fac.shareOfCollateralPct}%` : '100%'}
@@ -3048,10 +3049,10 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                             <td className="p-3 font-semibold">{p.insurerName}</td>
                             <td className="p-3">{p.coverageType}</td>
                             <td className="p-3 font-bold text-slate-800">
-                              ETB {Number(p.insuredAmount ?? 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(p.insuredAmount ?? 0))}
                             </td>
                             <td className="p-3 font-bold text-emerald-700">
-                              ETB {Number(p.insuredAmount ?? 0).toLocaleString()}
+                              ETB {formatEtbNumber(Number(p.insuredAmount ?? 0))}
                             </td>
                             <td className="p-3 font-semibold">{p.expiryDate}</td>
                             <td className="p-3">
@@ -3209,17 +3210,17 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
                   <div className="text-xs font-semibold text-[#5B6472]">Sum Insured</div>
                   <div className="text-xl font-black text-slate-900 mt-1">
-                    ETB {Number(data.financialSummary?.sumInsured ?? data.policy?.insuredAmount ?? 0).toLocaleString()}
+                    ETB {formatEtbNumber(Number(data.financialSummary?.sumInsured ?? data.policy?.insuredAmount ?? 0))}
                   </div>
                   <div className="text-[11px] text-[#5B6472] mt-1">
-                    Annual Premium: ETB {Number(data.financialSummary?.premium ?? data.policy?.premium ?? 0).toLocaleString()}
+                    Annual Premium: ETB {formatEtbNumber(Number(data.financialSummary?.premium ?? data.policy?.premium ?? 0))}
                   </div>
                 </div>
 
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
                   <div className="text-xs font-semibold text-[#5B6472]">Active Valid Contribution</div>
                   <div className="text-xl font-black text-emerald-700 mt-1">
-                    ETB {Number(data.financialSummary?.coverageContribution ?? data.policy?.insuredAmount ?? 0).toLocaleString()}
+                    ETB {formatEtbNumber(Number(data.financialSummary?.coverageContribution ?? data.policy?.insuredAmount ?? 0))}
                   </div>
                   <div className="text-[11px] text-[#5B6472] mt-1">
                     Status: {data.financialSummary?.isSuperseded ? 'Superseded (ETB 0)' : 'Active Contributor'}
@@ -3229,7 +3230,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                 <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-xs">
                   <div className="text-xs font-semibold text-[#5B6472]">Collateral Insurance Req</div>
                   <div className="text-xl font-black text-slate-900 mt-1">
-                    ETB {Number(data.financialSummary?.collateralInsuranceRequirement ?? 0).toLocaleString()}
+                    ETB {formatEtbNumber(Number(data.financialSummary?.collateralInsuranceRequirement ?? 0))}
                   </div>
                   <div className="text-[11px] text-[#5B6472] mt-1">
                     Asset Requirement: MAX(Exposure, Market Value)
@@ -3243,11 +3244,11 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
                       {data.financialSummary?.coveragePct ?? 0}%
                     </span>
                     <span className="text-xs font-bold text-red-600">
-                      (Remaining Gap: ETB {Number(data.financialSummary?.remainingGap ?? 0).toLocaleString()})
+                      (Remaining Gap: ETB {formatEtbNumber(Number(data.financialSummary?.remainingGap ?? 0))})
                     </span>
                   </div>
                   <div className="text-[11px] text-[#5B6472] mt-1">
-                    Effective Insurance: ETB {Number(data.financialSummary?.effectiveInsurance ?? 0).toLocaleString()}
+                    Effective Insurance: ETB {formatEtbNumber(Number(data.financialSummary?.effectiveInsurance ?? 0))}
                   </div>
                 </div>
               </div>

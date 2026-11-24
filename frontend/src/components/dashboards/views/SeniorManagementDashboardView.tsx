@@ -1,4 +1,6 @@
+import { formatEtb } from '../../../utils/format';
 import React, { useState } from 'react';
+
 import {
   Building2,
   Shield,
@@ -16,6 +18,7 @@ import {
   FileSpreadsheet,
   AlertTriangle,
 } from 'lucide-react';
+
 import {
   ResponsiveContainer,
   BarChart,
@@ -29,7 +32,9 @@ import {
   Pie,
   Cell,
 } from 'recharts';
+
 import { DashboardSummary, DashboardChartData, DashboardPortfolioRow } from '../../../types';
+
 import { UniversalPortfolioTable } from '../UniversalPortfolioTable';
 
 interface SeniorManagementDashboardViewProps {
@@ -47,10 +52,7 @@ export const SeniorManagementDashboardView: React.FC<SeniorManagementDashboardVi
   onNavigate,
   onExport,
 }) => {
-  const formatCurrency = (val?: number) => {
-    if (val === undefined || val === null) return 'ETB 0.00';
-    return `ETB ${new Intl.NumberFormat('en-ET', { maximumFractionDigits: 0 }).format(val)}`;
-  };
+  const formatCurrency = (val?: number) => formatEtb(val);
 
   return (
     <div className="flex flex-col gap-6">

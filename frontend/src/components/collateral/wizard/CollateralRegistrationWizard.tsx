@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   User,
   Building,
@@ -47,8 +47,13 @@ import {
   PolicyPreValidationResultDto,
   ValidationCheckItemDto,
   CollateralOwner,
+  EntryTimeExceptionRequest,
 } from '../../../types';
-import { authenticatedFetch } from '../../../api/cimsApi';
+import { authenticatedFetch, cimsApi } from '../../../api/cimsApi';
+import { canMutate, isReadOnlyUser } from '../../../auth/session';
+import { formatEtbNumber, parseEtb } from '../../../utils/format';
+import { AmountInput } from '../../common/AmountInput';
+import { dispatchInAppToast } from '../../../context/NotificationContext';
 
 export interface CollateralRegistrationWizardProps {
   currentUser: UserSession;
@@ -60,7 +65,9 @@ export interface CollateralRegistrationWizardProps {
   mandatoryDocRules?: MandatoryDocumentRule[];
   systemParameters?: SystemParameter[];
   onClose: () => void;
-  onSuccess: (collateral: Collateral) => void;
+  /** persisted=true means the wizard has already saved the record via the backend API. */
+  onSuccess: (collateral: Collateral, persisted?: boolean) => void;
+  onNavigate?: (page: string, params?: any) => void;
 }
 
 export interface WizardDocItem {
@@ -70,6 +77,7 @@ export interface WizardDocItem {
   fileName?: string;
   fileSize?: number;
   fileContent?: string;
+  mimeType?: string;
   referenceNumber?: string;
   documentDate?: string;
   expiryDate?: string;
@@ -88,6 +96,7 @@ export interface SupportingDocItem {
   fileName?: string;
   fileSize?: number;
   fileContent?: string;
+  mimeType?: string;
   referenceNumber?: string;
   documentDate?: string;
   expiryDate?: string;
@@ -143,6 +152,79 @@ const RELATIONSHIP_TYPES = [
   'Other',
 ];
 
+/**
+ * Canonical requirement key for an Admin document rule / uploaded document.
+ *
+ * Only true aliases of the same physical document share a key. Distinct
+ * documents such as a Title Deed and an Approved Building Plan must stay
+ * separate, otherwise one uploaded file would wrongly satisfy the other and a
+ * mandatory requirement would disappear from the checklist. Keep this mapping
+ * aligned with ValidationService.documentRequirementKey on the backend.
+ */
+function canonicalDocKey(value?: string): string {
+  const v = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!v) return '';
+  // Building plan / cadastral / site plan must be checked before title deed:
+  // legacy title-deed labels contain the words "Approved Plan".
+  if (v.includes('building plan') || v.includes('cadastral') || v.includes('site plan')) return 'building-plan';
+  if (v.includes('architectural')) return 'architectural-drawings';
+  if (v.includes('bill of quantity') || v.includes('boq')) return 'bill-of-quantity';
+  if (v.includes('building permit')) return 'building-permit';
+  if (v.includes('engineer progress') || v.includes('progress report')) return 'engineer-progress-report';
+  if (v.includes('title deed') || v.includes('certificate of title') || v.includes('property ownership')
+    || v.includes('ownership cert') || v.includes('lhc') || v.includes('land holding')) return 'title-deed';
+  if (v.includes('valuation')) return 'valuation-report';
+  if (v.includes('roadworthiness')) return 'roadworthiness-certificate';
+  if (v.includes('vehicle') || v.includes('logbook') || v.includes('libre')) return 'vehicle-registration';
+  if (v.includes('technical inspection') || v.includes('machine inspection')) return 'machine-technical-inspection';
+  if (v.includes('machinery') && (v.includes('ownership') || v.includes('cert'))) return 'machinery-ownership';
+  if (v.includes('customs')) return 'customs-clearance';
+  if (v.includes('consent') || v.includes('pledge') || v.includes('third party')) return 'third-party-consent';
+  if (v.includes('loan agreement') || v.includes('facility agreement') || v.includes('credit agreement')) return 'loan-agreement';
+  if (v.includes('purchase') || v.includes('invoice') || v.includes('bill of sale')) return 'purchase-document';
+  if (v.includes('registration letter') || (v.includes('registration') && v.includes('letter'))) return 'registration-letter';
+  if (v.includes('mortgage') && (v.includes('registration') || v.includes('confirmation'))) return 'mortgage-registration-confirmation';
+  if (v.includes('insurance')) return 'insurance';
+  if (v.includes('warehouse receipt')) return 'warehouse-receipt';
+  if (v.includes('veterinary')) return 'veterinary-health-certificate';
+  if (v.includes('ear tag') || v.includes('eartag')) return 'livestock-ear-tag';
+  return v;
+}
+
+const SUPPORTED_DOCUMENT_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'tiff'];
+
+interface PendingDocumentUpload {
+  docIndex: number;
+  fileName: string;
+  fileSize: number;
+  fileContent: string;
+  mimeType: string;
+}
+
+function isSupportedDocumentFile(file: File): boolean {
+  const ext = String(file.name || '').split('.').pop()?.toLowerCase() || '';
+  return SUPPORTED_DOCUMENT_EXTENSIONS.includes(ext);
+}
+
+function isDuplicateUpload(
+  existing: Array<{ fileName?: string; fileSize?: number; fileContent?: string }>,
+  fileName: string,
+  fileSize: number,
+  fileContent: string
+): boolean {
+  return existing.some((doc) =>
+    (String(doc.fileName || '').toLowerCase() === fileName.toLowerCase() && Number(doc.fileSize || 0) === fileSize)
+    || (!!doc.fileContent && doc.fileContent === fileContent)
+  );
+}
+
+function documentPreviewKind(fileName: string, mimeType: string): 'pdf' | 'image' | 'unsupported' {
+  const ext = String(fileName || '').split('.').pop()?.toLowerCase() || '';
+  if (mimeType === 'application/pdf' || ext === 'pdf') return 'pdf';
+  if (['png', 'jpg', 'jpeg'].includes(ext) || mimeType.startsWith('image/')) return 'image';
+  return 'unsupported';
+}
+
 export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizardProps> = ({
   currentUser,
   customers,
@@ -154,17 +236,51 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
   systemParameters = [],
   onClose,
   onSuccess,
+  onNavigate,
 }) => {
+  const isReadOnly = isReadOnlyUser(currentUser);
+  const isMaker = canMutate(currentUser, 'canCreate');
+  const canSubmitWizard = isMaker && !isReadOnly;
+
+  // Branch and segment are assignment data from the authenticated backend user.
+  // A restricted user never sees another branch/segment in this wizard.
+  const authorizedBranches = useMemo(() => {
+    if (currentUser.bankWide === true) return branches;
+    const allowed = currentUser.allowedBranches?.length
+      ? currentUser.allowedBranches
+      : (currentUser.branchCode || currentUser.branch ? [currentUser.branchCode || currentUser.branch] : []);
+    const normalized = allowed.map((v) => String(v).trim().toLowerCase());
+    const scoped = branches.filter((b) =>
+      normalized.includes(String(b.code || '').toLowerCase())
+      || normalized.includes(String(b.name || '').toLowerCase())
+      || normalized.includes(String(b.id || '').toLowerCase())
+    );
+    return scoped.length ? scoped : branches.filter((b) => String(b.name) === currentUser.branch || String(b.code) === currentUser.branchCode);
+  }, [branches, currentUser.allowedBranches, currentUser.bankWide, currentUser.branch, currentUser.branchCode]);
+
+  const authorizedSegments = useMemo(() => {
+    if (currentUser.bankWide === true) return segments;
+    const allowed = currentUser.allowedSegments?.length
+      ? currentUser.allowedSegments
+      : (currentUser.segment ? [currentUser.segment] : []);
+    const normalized = allowed.map((v) => String(v).trim().toLowerCase());
+    const scoped = segments.filter((s) =>
+      normalized.includes(String(s.name || '').toLowerCase()) || normalized.includes(String(s.id || '').toLowerCase())
+    );
+    return scoped.length ? scoped : segments.filter((s) => String(s.name) === currentUser.segment);
+  }, [segments, currentUser.allowedSegments, currentUser.bankWide, currentUser.segment]);
+
+  const initialBranch = currentUser.branch || currentUser.branchCode || authorizedBranches[0]?.name || '';
+  const initialSegment = currentUser.segment || authorizedSegments[0]?.name || '';
+
   // 11 Wizard Steps
   const [currentStep, setCurrentStep] = useState<number>(1);
 
   // Reference Code & Initiation
   const [regCode] = useState<string>(() => `COL-${Math.floor(100000 + Math.random() * 900000)}`);
   const [regDate] = useState<string>(() => new Date().toISOString().substring(0, 10));
-  const [selectedBranch, setSelectedBranch] = useState<string>(currentUser.branch || 'Bole Special Branch');
-  const [selectedSegment, setSelectedSegment] = useState<string>(
-    segments.find((s) => s.active !== false)?.name || 'Corporate Banking'
-  );
+  const [selectedBranch, setSelectedBranch] = useState<string>(initialBranch);
+  const [selectedSegment, setSelectedSegment] = useState<string>(initialSegment);
   const [selectedCategory, setSelectedCategory] = useState<string>('Immovable Properties');
   const [selectedSubtype, setSelectedSubtype] = useState<string>('Buildings - Commercial');
   const [regStatus, setRegStatus] = useState<string>('Pending Approval');
@@ -218,52 +334,53 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
     percentage: 50,
   });
 
-  // Asset Details (Page 4)
+  // Asset Details (Page 4) — only identifiers/flags are set here; all descriptive
+  // values are either entered by the maker or derived from the selected asset type.
   const [assetDetails, setAssetDetails] = useState<Partial<Collateral>>({
     description: '',
     location: '',
-    locationRegion: 'Addis Ababa',
-    locationZone: 'Zone 1',
-    locationCity: 'Addis Ababa',
-    locationSubcity: 'Bole Subcity',
-    locationWoreda: 'Woreda 03',
-    locationKebele: 'Kebele 08',
+    locationRegion: '',
+    locationZone: '',
+    locationCity: '',
+    locationSubcity: '',
+    locationWoreda: '',
+    locationKebele: '',
     locationAddress: '',
-    gpsCoordinates: '9.0125, 38.7610',
+    gpsCoordinates: '',
     propertyCertNumber: '',
     titleDeedNumber: '',
     registrationNumber: '',
     tinNumber: '',
-    buildingType: 'Commercial',
-    buildingUse: 'Office & Retail Complex',
+    buildingType: '',
+    buildingUse: '',
     isUnderConstruction: false,
     constructionCompletionPct: 0,
-    constructionRemainingPct: 100,
+    constructionRemainingPct: 0,
     constructionInspectionDate: '',
     expectedCompletionDate: '',
     engineeringReportDocId: '',
     // Movables & Machineries
-    vehicleType: 'Sedan',
+    vehicleType: '',
     vehicleMake: '',
     vehicleModel: '',
-    vehicleYear: 2022,
+    vehicleYear: 0,
     vehiclePlateNumber: '',
     vehicleChassisNumber: '',
     vehicleEngineNumber: '',
-    machineryType: 'Excavator',
+    machineryType: '',
     machineryManufacturer: '',
     machineryModel: '',
     machinerySerialNo: '',
     machineryPurchaseDate: '',
     machineryOwnershipCertRef: '',
     machineryPurchaseDocRef: '',
-    furnitureType: 'Office Workstations & Executive Desks',
-    furnitureQuantity: 25,
+    furnitureType: '',
+    furnitureQuantity: 0,
     // Financial Assets
-    shareIssuer: 'Dashen Bank S.C.',
-    shareType: 'Ordinary Shares',
-    shareQuantity: 5000,
-    shareFaceValue: 1000,
+    shareIssuer: '',
+    shareType: '',
+    shareQuantity: 0,
+    shareFaceValue: 0,
     shareCertRef: '',
     billDrawer: '',
     billDrawee: '',
@@ -271,10 +388,10 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
     billMaturityDate: '',
     billFaceValue: 0,
     billReference: '',
-    billPaymentPlace: 'Addis Ababa',
+    billPaymentPlace: '',
     blockedAccountNumber: '',
     depositAmount: 0,
-    depositCurrency: 'ETB',
+    depositCurrency: '',
     depositMaturityDate: '',
     pledgeConfirmationRef: '',
     treasuryBillSeries: '',
@@ -284,28 +401,28 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
     custodyAccountRef: '',
     // Agricultural / Other
     livestockTagNumber: '',
-    livestockBreed: 'Boran / Zebu Cross',
-    livestockQuantity: 100,
+    livestockBreed: '',
+    livestockQuantity: 0,
     veterinaryHealthCertDate: '',
-    farmCropType: 'Export Quality Arabica Coffee',
+    farmCropType: '',
     farmLandHoldingCert: '',
-    farmQuantity: 500,
-    farmStorageLocation: 'Central Warehouse Oromia',
-    farmHarvestSeason: '2025/2026',
+    farmQuantity: 0,
+    farmStorageLocation: '',
+    farmHarvestSeason: '',
     warehouseReceiptNumber: '',
-    warehouseName: 'Ethiopian Commodity Exchange (ECX) Hawassa Silo',
-    warehouseCommodityType: 'Specialty Grade 1 Washed Coffee',
-    warehouseQuantity: 120,
+    warehouseName: '',
+    warehouseCommodityType: '',
+    warehouseQuantity: 0,
     warehouseReceiptDate: '',
     warehouseExpiryDate: '',
     warehouseInspectionRef: '',
     ipRegistrationNumber: '',
     ipTitle: '',
-    ipType: 'Trademark',
+    ipType: '',
     ipFilingDate: '',
     ipRegistrationDate: '',
     ipExpiryDate: '',
-    ipAuthority: 'Ethiopian Intellectual Property Authority (EIPA)',
+    ipAuthority: '',
     // Guarantees
     guarantorName: '',
     guarantorCif: '',
@@ -324,21 +441,20 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
     landUseRightCertRef: '',
   });
 
-  // Valuation (Page 5)
-  const [estimatedValue, setEstimatedValue] = useState<number>(5000000);
-  const [estimatedValueSource, setEstimatedValueSource] = useState<string>('Market Price Benchmark');
-  const [bankAssessedValue, setBankAssessedValue] = useState<number>(4500000);
-  const [landValue, setLandValue] = useState<number>(1000000);
-  const [insuranceValue, setInsuranceValue] = useState<number>(3500000);
-  const [haircutPct, setHaircutPct] = useState<number>(20);
-  const [valuationDate, setValuationDate] = useState<string>(regDate);
-  const [valuationReportRef, setValuationReportRef] = useState<string>(`VAL-REP-${Math.floor(10000 + Math.random() * 90000)}`);
-  const [valuatorOfficer, setValuatorOfficer] = useState<string>('Senior Bank Valuation Engineer');
-  const [valuationReviewDate, setValuationReviewDate] = useState<string>(() => {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() + 1);
-    return d.toISOString().substring(0, 10);
-  });
+  // Valuation (Page 5) — all monetary values are entered by the maker.
+  const [estimatedValue, setEstimatedValue] = useState<number>(0);
+  const [estimatedValueSource, setEstimatedValueSource] = useState<string>('');
+  const [bankAssessedValue, setBankAssessedValue] = useState<number>(0);
+  // Text state preserves pasted values such as "1,250,000" before parsing to a number.
+  const [landValueInput, setLandValueInput] = useState<string>('');
+  const [insuranceValue, setInsuranceValue] = useState<number>(0);
+  const [haircutPct, setHaircutPct] = useState<number>(0);
+  const [valuationDate, setValuationDate] = useState<string>('');
+  const [valuationReportRef, setValuationReportRef] = useState<string>('');
+  const [valuatorOfficer, setValuatorOfficer] = useState<string>('');
+  const [valuationReviewDate, setValuationReviewDate] = useState<string>('');
+
+  const landValue = useMemo(() => parseEtb(landValueInput), [landValueInput]);
 
   // Net Collateral Value Calculation: Valuation Amount * (1 - Haircut / 100)
   const netCollateralValue = useMemo(() => {
@@ -347,15 +463,21 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
     return Math.round(val * (1.0 - hc / 100.0) * 100.0) / 100.0;
   }, [bankAssessedValue, haircutPct]);
 
-  // Security Rank & Mortgages (Page 6)
-  const [securityRank, setSecurityRank] = useState<'1st' | '2nd'>('1st');
-  const [isFirstDegreeInternal, setIsFirstDegreeInternal] = useState<boolean>(true);
+  // Page 8 linking capacity includes the net security value plus the land/location value.
+  const locationValue = landValue;
+  const collateralValueForAllocation = useMemo(() => {
+    return Math.round((netCollateralValue + locationValue) * 100.0) / 100.0;
+  }, [netCollateralValue, locationValue]);
+
+  // Security Rank & Mortgages (Page 6) — no prepopulated rank, holder or mortgage values.
+  const [securityRank, setSecurityRank] = useState<'1st' | '2nd' | ''>('');
+  const [isFirstDegreeInternal, setIsFirstDegreeInternal] = useState<boolean>(false);
   const [firstDegreeCollateralId, setFirstDegreeCollateralId] = useState<string>('');
   const [firstDegreeHolderName, setFirstDegreeHolderName] = useState<string>('');
   const [firstDegreeFacilityRef, setFirstDegreeFacilityRef] = useState<string>('');
-  const [firstDegreeOutstandingBalance, setFirstDegreeOutstandingBalance] = useState<number>(0);
+  const [firstDegreeOutstandingBalance, setFirstDegreeOutstandingBalance] = useState<number | undefined>(undefined);
   const [firstDegreeBalanceAsOfDate, setFirstDegreeBalanceAsOfDate] = useState<string>('');
-  const [registeredMortgageAmount, setRegisteredMortgageAmount] = useState<number>(0);
+  const [registeredMortgageAmount, setRegisteredMortgageAmount] = useState<number | undefined>(undefined);
   const [mortgageRegistrationNumber, setMortgageRegistrationNumber] = useState<string>('');
   const [mortgageRegistrationDate, setMortgageRegistrationDate] = useState<string>('');
   const [firstDegreePolicyNumber, setFirstDegreePolicyNumber] = useState<string>('');
@@ -366,6 +488,9 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
   // Documents (Page 7)
   const [documentsList, setDocumentsList] = useState<WizardDocItem[]>([]);
   const [supportingDocumentsList, setSupportingDocumentsList] = useState<SupportingDocItem[]>([]);
+  const [pendingUpload, setPendingUpload] = useState<PendingDocumentUpload | null>(null);
+  const [documentUploadError, setDocumentUploadError] = useState<string>('');
+  const [supportingDocError, setSupportingDocError] = useState<string>('');
   const [showAddSupportingDocModal, setShowAddSupportingDocModal] = useState<boolean>(false);
   const [supportingDocForm, setSupportingDocForm] = useState<Partial<SupportingDocItem>>({
     name: '',
@@ -409,6 +534,8 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
   const [exceptionSubmitted, setExceptionSubmitted] = useState<boolean>(false);
   const [isSubmittingException, setIsSubmittingException] = useState<boolean>(false);
   const [exceptionMessage, setExceptionMessage] = useState<string>('');
+  const [exceptionError, setExceptionError] = useState<string>('');
+  const exceptionSubmitLockRef = useRef<boolean>(false);
 
   // Per-Requirement Exception Tracking (Page 7 & Page 11)
   const [collateralExceptions, setCollateralExceptions] = useState<{
@@ -431,58 +558,11 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
   const [modalExceptionDays, setModalExceptionDays] = useState<number>(30);
   const [modalExceptionEvidence, setModalExceptionEvidence] = useState<string>('');
 
-  // Normalized document type matcher
+  // Normalized document type matcher backed by canonical alias groups.
   const docTypeMatches = (ruleType?: string, actualType?: string): boolean => {
-    if (!ruleType || !actualType) return false;
-    const r = ruleType.trim().toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
-    const a = actualType.trim().toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
-    if (r === a) return true;
-
-    const rIsPledge = r.includes('consent') && (r.includes('pledge') || r.includes('third party') || r.includes('thirdparty'));
-    const aIsPledge = a.includes('consent') && (a.includes('pledge') || a.includes('third party') || a.includes('thirdparty'));
-    if (rIsPledge && aIsPledge) return true;
-
-    const rIsLetter = r.includes('letter') && r.includes('consent');
-    const aIsLetter = a.includes('letter') && a.includes('consent');
-    if (rIsLetter && aIsLetter) return true;
-
-    const rIsTitle = r.includes('title deed') || r.includes('property ownership') || r.includes('ownership cert');
-    const aIsTitle = a.includes('title deed') || a.includes('property ownership') || a.includes('ownership cert');
-    if (rIsTitle && aIsTitle) return true;
-    if (rIsTitle !== aIsTitle && (rIsTitle || aIsTitle)) {
-      if (a.includes('valuation') || a.includes('building plan') || a.includes('logbook') || a.includes('vehicle reg')) return false;
-    }
-
-    const rIsPlan = r.includes('building plan') || r.includes('cadastral') || r.includes('site plan');
-    const aIsPlan = a.includes('building plan') || a.includes('cadastral') || a.includes('site plan');
-    if (rIsPlan && aIsPlan) return true;
-    if (rIsPlan !== aIsPlan && (rIsPlan || aIsPlan)) {
-      if (a.includes('title deed') || a.includes('valuation') || a.includes('vehicle')) return false;
-    }
-
-    const rIsVehicle = r.includes('vehicle') || r.includes('logbook') || r.includes('libre');
-    const aIsVehicle = a.includes('vehicle') || a.includes('logbook') || a.includes('libre');
-    if (rIsVehicle && aIsVehicle) return true;
-    if (rIsVehicle !== aIsVehicle && (rIsVehicle || aIsVehicle)) {
-      if (a.includes('title deed') || a.includes('building') || a.includes('machinery')) return false;
-    }
-
-    const rIsVal = r.includes('valuation');
-    const aIsVal = a.includes('valuation');
-    if (rIsVal && aIsVal) return true;
-    if (rIsVal !== aIsVal && (rIsVal || aIsVal)) {
-      if (a.includes('title deed') || a.includes('building plan') || a.includes('logbook')) return false;
-    }
-
-    const rIsMach = r.includes('machinery');
-    const aIsMach = a.includes('machinery') || a.includes('purchase invoice') || a.includes('bill of sale');
-    if (rIsMach && aIsMach) return true;
-
-    const rIsMortgage = r.includes('mortgage') && (r.includes('registration') || r.includes('confirmation'));
-    const aIsMortgage = a.includes('mortgage') && (a.includes('registration') || a.includes('confirmation'));
-    if (rIsMortgage && aIsMortgage) return true;
-
-    return r.includes(a) || a.includes(r);
+    const r = canonicalDocKey(ruleType);
+    const a = canonicalDocKey(actualType);
+    return !!r && !!a && r === a;
   };
 
   // Final Submission (Page 11)
@@ -490,6 +570,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [submissionResult, setSubmissionResult] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const finalSubmitLockRef = useRef<boolean>(false);
 
   // Selected Borrower Object
   const selectedBorrower = useMemo(() => {
@@ -523,6 +604,57 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
     }
   }, [availableSubtypes, selectedSubtype]);
 
+  // Derive asset-class values from the selected taxonomy instead of storing
+  // unrelated hard-coded defaults for every asset class.
+  useEffect(() => {
+    const immovableKeys: (keyof Collateral)[] = ['buildingType', 'buildingUse'];
+    const vehicleKeys: (keyof Collateral)[] = ['vehicleType', 'vehicleMake', 'vehicleModel', 'vehicleYear', 'vehiclePlateNumber', 'vehicleChassisNumber', 'vehicleEngineNumber'];
+    const machineryKeys: (keyof Collateral)[] = ['machineryType', 'machineryManufacturer', 'machineryModel', 'machinerySerialNo', 'machineryPurchaseDate', 'machineryOwnershipCertRef', 'machineryPurchaseDocRef'];
+    const furnitureKeys: (keyof Collateral)[] = ['furnitureType', 'furnitureQuantity'];
+    const financialKeys: (keyof Collateral)[] = ['shareIssuer', 'shareType', 'shareQuantity', 'shareFaceValue', 'shareCertRef', 'billDrawer', 'billDrawee', 'billIssueDate', 'billMaturityDate', 'billFaceValue', 'billReference', 'billPaymentPlace', 'blockedAccountNumber', 'depositAmount', 'depositCurrency', 'depositMaturityDate', 'pledgeConfirmationRef', 'treasuryBillSeries', 'treasuryBillFaceValue', 'treasuryBillIssueDate', 'treasuryBillMaturityDate', 'custodyAccountRef'];
+    const agricultureKeys: (keyof Collateral)[] = ['livestockTagNumber', 'livestockBreed', 'livestockQuantity', 'veterinaryHealthCertDate', 'farmCropType', 'farmLandHoldingCert', 'farmQuantity', 'farmStorageLocation', 'farmHarvestSeason', 'warehouseReceiptNumber', 'warehouseName', 'warehouseCommodityType', 'warehouseQuantity', 'warehouseReceiptDate', 'warehouseExpiryDate', 'warehouseInspectionRef', 'ipRegistrationNumber', 'ipTitle', 'ipType', 'ipFilingDate', 'ipRegistrationDate', 'ipExpiryDate', 'ipAuthority'];
+    const guaranteeKeys: (keyof Collateral)[] = ['guarantorName', 'guarantorCif', 'guarantorIdNumber', 'guarantorTin', 'guarantorContact', 'guarantorAddress', 'guaranteeAgreementRef', 'guaranteeAmount', 'guaranteeEffectiveDate', 'guaranteeExpiryDate', 'boardResolutionRef'];
+    const coffeeKeys: (keyof Collateral)[] = ['coffeeSiteLocation', 'coffeeSiteCertRef', 'landUseRightCertRef'];
+
+    const cleared: Partial<Collateral> = {};
+    [...immovableKeys, ...vehicleKeys, ...machineryKeys, ...furnitureKeys, ...financialKeys, ...agricultureKeys, ...guaranteeKeys, ...coffeeKeys]
+      .forEach((key) => { (cleared as any)[key] = ''; });
+
+    const derived: Partial<Collateral> = {
+      tangible: selectedCategory !== 'Financial Assets' && selectedCategory !== 'Guarantees',
+      chargeType: selectedCategory === 'Guarantees'
+        ? 'Guarantee'
+        : (selectedCategory === 'Immovable Properties' ? 'Mortgage' : 'Pledge'),
+    };
+    const sub = selectedSubtype.toLowerCase();
+
+    if (selectedCategory === 'Immovable Properties') {
+      derived.buildingType = sub.includes('commercial') ? 'Commercial'
+        : sub.includes('residential') ? 'Residential'
+          : sub.includes('mixed') ? 'Mixed-use'
+            : selectedSubtype;
+    } else if (selectedCategory === 'Movable Properties') {
+      if (sub.includes('vehicle')) derived.vehicleType = selectedSubtype;
+      else derived.machineryType = selectedSubtype;
+    } else if (selectedCategory === 'Business Mortgages') {
+      if (sub.includes('furniture')) derived.furnitureType = selectedSubtype;
+      else derived.machineryType = selectedSubtype;
+    } else if (selectedCategory === 'Financial Assets') {
+      if (sub.includes('share')) derived.shareType = selectedSubtype;
+      else if (sub.includes('treasury')) derived.treasuryBillSeries = selectedSubtype;
+      else derived.depositCurrency = 'ETB';
+    } else if (selectedCategory === 'Agricultural/Other') {
+      if (sub.includes('livestock')) derived.livestockBreed = selectedSubtype;
+      else if (sub.includes('farm')) derived.farmCropType = selectedSubtype;
+      else if (sub.includes('warehouse')) derived.warehouseCommodityType = selectedSubtype;
+      else if (sub.includes('intellectual')) derived.ipType = selectedSubtype;
+    } else if (selectedCategory === 'Guarantees') {
+      derived.guaranteeAgreementRef = '';
+    }
+
+    setAssetDetails((prev) => ({ ...prev, ...cleared, ...derived }));
+  }, [selectedCategory, selectedSubtype]);
+
   // Build Dynamic Document Checklist exclusively from Admin-Configured Mandatory Rules (Directive 1)
   const dynamicDocumentChecklist = useMemo(() => {
     if (!mandatoryDocRules || mandatoryDocRules.length === 0) return [];
@@ -533,53 +665,98 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
     const isTp = ownershipType === 'Third-party-owned';
     const isSecDegree = securityRank === '2nd';
 
+    const isImmovable = cat.includes('immovable') || cat.includes('real estate') || cat.includes('building') || cat.includes('land') ||
+      sub.includes('building') || sub.includes('land') || sub.includes('real estate');
+    const isMovable = !isImmovable && (cat.includes('movable') || cat.includes('vehicle') || cat.includes('machin') || cat.includes('equipment') ||
+      sub.includes('vehicle') || sub.includes('machin') || sub.includes('equipment') || cat.includes('business mortgage'));
+    const isGuarantee = cat.includes('guarantee') || sub.includes('guarantee');
+
     // Only active rules configured in Admin
-    const activeRules = mandatoryDocRules.filter((r) => r.mandatory !== false);
+    const activeRules = mandatoryDocRules.filter((r) => r.mandatory !== false && (r as any).active !== false);
 
-    return activeRules
-      .filter((rule) => {
-        const rc = (rule.collateralCategory || '').toLowerCase().trim();
-        const rt = (rule.collateralType || '').toLowerCase().trim();
-        const oc = (rule.ownershipCondition || '').toLowerCase().trim();
-        const ac = (rule.applicabilityCondition || '').toLowerCase().trim();
+    // Filter rules relevant to selected asset category and subtype
+    const filteredRules = activeRules.filter((rule) => {
+      const rc = (rule.collateralCategory || '').toLowerCase().trim();
+      const rt = (rule.collateralType || '').toLowerCase().trim();
+      const oc = (rule.ownershipCondition || '').toLowerCase().trim();
+      const ac = (rule.applicabilityCondition || '').toLowerCase().trim();
+      const dt = (rule.documentType || '').toLowerCase().trim();
+      const rs = (rule.segment || 'All Segments').toLowerCase().trim();
 
-        // 1. Category match
-        const catMatch = !rc || rc === 'all' || rc === 'all categories' || rc === cat || rc.includes(cat) || cat.includes(rc);
-        if (!catMatch) return false;
+      // 0. Business segment scope: All Segments applies everywhere; a
+      // segment-specific rule only applies to that segment.
+      if (rs && rs !== 'all segments' && rs !== 'all' && rs !== 'any') {
+        const rn = rs.replace(/[^a-z0-9]/g, '');
+        const sn = (selectedSegment || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+        if (!sn || !(rn === sn || rn.includes(sn) || sn.includes(rn))) return false;
+      }
 
-        // 2. Subtype match if specified
-        if (rt && rt !== 'all' && rt !== 'all types') {
-          const typeMatch = rt === sub || rt.includes(sub) || sub.includes(rt);
-          if (!typeMatch) return false;
-        }
+      // Cross-category exclusion: Movable assets must NEVER require Immovable documents, and Immovable assets must NEVER require Movable documents
+      const docIsImmovable = dt.includes('title') || dt.includes('deed') || dt.includes('building plan') || dt.includes('cadastral') || dt.includes('lease');
+      const docIsMovable = dt.includes('vehicle') || dt.includes('logbook') || dt.includes('libre') || dt.includes('machin') || dt.includes('invoice') || dt.includes('customs');
 
-        // 3. Ownership condition if specified
-        if (oc && oc !== 'all' && oc !== 'any') {
-          if (oc.includes('third') && !isTp) return false;
-          if (oc.includes('borrower') && isTp) return false;
-        }
+      if (isMovable && docIsImmovable) return false;
+      if (isImmovable && docIsMovable) return false;
 
-        // 4. Applicability condition if specified
-        if (ac && ac !== 'none' && ac !== 'all') {
-          if (ac.includes('construction') && !isUnderCon) return false;
-          if (ac.includes('lease') && !sub.includes('lease') && !(assetDetails.propertyCertNumber || '').toLowerCase().includes('lease')) return false;
-          if ((ac.includes('second') || ac.includes('2nd')) && !isSecDegree) return false;
-        }
+      // 1. Category match
+      if (rc && rc !== 'all' && rc !== 'all categories') {
+        const ruleIsImmovable = rc.includes('immovable') || rc.includes('real estate') || rc.includes('building') || rc.includes('land');
+        const ruleIsMovable = (rc.includes('movable') || rc.includes('vehicle') || rc.includes('machin') || rc.includes('business mortgage')) && !rc.includes('immovable');
+        const ruleIsGuarantee = rc.includes('guarantee');
 
-        return true;
-      })
-      .map((rule) => ({
-        name: rule.documentType,
-        type: rule.documentType,
-        isMandatory: rule.mandatory !== false,
-        reason: rule.applicabilityCondition || rule.collateralCategory || 'Admin Mandatory Document Policy',
-        ruleId: rule.id,
-        exceptionAllowed: rule.exceptionAllowed !== false,
-      }));
+        if (ruleIsImmovable && !isImmovable) return false;
+        if (ruleIsMovable && !isMovable) return false;
+        if (ruleIsGuarantee && !isGuarantee) return false;
+      }
+
+      // 2. Subtype match if specified
+      if (rt && rt !== 'all' && rt !== 'all types') {
+        if (rt.includes('vehicle') && !sub.includes('vehicle')) return false;
+        if (rt.includes('machin') && !sub.includes('machin')) return false;
+        if (rt.includes('land') && !sub.includes('land') && sub.includes('building')) return false;
+        if (rt.includes('building') && !sub.includes('building') && sub.includes('land') && !sub.includes('built')) return false;
+        if (rt.includes('construction') && !isUnderCon && !sub.includes('construction')) return false;
+      }
+
+      // 3. Ownership condition if specified
+      if (oc && oc !== 'all' && oc !== 'any') {
+        if (oc.includes('third') && !isTp) return false;
+        if (oc.includes('borrower') && isTp) return false;
+      }
+
+      // 4. Applicability condition if specified
+      if (ac && ac !== 'none' && ac !== 'all') {
+        if (ac.includes('construction') && !isUnderCon) return false;
+        if (ac.includes('lease') && !sub.includes('lease') && !(assetDetails.propertyCertNumber || '').toLowerCase().includes('lease')) return false;
+        if ((ac.includes('second') || ac.includes('2nd')) && !isSecDegree) return false;
+      }
+
+      return true;
+    });
+
+    // Deduplicate within the filtered set of rules for this asset
+    const dedupedRules: MandatoryDocumentRule[] = [];
+    const seenKeys = new Set<string>();
+    filteredRules.forEach((rule) => {
+      const key = (canonicalDocKey(rule.documentType) || rule.documentType).toLowerCase();
+      if (!key || seenKeys.has(key)) return;
+      seenKeys.add(key);
+      dedupedRules.push(rule);
+    });
+
+    return dedupedRules.map((rule) => ({
+      name: rule.documentType,
+      type: rule.documentType,
+      isMandatory: rule.mandatory !== false,
+      reason: rule.applicabilityCondition || rule.collateralCategory || 'Admin Mandatory Document Policy',
+      ruleId: rule.id,
+      exceptionAllowed: rule.exceptionAllowed !== false,
+    }));
   }, [
     mandatoryDocRules,
     selectedCategory,
     selectedSubtype,
+    selectedSegment,
     assetDetails.isUnderConstruction,
     assetDetails.propertyCertNumber,
     ownershipType,
@@ -589,10 +766,10 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
   // Synchronize documentsList when dynamic checklist changes
   useEffect(() => {
     setDocumentsList((prev) => {
-      const existingMap = new Map(prev.map((d) => [d.type.toLowerCase(), d]));
+      const existingMap = new Map(prev.map((d) => [canonicalDocKey(d.type) || d.type.toLowerCase(), d]));
 
       const updated: WizardDocItem[] = dynamicDocumentChecklist.map((item, idx) => {
-        const existing = existingMap.get(item.type.toLowerCase());
+        const existing = existingMap.get(canonicalDocKey(item.type) || item.type.toLowerCase());
         if (existing) {
           return {
             ...existing,
@@ -623,7 +800,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
       prev
         .filter(
           (d) =>
-            !dynamicDocumentChecklist.some((item) => item.type.toLowerCase() === d.type.toLowerCase()) &&
+            !dynamicDocumentChecklist.some((item) => docTypeMatches(item.type, d.type)) &&
             (d.fileName || d.fileContent)
         )
         .forEach((customDoc) => updated.push(customDoc));
@@ -656,12 +833,12 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
   }, [facilityAllocations]);
 
   const remainingCapacity = useMemo(() => {
-    return Math.max(0, netCollateralValue - totalAllocated);
-  }, [netCollateralValue, totalAllocated]);
+    return Math.max(0, collateralValueForAllocation - totalAllocated);
+  }, [collateralValueForAllocation, totalAllocated]);
 
   const isAllocationOverflow = useMemo(() => {
-    return totalAllocated > netCollateralValue + 0.01;
-  }, [totalAllocated, netCollateralValue]);
+    return totalAllocated > collateralValueForAllocation + 0.01;
+  }, [totalAllocated, collateralValueForAllocation]);
 
   // Construct Final Collateral Payload
   const buildCollateralPayload = (statusToSet: string): Collateral => {
@@ -750,7 +927,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
       valuationAmount: bankAssessedValue,
       haircut: haircutPct,
       nsv: netCollateralValue,
-      limitContribution: netCollateralValue,
+      limitContribution: collateralValueForAllocation,
       valuationDate: valuationDate,
       valuationMethod: 'Bank Approved Independent Valuation',
       insuredAmount: insuranceValue,
@@ -766,16 +943,17 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
       estimatedValue: estimatedValue,
       estimatedValueSource: estimatedValueSource,
       insurableValue: bankAssessedValue,
-      landValue: landValue,
+      landValue,
+      locationValue,
       // Security rank fields
       collateralRank: securityRank,
       isFirstDegreeInternal: isFirstDegreeInternal,
       firstDegreeCollateralId: firstDegreeCollateralId,
       firstDegreeHolderName: firstDegreeHolderName,
       firstDegreeFacilityRef: firstDegreeFacilityRef,
-      firstDegreeOutstandingBalance: firstDegreeOutstandingBalance,
+      firstDegreeOutstandingBalance: firstDegreeOutstandingBalance || 0,
       firstDegreeBalanceAsOfDate: firstDegreeBalanceAsOfDate,
-      registeredMortgageAmount: registeredMortgageAmount,
+      registeredMortgageAmount: registeredMortgageAmount || 0,
       mortgageRegistrationNumber: mortgageRegistrationNumber,
       mortgageRegistrationDate: mortgageRegistrationDate,
       firstDegreePolicyNumber: firstDegreePolicyNumber,
@@ -789,16 +967,18 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
 
   // Convert wizard documents for backend DMS payload
   const buildDocumentsPayload = () => {
+    // Only real files confirmed by the maker are sent to DMS. Never fabricate
+    // file names or base64 content for documents that were not uploaded.
     const mandatoryPayload = documentsList
-      .filter((d) => d.fileContent || d.fileName)
+      .filter((d) => !!d.fileContent && !!d.fileName)
       .map((d) => ({
         name: d.name,
         type: d.type,
         docName: d.name,
         docType: d.type,
-        fileName: d.fileName || `${d.type.replace(/\s+/g, '_')}.pdf`,
-        fileContent: d.fileContent || 'JVBERi0xLjQKJcTl8uXrp/Og0MTGCjQgMCBvYmoKPDw...',
-        fileSize: d.fileSize || 102400,
+        fileName: d.fileName,
+        fileContent: d.fileContent,
+        fileSize: d.fileSize || 0,
         referenceNumber: d.referenceNumber,
         expiryDate: d.expiryDate,
         remarks: d.remarks,
@@ -806,15 +986,15 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
       }));
 
     const supportingPayload = supportingDocumentsList
-      .filter((d) => d.fileContent || d.fileName)
+      .filter((d) => !!d.fileContent && !!d.fileName)
       .map((d) => ({
         name: d.name,
         type: d.type,
         docName: d.name,
         docType: d.type,
-        fileName: d.fileName || `${d.type.replace(/\s+/g, '_')}.pdf`,
-        fileContent: d.fileContent || 'JVBERi0xLjQKJcTl8uXrp/Og0MTGCjQgMCBvYmoKPDw...',
-        fileSize: d.fileSize || 102400,
+        fileName: d.fileName,
+        fileContent: d.fileContent,
+        fileSize: d.fileSize || 0,
         referenceNumber: d.referenceNumber,
         expiryDate: d.expiryDate,
         remarks: d.remarks || 'Supporting Document — Not a Mandatory Rule',
@@ -889,50 +1069,53 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
     }
   };
 
-  // Submit Exception Request (Page 10)
+  // Submit Exception Request (Page 10) using the authenticated backend identity
+  // and the Admin-configured approver. No client-side task ID fallback.
   const handleSubmitException = async () => {
+    if (!canSubmitWizard) {
+      setExceptionError('Your account is not authorized to request collateral exceptions.');
+      return;
+    }
+    if (exceptionSubmitLockRef.current || isSubmittingException || exceptionSubmitted) return;
     if (!exceptionForm.reason.trim()) {
-      alert('Business justification / reason is mandatory when requesting an exception.');
+      setExceptionError('Business justification / reason is mandatory when requesting an exception.');
       return;
     }
     if (!exceptionForm.comments.trim()) {
-      alert('Risk mitigation comments / remarks are mandatory.');
+      setExceptionError('Risk mitigation comments / remarks are mandatory.');
       return;
     }
 
+    exceptionSubmitLockRef.current = true;
     setIsSubmittingException(true);
     setExceptionMessage('');
+    setExceptionError('');
     try {
       const colPayload = buildCollateralPayload('Pending Exception Approval');
       const docsPayload = buildDocumentsPayload();
-
-      const payload = {
+      const payload: EntryTimeExceptionRequest = {
         exceptionType: exceptionForm.exceptionType,
-        failedRequirement: exceptionForm.failedRequirement,
-        reason: exceptionForm.reason,
-        comments: exceptionForm.comments,
+        failedRequirement: exceptionForm.failedRequirement || exceptionForm.exceptionType,
+        reason: exceptionForm.reason.trim(),
+        comments: exceptionForm.comments.trim(),
         entityType: 'Collateral',
         entityId: colPayload.id,
         customerId: colPayload.customerId,
+        severity: 'HIGH',
         collateral: colPayload,
         documents: docsPayload,
       };
 
-      const res = await authenticatedFetch(`/api/collateral/submit-exception-request?userId=${encodeURIComponent(currentUser.username)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.success === false) {
-        throw new Error(data.message || 'Exception request failed');
-      }
-
+      const response = await cimsApi.submitCollateralExceptionRequest(payload);
       setExceptionSubmitted(true);
-      setExceptionMessage(`Exception requested successfully. Routed to Checker / Credit Risk Approver for approval. (Task: ${data.workflowTaskId || 'WF-EXP-01'})`);
+      setExceptionMessage(
+        response.workflowTaskId
+          ? `Exception requested successfully and routed to the configured approver (Task: ${response.workflowTaskId}).`
+          : 'Exception requested successfully and routed to the configured approver.'
+      );
     } catch (err: any) {
-      alert(err.message || 'Failed to submit exception request');
+      setExceptionError(err?.message || 'Failed to submit exception request');
+      exceptionSubmitLockRef.current = false;
     } finally {
       setIsSubmittingException(false);
     }
@@ -940,6 +1123,10 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
 
   // Save Draft Collateral
   const handleSaveDraft = async () => {
+    if (!canSubmitWizard) {
+      setErrorMessage('Your account is not authorized to save collateral drafts.');
+      return;
+    }
     try {
       const colPayload = buildCollateralPayload('Draft');
       const docsPayload = buildDocumentsPayload();
@@ -962,15 +1149,21 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
         throw new Error(data.message || 'Failed to save draft');
       }
 
-      alert(`Collateral Draft saved successfully with reference: ${colPayload.code}`);
+      dispatchInAppToast(`Collateral Draft saved successfully with reference: ${colPayload.code}`, 'success', 'Draft Saved');
       setRegStatus('Draft');
     } catch (err: any) {
-      alert(err.message || 'Error saving collateral draft');
+      dispatchInAppToast(err.message || 'Error saving collateral draft', 'error', 'Draft Save Error');
     }
   };
 
-  // Submit Final Registration (Page 11)
+  // Submit Final Registration (Page 11). The backend record is created exactly once.
   const handleFinalSubmit = async () => {
+    if (!canSubmitWizard) {
+      setErrorMessage('Your account is not authorized to submit collateral registrations.');
+      return;
+    }
+    if (finalSubmitLockRef.current || isSubmittingFinal || submissionResult) return;
+    finalSubmitLockRef.current = true;
     setIsSubmittingFinal(true);
     setErrorMessage('');
     try {
@@ -993,42 +1186,97 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
 
       const data = await res.json();
       if (!res.ok || data.success === false) {
-        throw new Error(data.message || 'Registration failed');
+        throw new Error(data.error || data.message || 'Registration failed');
       }
 
       setSubmissionResult(data);
+      setShowConfirmModal(false);
       if (data.collateral) {
-        onSuccess(data.collateral);
+        // The wizard already persisted the record; notify once and close the
+        // entire registration flow, then land on the refreshed collateral list.
+        onSuccess(data.collateral, true);
+      } else {
+        onClose();
       }
     } catch (err: any) {
+      finalSubmitLockRef.current = false;
       setErrorMessage(err.message || 'Submission failed');
     } finally {
       setIsSubmittingFinal(false);
-      setShowConfirmModal(false);
     }
   };
 
-  // Handle Mock File Upload for Documents
+  // Section A: select a real file and hold it for preview/confirm before attaching.
   const handleDocumentFileChange = (docIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
+
+    setDocumentUploadError('');
+    if (!canSubmitWizard) {
+      setDocumentUploadError('Your account is read-only and cannot attach documents.');
+      return;
+    }
+    if (!isSupportedDocumentFile(file)) {
+      setDocumentUploadError(`Unsupported format "${file.name}". Supported formats: PDF, PNG, JPG, JPEG, TIFF.`);
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(',')[1] || '';
-      setDocumentsList((prev) => {
-        const copy = [...prev];
-        copy[docIndex] = {
-          ...copy[docIndex],
-          fileName: file.name,
-          fileSize: file.size,
-          fileContent: base64,
-          verificationStatus: 'Pending Verification',
-        };
-        return copy;
+      const existing = [
+        ...documentsList.filter((_, idx) => idx !== docIndex),
+        ...supportingDocumentsList,
+      ];
+      if (isDuplicateUpload(existing, file.name, file.size, base64)) {
+        setDocumentUploadError(`"${file.name}" is already attached to this registration. Remove the existing copy before replacing it.`);
+        return;
+      }
+      setPendingUpload({
+        docIndex,
+        fileName: file.name,
+        fileSize: file.size,
+        fileContent: base64,
+        mimeType: file.type || 'application/octet-stream',
       });
     };
+    reader.onerror = () => setDocumentUploadError('The selected file could not be read. Please try again.');
     reader.readAsDataURL(file);
+  };
+
+  const confirmPendingUpload = () => {
+    if (!pendingUpload || !canSubmitWizard) return;
+    const { docIndex, fileName, fileSize, fileContent, mimeType } = pendingUpload;
+    setDocumentsList((prev) => {
+      const copy = [...prev];
+      if (!copy[docIndex]) return prev;
+      copy[docIndex] = {
+        ...copy[docIndex],
+        fileName,
+        fileSize,
+        fileContent,
+        mimeType,
+        verificationStatus: 'Pending Verification',
+      };
+      return copy;
+    });
+    setPendingUpload(null);
+    setDocumentUploadError('');
+  };
+
+  const removeMandatoryFile = (docIndex: number) => {
+    setDocumentsList((prev) => prev.map((doc, idx) => idx === docIndex
+      ? {
+        ...doc,
+        fileName: undefined,
+        fileSize: undefined,
+        fileContent: undefined,
+        mimeType: undefined,
+        verificationStatus: 'Not Uploaded',
+      }
+      : doc));
+    setDocumentUploadError('');
   };
 
   // Run validation automatically when arriving at Page 9
@@ -1089,10 +1337,10 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
               key={s.step}
               onClick={() => setCurrentStep(s.step)}
               className={`py-2.5 px-1 transition-all ${currentStep === s.step
-                  ? 'bg-white text-[#00205B] font-bold shadow-xs border-b-2 border-[#D48806]'
-                  : currentStep > s.step
-                    ? 'text-[#00205B] hover:bg-slate-100 font-semibold'
-                    : 'text-slate-400 hover:bg-slate-100/50'
+                ? 'bg-white text-[#00205B] font-bold shadow-xs border-b-2 border-[#D48806]'
+                : currentStep > s.step
+                  ? 'text-[#00205B] hover:bg-slate-100 font-semibold'
+                  : 'text-slate-400 hover:bg-slate-100/50'
                 }`}
             >
               <div className="truncate">{s.label}</div>
@@ -1106,6 +1354,17 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
             <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
               <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {!canSubmitWizard && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded text-amber-900 flex items-center gap-2">
+              <Lock className="w-4 h-4 shrink-0 text-amber-600" />
+              <span className="text-[11px]">
+                {isReadOnly
+                  ? 'Your audit/read-only account cannot save drafts, attach documents, request exceptions or submit registrations.'
+                  : 'Your account is not authorized to create collateral registrations.'}
+              </span>
             </div>
           )}
 
@@ -1167,10 +1426,10 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   </label>
                   <select
                     value={selectedBranch}
-                    onChange={(e) => setSelectedBranch(e.target.value)}
+                    onChange={(e) => setSelectedBranch(e.target.value)} disabled title="Assigned from your authenticated user configuration"
                     className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 bg-white"
                   >
-                    {branches.map((b) => (
+                    {authorizedBranches.map((b) => (
                       <option key={b.id || b.code} value={b.name}>
                         {b.name} ({b.code})
                       </option>
@@ -1184,10 +1443,10 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   </label>
                   <select
                     value={selectedSegment}
-                    onChange={(e) => setSelectedSegment(e.target.value)}
+                    onChange={(e) => setSelectedSegment(e.target.value)} disabled title="Assigned from your authenticated user configuration"
                     className="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 bg-white"
                   >
-                    {segments.map((s) => (
+                    {authorizedSegments.map((s) => (
                       <option key={s.id || s.name} value={s.name}>
                         {s.name}
                       </option>
@@ -1396,8 +1655,8 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                     type="button"
                     onClick={() => setOwnershipType(opt.type as any)}
                     className={`p-3 rounded-lg border text-left transition ${ownershipType === opt.type
-                        ? 'border-[#00205B] bg-slate-50 shadow-xs ring-1 ring-[#00205B]'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
+                      ? 'border-[#00205B] bg-slate-50 shadow-xs ring-1 ring-[#00205B]'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
                       }`}
                   >
                     <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
@@ -1645,8 +1904,8 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                     <span className="font-bold text-slate-800 text-xs">Joint Legal Owners Register</span>
                     <span
                       className={`px-2.5 py-0.5 rounded text-xs font-bold ${Math.abs(jointOwners.reduce((s, o) => s + (o.percentage || 0), 0) - 100) < 0.01
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-red-100 text-red-800'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-red-100 text-red-800'
                         }`}
                     >
                       Combined Share: {jointOwners.reduce((s, o) => s + (o.percentage || 0), 0).toFixed(2)}%
@@ -1742,7 +2001,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       <button
                         type="button"
                         onClick={() => {
-                          if (!newJointOwner.name) return alert('Owner name is required');
+                          if (!newJointOwner.name) return dispatchInAppToast('Owner name is required', 'warning', 'Validation');
                           setJointOwners([
                             ...jointOwners,
                             {
@@ -2369,11 +2628,10 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   </p>
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-600 mb-1">Estimated Value (ETB)</label>
-                    <input
-                      type="number"
+                    <AmountInput
                       value={estimatedValue}
-                      onChange={(e) => setEstimatedValue(Number(e.target.value))}
-                      className="w-full p-2 border border-slate-300 rounded text-xs font-bold"
+                      onChange={(val) => setEstimatedValue(val || 0)}
+                      placeholder="Enter amount"
                     />
                   </div>
                   <div>
@@ -2382,6 +2640,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       type="text"
                       value={estimatedValueSource}
                       onChange={(e) => setEstimatedValueSource(e.target.value)}
+                      placeholder="Enter valuation source or reference"
                       className="w-full p-2 border border-slate-300 rounded text-xs"
                     />
                   </div>
@@ -2398,21 +2657,23 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   </p>
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-700 mb-1">Insurable Value (ETB)</label>
-                    <input
-                      type="number"
+                    <AmountInput
                       value={bankAssessedValue}
-                      onChange={(e) => setBankAssessedValue(Number(e.target.value))}
-                      className="w-full p-2 border border-blue-300 rounded text-xs font-mono font-bold text-[#00205B]"
+                      onChange={(val) => setBankAssessedValue(val || 0)}
+                      placeholder="Enter amount"
+                      required
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">Land Value (ETB, Excluded)</label>
-                    <input
-                      type="number"
-                      value={landValue}
-                      onChange={(e) => setLandValue(Number(e.target.value))}
-                      className="w-full p-2 border border-slate-300 rounded text-xs"
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">Land Value (ETB, Excluded from Insurable Value)</label>
+                    <AmountInput
+                      value={landValue || undefined}
+                      onChange={(val) => {
+                        setLandValueInput(val !== undefined ? String(val) : '');
+                      }}
+                      placeholder="Enter amount"
                     />
+                    <p className="text-[10px] text-slate-500 mt-0.5">Pasted values such as 1,250,000 are accepted.</p>
                   </div>
                 </div>
 
@@ -2420,18 +2681,17 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                 <div className="bg-white p-4 border border-slate-200 rounded-lg space-y-2 shadow-xs">
                   <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
                     <Shield className="w-3.5 h-3.5 text-emerald-500" />
-                    6.3 Insurance Coverage Value
+                    6.3 Insured Value
                   </span>
                   <p className="text-[10px] text-slate-500">
                     Sourced from active insurance policy schedule when available.
                   </p>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">Insurance Amount (ETB)</label>
-                    <input
-                      type="number"
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">Insured Value (ETB)</label>
+                    <AmountInput
                       value={insuranceValue}
-                      onChange={(e) => setInsuranceValue(Number(e.target.value))}
-                      className="w-full p-2 border border-slate-300 rounded text-xs font-mono font-bold"
+                      onChange={(val) => setInsuranceValue(val || 0)}
+                      placeholder="Enter amount"
                     />
                   </div>
                   <div className="pt-2 text-[10px] text-slate-600">
@@ -2449,8 +2709,9 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       type="number"
                       min="0"
                       max="100"
-                      value={haircutPct}
+                      value={haircutPct || ''}
                       onChange={(e) => setHaircutPct(Number(e.target.value))}
+                      placeholder="0"
                       className="w-full p-2 border border-blue-300 rounded font-bold text-xs"
                     />
                   </div>
@@ -2458,13 +2719,13 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                     <div>
                       <span className="block text-[10px] text-slate-500 font-semibold">FORMULA: Valuation Amount × (1 – Haircut / 100)</span>
                       <span className="text-xs text-slate-700">
-                        ETB {bankAssessedValue.toLocaleString()} × (1 - {haircutPct}%)
+                        ETB {formatEtbNumber(bankAssessedValue)} × (1 - {haircutPct}%)
                       </span>
                     </div>
                     <div className="text-right">
                       <span className="block text-[10px] text-[#00205B] font-bold">NET COLLATERAL VALUE (NSV)</span>
                       <span className="text-base font-extrabold text-[#00205B] font-mono">
-                        ETB {netCollateralValue.toLocaleString()}
+                        ETB {formatEtbNumber(netCollateralValue)}
                       </span>
                     </div>
                   </div>
@@ -2534,8 +2795,8 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   type="button"
                   onClick={() => setSecurityRank('1st')}
                   className={`p-4 rounded-lg border text-left transition ${securityRank === '1st'
-                      ? 'border-[#00205B] bg-slate-50 ring-1 ring-[#00205B]'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
+                    ? 'border-[#00205B] bg-slate-50 ring-1 ring-[#00205B]'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
                     }`}
                 >
                   <div className="flex items-center gap-2">
@@ -2551,8 +2812,8 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   type="button"
                   onClick={() => setSecurityRank('2nd')}
                   className={`p-4 rounded-lg border text-left transition ${securityRank === '2nd'
-                      ? 'border-[#00205B] bg-slate-50 ring-1 ring-[#00205B]'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
+                    ? 'border-[#00205B] bg-slate-50 ring-1 ring-[#00205B]'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
                     }`}
                 >
                   <div className="flex items-center gap-2">
@@ -2616,11 +2877,11 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                         <label className="block font-semibold mb-1">
                           1st-Degree Outstanding Balance (ETB) <span className="text-red-500">*</span>
                         </label>
-                        <input
-                          type="number"
+                        <AmountInput
                           value={firstDegreeOutstandingBalance}
-                          onChange={(e) => setFirstDegreeOutstandingBalance(Number(e.target.value))}
-                          className="w-full p-2 border border-slate-300 rounded font-mono font-bold"
+                          onChange={(val) => setFirstDegreeOutstandingBalance(val)}
+                          placeholder="Enter amount"
+                          required
                         />
                       </div>
                       <div>
@@ -2634,11 +2895,10 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       </div>
                       <div>
                         <label className="block font-semibold mb-1">Registered Mortgage Amount (ETB)</label>
-                        <input
-                          type="number"
+                        <AmountInput
                           value={registeredMortgageAmount}
-                          onChange={(e) => setRegisteredMortgageAmount(Number(e.target.value))}
-                          className="w-full p-2 border border-slate-300 rounded font-mono font-bold"
+                          onChange={(val) => setRegisteredMortgageAmount(val)}
+                          placeholder="Enter amount"
                         />
                       </div>
                       <div>
@@ -2746,9 +3006,17 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-500">
-                    All mandatory documents must be attached OR have an approved management exception request.
+                    Outstanding documents are shown at final review; submission is not blocked by missing documents.
                   </span>
                 </div>
+
+                {documentUploadError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-red-800">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span className="flex-1 text-[11px]">{documentUploadError}</span>
+                    <button type="button" onClick={() => setDocumentUploadError('')} className="font-bold">✕</button>
+                  </div>
+                )}
 
                 <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-xs">
                   <table className="w-full text-left divide-y divide-slate-200 text-xs">
@@ -2847,8 +3115,21 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                                     accept=".pdf,.png,.jpg,.jpeg,.tiff"
                                     onChange={(e) => handleDocumentFileChange(idx, e)}
                                     className="hidden"
+                                    disabled={!canSubmitWizard}
                                   />
                                 </label>
+
+                                {doc.fileName && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeMandatoryFile(idx)}
+                                    disabled={!canSubmitWizard}
+                                    className="px-2 py-1 border border-red-300 text-red-700 rounded text-[11px] font-semibold hover:bg-red-50 disabled:opacity-50"
+                                    title="Remove attached file"
+                                  >
+                                    Remove File
+                                  </button>
+                                )}
 
                                 {/* Request Exception Button (if mandatory and not attached) */}
                                 {!isAttached && doc.isMandatory && !matchingExc && (
@@ -2874,7 +3155,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                                         setModalExceptionDays(30);
                                         setModalExceptionEvidence('');
                                       }}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 text-white rounded text-[11px] font-bold hover:bg-amber-700 transition shadow-xs"
+                                      disabled={!canSubmitWizard} className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 text-white rounded text-[11px] font-bold hover:bg-amber-700 transition shadow-xs disabled:opacity-60"
                                     >
                                       <Shield className="w-3 h-3" />
                                       <span>Request Exception</span>
@@ -2898,7 +3179,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                                         setModalExceptionDays(matchingExc.validityDays || 30);
                                         setModalExceptionEvidence(matchingExc.evidenceDocument || '');
                                       }}
-                                      className="px-2 py-1 border border-amber-300 text-amber-800 rounded text-[11px] font-semibold hover:bg-amber-50"
+                                      disabled={!canSubmitWizard} className="px-2 py-1 border border-amber-300 text-amber-800 rounded text-[11px] font-semibold hover:bg-amber-50 disabled:opacity-60"
                                     >
                                       Edit
                                     </button>
@@ -2916,7 +3197,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                                           )
                                         );
                                       }}
-                                      className="px-2 py-1 border border-red-300 text-red-700 rounded text-[11px] font-semibold hover:bg-red-50"
+                                      disabled={!canSubmitWizard} className="px-2 py-1 border border-red-300 text-red-700 rounded text-[11px] font-semibold hover:bg-red-50 disabled:opacity-60"
                                       title="Cancel exception request"
                                     >
                                       Remove
@@ -2969,7 +3250,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       });
                       setShowAddSupportingDocModal(true);
                     }}
-                    className="px-3 py-1.5 bg-[#00205B] text-white rounded text-xs font-bold hover:bg-[#00205B] flex items-center gap-1 shadow-xs transition"
+                    disabled={!canSubmitWizard} className="px-3 py-1.5 bg-[#00205B] text-white rounded text-xs font-bold hover:bg-[#00205B] flex items-center gap-1 shadow-xs transition disabled:opacity-60"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>+ Add Other Supporting Document</span>
@@ -3010,7 +3291,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                               onClick={() => {
                                 setSupportingDocumentsList((prev) => prev.filter((_, idx) => idx !== sIdx));
                               }}
-                              className="px-2 py-1 border border-red-300 text-red-700 rounded text-[11px] font-semibold hover:bg-red-50"
+                              disabled={!canSubmitWizard} className="px-2 py-1 border border-red-300 text-red-700 rounded text-[11px] font-semibold hover:bg-red-50 disabled:opacity-60"
                             >
                               Remove
                             </button>
@@ -3047,9 +3328,12 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   </p>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] text-slate-500 block">NET SECURITY VALUE CAPACITY</span>
+                  <span className="text-[10px] text-slate-500 block">AVAILABLE COLLATERAL VALUE</span>
                   <span className="font-mono font-extrabold text-[#00205B] text-sm">
-                    ETB {netCollateralValue.toLocaleString()}
+                    ETB {formatEtbNumber(collateralValueForAllocation)}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    Net {formatEtbNumber(netCollateralValue)} + Location {formatEtbNumber(locationValue)}
                   </span>
                 </div>
               </div>
@@ -3057,9 +3341,9 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
               {/* Capacity Usage Gauge */}
               <div className="p-3 bg-white border border-slate-200 rounded-lg space-y-2">
                 <div className="flex justify-between text-xs font-semibold">
-                  <span>Total Allocated: <strong className="font-mono text-[#00205B]">ETB {totalAllocated.toLocaleString()}</strong></span>
+                  <span>Total Allocated: <strong className="font-mono text-[#00205B]">ETB {formatEtbNumber(totalAllocated)}</strong></span>
                   <span className={isAllocationOverflow ? 'text-red-600 font-bold' : 'text-slate-600'}>
-                    Remaining Capacity: <strong className="font-mono">ETB {remainingCapacity.toLocaleString()}</strong>
+                    Remaining Capacity: <strong className="font-mono">ETB {formatEtbNumber(remainingCapacity)}</strong>
                   </span>
                 </div>
                 <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
@@ -3067,14 +3351,14 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                     className={`h-full transition-all ${isAllocationOverflow ? 'bg-red-600' : 'bg-[#00205B]'
                       }`}
                     style={{
-                      width: `${Math.min(100, netCollateralValue > 0 ? (totalAllocated / netCollateralValue) * 100 : 0)}%`,
+                      width: `${Math.min(100, collateralValueForAllocation > 0 ? (totalAllocated / collateralValueForAllocation) * 100 : 0)}%`,
                     }}
                   />
                 </div>
                 {isAllocationOverflow && (
                   <p className="text-[11px] text-red-600 font-bold flex items-center gap-1">
                     <AlertTriangle className="w-3.5 h-3.5" />
-                    Allocation Overflow: Total allocated security exceeds Net Collateral Value! A risk waiver exception is required.
+                    Allocation Overflow: Total allocated security exceeds net value + location value. A risk waiver exception is required.
                   </p>
                 )}
               </div>
@@ -3134,8 +3418,8 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                           </td>
                           <td className="p-2.5 font-mono font-bold text-[#00205B]">{loan.loanReference}</td>
                           <td className="p-2.5">{loan.facilityType || 'Term Loan'}</td>
-                          <td className="p-2.5 font-mono">ETB {(loan.sanctionedLimit || 0).toLocaleString()}</td>
-                          <td className="p-2.5 font-mono font-semibold">ETB {(loan.outstandingBalance || 0).toLocaleString()}</td>
+                          <td className="p-2.5 font-mono">ETB {formatEtbNumber(loan.sanctionedLimit)}</td>
+                          <td className="p-2.5 font-mono font-semibold">ETB {formatEtbNumber(loan.outstandingBalance)}</td>
                           <td className="p-2.5">
                             {isLinked ? (
                               <select
@@ -3153,14 +3437,11 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                           </td>
                           <td className="p-2.5">
                             {isLinked ? (
-                              <input
-                                type="number"
-                                value={facilityAllocations[loan.id] || 0}
-                                onChange={(e) => {
-                                  const val = Number(e.target.value);
-                                  setFacilityAllocations({ ...facilityAllocations, [loan.id]: val });
-                                }}
-                                className="w-32 p-1 border border-blue-300 rounded font-mono font-bold text-xs"
+                              <AmountInput
+                                value={facilityAllocations[loan.id]}
+                                onChange={(val) => setFacilityAllocations({ ...facilityAllocations, [loan.id]: val || 0 })}
+                                placeholder="Enter allocation"
+                                className="w-36 py-1 px-1.5 text-xs font-bold"
                               />
                             ) : (
                               <span className="text-slate-400">—</span>
@@ -3212,10 +3493,10 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
               {preValidationResult && (
                 <div
                   className={`p-4 rounded-lg border ${preValidationResult.valid
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                      : preValidationResult.hasHardBlock
-                        ? 'bg-red-50 border-red-200 text-red-900'
-                        : 'bg-amber-50 border-amber-200 text-amber-900'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : preValidationResult.hasHardBlock
+                      ? 'bg-red-50 border-red-200 text-red-900'
+                      : 'bg-amber-50 border-amber-200 text-amber-900'
                     }`}
                 >
                   <div className="flex items-center justify-between">
@@ -3246,10 +3527,10 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   <div
                     key={idx}
                     className={`p-3 rounded-lg border flex items-start justify-between ${check.passed
-                        ? 'bg-white border-slate-200'
-                        : check.overrideable
-                          ? 'bg-amber-50/40 border-amber-200'
-                          : 'bg-red-50/40 border-red-200'
+                      ? 'bg-white border-slate-200'
+                      : check.overrideable
+                        ? 'bg-amber-50/40 border-amber-200'
+                        : 'bg-red-50/40 border-red-200'
                       }`}
                   >
                     <div className="flex items-start gap-2.5">
@@ -3306,6 +3587,17 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                 </p>
               </div>
 
+              {exceptionError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-red-800">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="font-bold text-xs">Exception request could not be submitted</div>
+                    <div className="text-[11px] mt-0.5">{exceptionError}</div>
+                  </div>
+                  <button type="button" onClick={() => setExceptionError('')} className="text-red-500 font-bold">✕</button>
+                </div>
+              )}
+
               {/* List of existing requested exceptions */}
               {collateralExceptions.length > 0 && (
                 <div className="space-y-2">
@@ -3315,7 +3607,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       Exceptions in Current Registration Package ({collateralExceptions.length})
                     </span>
                     <span className="text-[10px] text-amber-800 bg-amber-100 px-2 py-0.5 rounded font-semibold">
-                      Requires Checker / Risk Approval
+                      Requires configured approval
                     </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -3359,7 +3651,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   <h5 className="font-bold text-emerald-900 text-sm">Exception Request Saved &amp; Ready for Submission</h5>
                   <p className="text-emerald-800 text-xs max-w-lg mx-auto">{exceptionMessage}</p>
                   <p className="text-slate-500 text-[11px]">
-                    Under four-eyes segregation of duties, the transaction will be routed to an authorized Checker / Credit Risk Approver. The maker cannot approve their own exception.
+                    Under four-eyes segregation of duties, the transaction will be routed to the approver configured in the Admin Workflow Approval Hierarchy. The maker cannot approve their own exception.
                   </p>
                   <button
                     type="button"
@@ -3457,10 +3749,11 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       type="button"
                       onClick={() => {
                         if (!exceptionForm.reason.trim()) {
-                          alert('Business justification / reason is mandatory.');
+                          dispatchInAppToast('Business justification / reason is mandatory.', 'warning', 'Validation');
                           return;
                         }
                         const newExc = {
+                          exceptionType: exceptionForm.exceptionType,
                           failedRequirement: exceptionForm.failedRequirement || exceptionForm.exceptionType,
                           documentType: exceptionForm.failedRequirement || exceptionForm.exceptionType,
                           reason: exceptionForm.reason.trim(),
@@ -3478,7 +3771,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                           evidenceDocument: '',
                           evidenceFileContent: '',
                         });
-                        alert('Exception added to collateral registration package.');
+                        dispatchInAppToast('Exception added to collateral registration package.', 'success', 'Exception Added');
                       }}
                       className="px-4 py-2 bg-slate-800 text-white rounded font-bold hover:bg-slate-900 text-xs shadow-xs flex items-center gap-1.5"
                     >
@@ -3489,7 +3782,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                     <button
                       type="button"
                       onClick={handleSubmitException}
-                      disabled={isSubmittingException}
+                      disabled={isSubmittingException || exceptionSubmitted || !canSubmitWizard}
                       className="px-4 py-2 bg-amber-600 text-white rounded font-bold hover:bg-amber-700 text-xs shadow-xs flex items-center gap-1.5"
                     >
                       <Shield className="w-3.5 h-3.5" />
@@ -3540,91 +3833,21 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (submissionResult.collateral) onSuccess(submissionResult.collateral);
-                      onClose();
-                    }}
-                    className="px-5 py-2 bg-[#00205B] text-white rounded-lg font-bold hover:bg-[#00205B] text-xs shadow-md"
+                    onClick={onClose}
+                    disabled={isSubmittingFinal}
+                    className="px-5 py-2 bg-[#00205B] text-white rounded-lg font-bold hover:bg-[#00205B] text-xs shadow-md disabled:opacity-60"
                   >
-                    Close Wizard &amp; View in Collateral Register
+                    Close Wizard
                   </button>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {/* Executive Submission Compliance Banner */}
                   {(() => {
-                    const missingMandatoryRules = dynamicDocumentChecklist.filter(
+                    const outstandingDocuments = dynamicDocumentChecklist.filter(
                       (item) => item.isMandatory && !documentsList.some((d) => docTypeMatches(item.type, d.type) && (d.fileContent || d.fileName))
                     );
-                    const prohibitedMissingDocs = missingMandatoryRules.filter((item) => item.exceptionAllowed === false);
-                    const unexcusedMissingDocs = missingMandatoryRules.filter(
-                      (item) => !collateralExceptions.some((e) => (item.ruleId && e.ruleId === item.ruleId) || docTypeMatches(item.type, e.failedRequirement) || docTypeMatches(item.type, e.documentType))
-                    );
                     const isCapacityBlocked = isAllocationOverflow && !collateralExceptions.some((e) => e.failedRequirement?.toLowerCase().includes('capacity') || e.exceptionType?.toLowerCase().includes('capacity'));
-                    const isBlocked = prohibitedMissingDocs.length > 0 || unexcusedMissingDocs.length > 0 || isCapacityBlocked;
-                    const isExcSubmission = !isBlocked && (collateralExceptions.length > 0 || isAllocationOverflow);
-
-                    if (prohibitedMissingDocs.length > 0) {
-                      return (
-                        <div className="p-3 bg-red-50 border border-red-300 rounded-lg flex items-start justify-between gap-3 text-red-900">
-                          <div className="flex items-start gap-2.5">
-                            <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                            <div>
-                              <h5 className="font-bold text-xs">Submission Hard-Blocked: Policy Prohibits Exceptions for Mandatory Documents</h5>
-                              <p className="text-[11px] text-red-800 mt-0.5">
-                                Admin policy strictly forbids exceptions for the following mandatory document(s). Physical/digital file upload is required before registration:
-                              </p>
-                              <ul className="list-disc list-inside mt-1 space-y-0.5 text-[11px] font-semibold text-red-700">
-                                {prohibitedMissingDocs.map((doc, i) => (
-                                  <li key={i}>{doc.name} (Exception Prohibited per Admin Matrix)</li>
-                                ))}
-                              </ul>
-                              <p className="text-[10px] text-red-600 mt-1">
-                                Return to Page 7 to attach these required files.
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentStep(7)}
-                            className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 text-xs shrink-0 shadow-xs"
-                          >
-                            Go to Page 7 →
-                          </button>
-                        </div>
-                      );
-                    }
-
-                    if (unexcusedMissingDocs.length > 0) {
-                      return (
-                        <div className="p-3 bg-red-50 border border-red-300 rounded-lg flex items-start justify-between gap-3 text-red-900">
-                          <div className="flex items-start gap-2.5">
-                            <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                            <div>
-                              <h5 className="font-bold text-xs">Submission Blocked: Missing Mandatory Document Requirements</h5>
-                              <p className="text-[11px] text-red-800 mt-0.5">
-                                Admin policy requires the following mandatory document(s) before this collateral can be submitted:
-                              </p>
-                              <ul className="list-disc list-inside mt-1 space-y-0.5 text-[11px] font-semibold text-red-700">
-                                {unexcusedMissingDocs.map((doc, i) => (
-                                  <li key={i}>{doc.name}</li>
-                                ))}
-                              </ul>
-                              <p className="text-[10px] text-red-600 mt-1">
-                                Return to Page 7 to attach these files or request an authorized management exception with justification.
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentStep(7)}
-                            className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 text-xs shrink-0 shadow-xs"
-                          >
-                            Go to Page 7 →
-                          </button>
-                        </div>
-                      );
-                    }
 
                     if (isCapacityBlocked) {
                       return (
@@ -3632,39 +3855,35 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                           <div className="flex items-start gap-2.5">
                             <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
                             <div>
-                              <h5 className="font-bold text-xs">Submission Blocked: Facility Allocation Exceeds Net Collateral Value</h5>
+                              <h5 className="font-bold text-xs">Submission Blocked: Facility Allocation Exceeds Available Collateral Value</h5>
                               <p className="text-[11px] text-red-800 mt-0.5">
-                                Total allocated security (ETB {totalAllocated.toLocaleString()}) exceeds Net Collateral Value capacity (ETB {netCollateralValue.toLocaleString()}) by ETB {(totalAllocated - netCollateralValue).toLocaleString()}.
+                                Total allocated security (ETB {formatEtbNumber(totalAllocated)}) exceeds available collateral value (net value ETB {formatEtbNumber(netCollateralValue)} + location value ETB {formatEtbNumber(locationValue)} = ETB {formatEtbNumber(collateralValueForAllocation)}) by ETB {formatEtbNumber(totalAllocated - collateralValueForAllocation)}.
                               </p>
                               <p className="text-[10px] text-red-600 mt-1">
                                 Adjust allocations on Page 8 or request a Collateral Capacity Overflow Waiver on Page 10.
                               </p>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentStep(8)}
-                            className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 text-xs shrink-0 shadow-xs"
-                          >
+                          <button type="button" onClick={() => setCurrentStep(8)} className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 text-xs shrink-0 shadow-xs">
                             Go to Page 8 →
                           </button>
                         </div>
                       );
                     }
 
-                    if (isExcSubmission) {
+                    if (collateralExceptions.length > 0) {
                       return (
                         <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-2.5 text-amber-900">
                           <Shield className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                          <div>
+                          <div className="flex-1">
                             <h5 className="font-bold text-xs flex items-center gap-1.5">
-                              <span>Path B: Exception-Based Submission Mode</span>
+                              <span>Exception-Based Submission Mode</span>
                               <span className="px-1.5 py-0.2 bg-amber-200 text-amber-900 rounded text-[10px] font-bold">
                                 {collateralExceptions.length} Exception(s)
                               </span>
                             </h5>
                             <p className="text-[11px] text-amber-800 mt-0.5">
-                              This registration includes <strong>{collateralExceptions.length}</strong> justified exception request(s) for missing mandatory documents. The collateral will be routed to Credit Risk / Branch Management under action <code className="bg-amber-100 px-1 rounded font-mono">APPROVE_COLLATERAL_AND_EXCEPTION</code> with status <span className="font-bold">Pending Exception Approval</span>.
+                              This registration includes {collateralExceptions.length} justified exception request(s) and will be routed to the Admin-configured approver with status Pending Exception Approval.
                             </p>
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
                               {collateralExceptions.map((exc, i) => (
@@ -3679,19 +3898,40 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       );
                     }
 
+                    if (outstandingDocuments.length > 0) {
+                      return (
+                        <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-start justify-between gap-3 text-amber-900">
+                          <div className="flex items-start gap-2.5">
+                            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                            <div>
+                              <h5 className="font-bold text-xs">Outstanding Document Requirements (Informational)</h5>
+                              <p className="text-[11px] text-amber-800 mt-0.5">
+                                The following Admin-configured requirements are not yet attached. Submission is allowed; these remain outstanding for Checker review.
+                              </p>
+                              <ul className="list-disc list-inside mt-1 space-y-0.5 text-[11px] font-semibold text-amber-800">
+                                {outstandingDocuments.map((doc, i) => <li key={i}>{doc.name}</li>)}
+                              </ul>
+                            </div>
+                          </div>
+                          <button type="button" onClick={() => setCurrentStep(7)} className="px-3 py-1 bg-amber-600 text-white rounded font-bold hover:bg-amber-700 text-xs shrink-0 shadow-xs">
+                            Go to Page 7 →
+                          </button>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center gap-2.5 text-emerald-900">
                         <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                         <div>
-                          <h5 className="font-bold text-xs">Path A: Normal Submission Mode — All Mandatory Requirements Satisfied</h5>
+                          <h5 className="font-bold text-xs">All Admin-configured mandatory documents are attached</h5>
                           <p className="text-[11px] text-emerald-800 mt-0.5">
-                            All Admin-configured mandatory documents are attached (pending verification). The registration will be submitted for standard Maker-Checker authorization with status <span className="font-bold">Pending Approval</span>.
+                            The registration will be submitted for standard Maker-Checker authorization with status Pending Approval.
                           </p>
                         </div>
                       </div>
                     );
                   })()}
-
                   {/* Summary Grid Cards (9 Comprehensive Sections) */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {/* Card 1: Initiation */}
@@ -3749,11 +3989,12 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                         <DollarSign className="w-3.5 h-3.5 text-[#00205B]" /> 4. Valuation &amp; Net Value
                       </span>
                       <div className="space-y-1 text-[11px] text-slate-700">
-                        <div>Assessed: <strong>ETB {bankAssessedValue.toLocaleString()}</strong></div>
+                        <div>Assessed: <strong>ETB {formatEtbNumber(bankAssessedValue)}</strong></div>
+                        <div>Location / Land Value: <strong>ETB {formatEtbNumber(locationValue)}</strong></div>
                         <div>Haircut: <strong>{haircutPct}%</strong></div>
                         <div className="pt-1 border-t border-slate-100 flex justify-between font-bold">
-                          <span>NSV Capacity:</span>
-                          <span className="font-mono text-[#00205B]">ETB {netCollateralValue.toLocaleString()}</span>
+                          <span>Available Capacity:</span>
+                          <span className="font-mono text-[#00205B]">ETB {formatEtbNumber(collateralValueForAllocation)}</span>
                         </div>
                       </div>
                     </div>
@@ -3764,9 +4005,9 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                         <Award className="w-3.5 h-3.5 text-[#00205B]" /> 5. Security Rank &amp; Priority
                       </span>
                       <div className="text-[11px] text-slate-700 space-y-1">
-                        <div>Rank: <strong className="text-[#00205B]">{securityRank} Degree</strong> ({isFirstDegreeInternal ? 'Internal' : 'External'})</div>
+                        <div>Rank: <strong className="text-[#00205B]">{securityRank ? `${securityRank} Degree` : 'Not selected'}</strong> ({isFirstDegreeInternal ? 'Internal' : 'External'})</div>
                         {!isFirstDegreeInternal && (
-                          <div>Senior Holder: <strong>{firstDegreeHolderName}</strong> (Bal: ETB {firstDegreeOutstandingBalance.toLocaleString()})</div>
+                          <div>Senior Holder: <strong>{firstDegreeHolderName}</strong> (Bal: ETB {formatEtbNumber(firstDegreeOutstandingBalance)})</div>
                         )}
                         {bankNotedAsSecondMortgagee && (
                           <div className="text-emerald-700 font-bold">✓ Dashen Bank noted as 2nd mortgagee in registry</div>
@@ -3818,11 +4059,11 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       </span>
                       <div className="text-[11px] text-slate-700 space-y-1">
                         <div>Linked Accounts: <strong>{selectedFacilityIds.length}</strong></div>
-                        <div>Total Allocated: <strong className="font-mono text-[#00205B]">ETB {totalAllocated.toLocaleString()}</strong></div>
+                        <div>Total Allocated: <strong className="font-mono text-[#00205B]">ETB {formatEtbNumber(totalAllocated)}</strong></div>
                         {isAllocationOverflow ? (
-                          <div className="text-red-600 font-bold">Overflow: ETB {(totalAllocated - netCollateralValue).toLocaleString()}</div>
+                          <div className="text-red-600 font-bold">Overflow: ETB {formatEtbNumber(totalAllocated - collateralValueForAllocation)}</div>
                         ) : (
-                          <div className="text-emerald-700 font-semibold">Remaining: ETB {remainingCapacity.toLocaleString()}</div>
+                          <div className="text-emerald-700 font-semibold">Remaining: ETB {formatEtbNumber(remainingCapacity)}</div>
                         )}
                       </div>
                     </div>
@@ -3866,6 +4107,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
               <button
                 type="button"
                 onClick={handleSaveDraft}
+                disabled={!canSubmitWizard}
                 className="px-3.5 py-1.5 bg-white border border-slate-300 rounded text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1 shadow-xs"
               >
                 <Save className="w-3.5 h-3.5 text-slate-500" /> Save Draft
@@ -3877,7 +4119,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                 type="button"
                 onClick={() => {
                   if (currentStep === 2 && !selectedBorrowerId) {
-                    alert('Please select a borrower before continuing.');
+                    dispatchInAppToast('Please select a borrower before continuing.', 'warning', 'Selection Required');
                     return;
                   }
                   setCurrentStep(currentStep + 1);
@@ -3889,40 +4131,21 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
             )}
 
             {currentStep === 11 && !submissionResult && (() => {
-              const missingMandatoryRules = dynamicDocumentChecklist.filter(
-                (item) => item.isMandatory && !documentsList.some((d) => docTypeMatches(item.type, d.type) && (d.fileContent || d.fileName))
-              );
-              const prohibitedMissingDocs = missingMandatoryRules.filter((item) => item.exceptionAllowed === false);
-              const unexcusedMissingDocs = missingMandatoryRules.filter(
-                (item) => !collateralExceptions.some((e) => (item.ruleId && e.ruleId === item.ruleId) || docTypeMatches(item.type, e.failedRequirement) || docTypeMatches(item.type, e.documentType))
-              );
+              // Outstanding documents are informational only; the maker may submit and
+              // the checker decides whether to accept the risk or require perfection.
               const isCapacityBlocked = isAllocationOverflow && !collateralExceptions.some((e) => e.failedRequirement?.toLowerCase().includes('capacity') || e.exceptionType?.toLowerCase().includes('capacity'));
-              const isBlocked = prohibitedMissingDocs.length > 0 || unexcusedMissingDocs.length > 0 || isCapacityBlocked;
-              const isExcSubmission = !isBlocked && (collateralExceptions.length > 0 || isAllocationOverflow);
+              const isExcSubmission = !isCapacityBlocked && (collateralExceptions.length > 0 || isAllocationOverflow);
 
-              if (isBlocked) {
+              if (isCapacityBlocked) {
                 return (
                   <button
                     type="button"
                     disabled
                     className="px-5 py-1.5 bg-slate-300 text-slate-500 rounded font-bold cursor-not-allowed flex items-center gap-1.5 shadow-none"
-                    title={`Submission blocked: ${prohibitedMissingDocs.length > 0 ? 'Policy prohibits exception for missing document' : unexcusedMissingDocs.length > 0 ? 'Missing mandatory documents' : 'Capacity overflow'}`}
+                    title="Submission blocked: facility allocation exceeds available collateral value"
                   >
                     <XCircle className="w-4 h-4 text-slate-500" />
-                    <span>Submission Blocked (Requirements Unmet)</span>
-                  </button>
-                );
-              }
-
-              if (isExcSubmission) {
-                return (
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmModal(true)}
-                    className="px-5 py-1.5 bg-amber-600 text-white rounded font-bold hover:bg-amber-700 flex items-center gap-1.5 shadow-md transition"
-                  >
-                    <Shield className="w-4 h-4" />
-                    <span>Submit Collateral + Exception(s) for Authorization</span>
+                    <span>Submission Blocked (Capacity Exception Required)</span>
                   </button>
                 );
               }
@@ -3931,10 +4154,18 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                 <button
                   type="button"
                   onClick={() => setShowConfirmModal(true)}
-                  className="px-5 py-1.5 bg-emerald-700 text-white rounded font-bold hover:bg-emerald-800 flex items-center gap-1.5 shadow-md transition"
+                  disabled={isSubmittingFinal || !canSubmitWizard}
+                  className={`px-5 py-1.5 text-white rounded font-bold flex items-center gap-1.5 shadow-md transition disabled:opacity-60 ${isExcSubmission ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-700 hover:bg-emerald-800'
+                    }`}
                 >
-                  <Check className="w-4 h-4" />
-                  <span>Submit Collateral for Checker Authorization</span>
+                  {isExcSubmission ? <Shield className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                  <span>
+                    {isSubmittingFinal
+                      ? 'Submitting to Approver...'
+                      : isExcSubmission
+                        ? 'Submit Collateral + Exception(s) for Authorization'
+                        : 'Submit Collateral for Checker Authorization'}
+                  </span>
                 </button>
               );
             })()}
@@ -3945,7 +4176,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
         {showConfirmModal && (() => {
           const isExcSubmission = collateralExceptions.length > 0;
           return (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-2xs flex items-center justify-center z-60 p-4">
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-2xs flex items-center justify-center z-[60] p-4">
               <div className="bg-white rounded-lg border border-slate-300 shadow-2xl max-w-md w-full p-5 space-y-4 text-xs">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-full ${isExcSubmission ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-[#00205B]'}`}>
@@ -3971,10 +4202,17 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                     </div>
                   ) : (
                     <p>
-                      Please confirm that you have reviewed the collateral classification, borrower and owner information, asset details, valuation, supporting documents, security information, and linked facilities. All mandatory document requirements have been satisfied.
+                      Please confirm that you have reviewed the collateral classification, borrower and owner information, asset details, valuation, supporting documents, security information, and linked facilities. Any outstanding document requirements are shown for checker review and do not block submission.
                     </p>
                   )}
                 </div>
+
+                {errorMessage && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-[11px] rounded flex items-start gap-1.5">
+                    <XCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                    <span>{errorMessage}</span>
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2 pt-2">
                   <button
@@ -3987,7 +4225,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   <button
                     type="button"
                     onClick={handleFinalSubmit}
-                    disabled={isSubmittingFinal}
+                    disabled={isSubmittingFinal || !canSubmitWizard}
                     className={`px-4 py-1.5 rounded font-bold shadow-xs flex items-center gap-1.5 text-white ${isExcSubmission ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-700 hover:bg-emerald-800'
                       }`}
                   >
@@ -4008,7 +4246,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
 
         {/* Add Supporting Document Modal (Page 7) */}
         {showAddSupportingDocModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-70 p-4">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
             <div className="bg-white rounded-xl border border-slate-300 shadow-2xl max-w-lg w-full p-5 space-y-4 text-xs">
               <div className="flex items-center justify-between border-b pb-2">
                 <div className="flex items-center gap-2">
@@ -4126,25 +4364,41 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    File Upload (.pdf, .jpg, .png) <span className="text-red-500">*</span>
+                    File Upload (.pdf, .png, .jpg, .jpeg, .tiff) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="file"
                     accept=".pdf,.png,.jpg,.jpeg,.tiff"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
+                      e.target.value = '';
+                      setSupportingDocError('');
                       if (!file) return;
+                      if (!canSubmitWizard) {
+                        setSupportingDocError('Your account is read-only and cannot attach documents.');
+                        return;
+                      }
+                      if (!isSupportedDocumentFile(file)) {
+                        setSupportingDocError(`Unsupported format "${file.name}". Supported formats: PDF, PNG, JPG, JPEG, TIFF.`);
+                        return;
+                      }
                       const reader = new FileReader();
                       reader.onload = () => {
                         const base64 = (reader.result as string).split(',')[1] || '';
+                        if (isDuplicateUpload([...documentsList, ...supportingDocumentsList], file.name, file.size, base64)) {
+                          setSupportingDocError(`"${file.name}" is already attached to this registration.`);
+                          return;
+                        }
                         setSupportingDocForm((prev) => ({
                           ...prev,
                           fileName: file.name,
                           fileSize: file.size,
                           fileContent: base64,
+                          mimeType: file.type || 'application/octet-stream',
                           verificationStatus: 'Pending Verification',
                         }));
                       };
+                      reader.onerror = () => setSupportingDocError('The selected file could not be read. Please try again.');
                       reader.readAsDataURL(file);
                     }}
                     className="w-full p-1.5 border border-slate-300 rounded text-xs"
@@ -4157,19 +4411,40 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                 </div>
               </div>
 
+              {supportingDocError && (
+                <div className="p-2.5 bg-red-50 border border-red-200 rounded flex items-start gap-2 text-red-800">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="flex-1 text-[11px]">{supportingDocError}</span>
+                  <button type="button" onClick={() => setSupportingDocError('')} className="font-bold">✕</button>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setShowAddSupportingDocModal(false)}
+                  onClick={() => {
+                    setSupportingDocError('');
+                    setShowAddSupportingDocModal(false);
+                  }}
                   className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
+                  disabled={!canSubmitWizard}
                   onClick={() => {
+                    setSupportingDocError('');
                     if (!supportingDocForm.name?.trim()) {
-                      alert('Document Name is required.');
+                      setSupportingDocError('Document Name is required.');
+                      return;
+                    }
+                    if (!supportingDocForm.fileName || !supportingDocForm.fileContent) {
+                      setSupportingDocError('Select a real file before saving. Placeholder files are not accepted.');
+                      return;
+                    }
+                    if (isDuplicateUpload([...documentsList, ...supportingDocumentsList], supportingDocForm.fileName, Number(supportingDocForm.fileSize || 0), supportingDocForm.fileContent)) {
+                      setSupportingDocError(`"${supportingDocForm.fileName}" is already attached to this registration.`);
                       return;
                     }
                     const newDoc: SupportingDocItem = {
@@ -4181,15 +4456,17 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                       expiryDate: supportingDocForm.expiryDate || '',
                       issuingAuthority: supportingDocForm.issuingAuthority || '',
                       remarks: supportingDocForm.remarks || 'Supporting Document — Not a Mandatory Rule',
-                      fileName: supportingDocForm.fileName || 'supporting_document.pdf',
-                      fileContent: supportingDocForm.fileContent || 'JVBERi0xLjQKJcTl8uXrp/Og0MTGCjQgMCBvYmoKPDw...',
-                      fileSize: supportingDocForm.fileSize || 102400,
+                      fileName: supportingDocForm.fileName,
+                      fileContent: supportingDocForm.fileContent,
+                      mimeType: supportingDocForm.mimeType,
+                      fileSize: Number(supportingDocForm.fileSize || 0),
                       verificationStatus: 'Pending Verification',
                     };
                     setSupportingDocumentsList((prev) => [...prev, newDoc]);
+                    setSupportingDocError('');
                     setShowAddSupportingDocModal(false);
                   }}
-                  className="px-4 py-1.5 bg-[#00205B] text-white rounded font-bold hover:bg-[#00205B] shadow-xs flex items-center gap-1.5"
+                  className="px-4 py-1.5 bg-[#00205B] text-white rounded font-bold hover:bg-[#00205B] shadow-xs flex items-center gap-1.5 disabled:opacity-60"
                 >
                   <Check className="w-3.5 h-3.5" />
                   <span>Save Supporting Document</span>
@@ -4199,9 +4476,95 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           </div>
         )}
 
+        {/* Section A: document preview and confirmation before attachment */}
+        {pendingUpload && (() => {
+          const previewKind = documentPreviewKind(pendingUpload.fileName, pendingUpload.mimeType);
+          const dataUrl = `data:${pendingUpload.mimeType || 'application/octet-stream'};base64,${pendingUpload.fileContent}`;
+          const requirement = documentsList[pendingUpload.docIndex];
+          return (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4">
+              <div className="bg-white rounded-xl border border-slate-300 shadow-2xl max-w-3xl w-full p-5 space-y-4 text-xs">
+                <div className="flex items-start justify-between border-b pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-blue-100 rounded-lg text-[#00205B]">
+                      <Eye className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-sm">Confirm Document Attachment</h4>
+                      <p className="text-slate-500 text-[11px]">
+                        Review the file for requirement: <strong>{requirement?.name || 'Mandatory Document'}</strong>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setPendingUpload(null); setDocumentUploadError(''); }}
+                    className="text-slate-400 hover:text-slate-600 font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+                  <div><span className="text-slate-500">File:</span> <strong className="font-mono break-all">{pendingUpload.fileName}</strong></div>
+                  <div><span className="text-slate-500">Size:</span> <strong>{(pendingUpload.fileSize / 1024).toFixed(1)} KB</strong></div>
+                  <div><span className="text-slate-500">Type:</span> <strong>{pendingUpload.mimeType || 'Unknown'}</strong></div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 min-h-64 flex items-center justify-center overflow-hidden">
+                  {previewKind === 'pdf' && (
+                    <iframe
+                      src={dataUrl}
+                      title="Document preview"
+                      className="w-full h-80 rounded border border-slate-300 bg-white"
+                    />
+                  )}
+                  {previewKind === 'image' && (
+                    <img
+                      src={dataUrl}
+                      alt="Document preview"
+                      className="max-h-80 max-w-full object-contain rounded border border-slate-300 bg-white"
+                    />
+                  )}
+                  {previewKind === 'unsupported' && (
+                    <div className="text-center text-slate-600 space-y-1">
+                      <FileText className="w-10 h-10 text-slate-400 mx-auto" />
+                      <p className="font-semibold">No in-browser preview for this file type</p>
+                      <p className="text-[11px]">TIFF files are accepted; verify the file details above before attaching.</p>
+                    </div>
+                  )}
+                </div>
+
+                {documentUploadError && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 rounded text-red-800 text-[11px]">{documentUploadError}</div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => { setPendingUpload(null); setDocumentUploadError(''); }}
+                    className="px-3.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel / Remove
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmPendingUpload}
+                    disabled={!canSubmitWizard}
+                    className="px-4 py-1.5 bg-[#00205B] text-white rounded font-bold hover:bg-[#0E284E] shadow-xs flex items-center gap-1.5 disabled:opacity-60"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    Confirm &amp; Attach
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Per-Requirement Exception Request Modal (Page 7) */}
         {activeModalException && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-70 p-4">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
             <div className="bg-white rounded-xl border border-slate-300 shadow-2xl max-w-lg w-full p-5 space-y-4 text-xs">
               <div className="flex items-center justify-between border-b pb-2">
                 <div className="flex items-center gap-2">
@@ -4298,11 +4661,12 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   type="button"
                   onClick={() => {
                     if (!modalExceptionReason.trim()) {
-                      alert('Business justification is required to request an exception.');
+                      dispatchInAppToast('Business justification is required to request an exception.', 'warning', 'Validation');
                       return;
                     }
                     const newExc = {
                       ruleId: activeModalException.ruleId,
+                      exceptionType: 'Missing Mandatory Document',
                       failedRequirement: activeModalException.documentType,
                       documentType: activeModalException.documentType,
                       reason: modalExceptionReason.trim(),

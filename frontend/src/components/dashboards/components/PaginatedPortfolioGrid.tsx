@@ -1,4 +1,6 @@
+import { formatEtb } from '../../../utils/format';
 import React, { useState, useEffect, useCallback } from 'react';
+
 import {
   Search,
   Filter,
@@ -13,7 +15,9 @@ import {
   AlertTriangle,
   XCircle,
 } from 'lucide-react';
+
 import { DashboardPortfolioRow, PaginatedPortfolioResponse } from '../../../types';
+
 import { cimsApi } from '../../../api/cimsApi';
 
 interface PaginatedPortfolioGridProps {
@@ -117,10 +121,7 @@ export const PaginatedPortfolioGrid: React.FC<PaginatedPortfolioGridProps> = ({
     window.open(url, '_blank');
   };
 
-  const formatCurrency = (val?: number) => {
-    if (val === undefined || val === null) return '—';
-    return `ETB ${Number(val).toLocaleString()}`;
-  };
+  const formatCurrency = (val?: number) => formatEtb(val);
 
   return (
     <div className={`bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4 ${className}`}>

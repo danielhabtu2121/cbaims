@@ -38,81 +38,93 @@ public class WorkflowController {
     @Autowired
     private RoleHierarchyService roleHierarchyService;
 
+    @Autowired
+    private com.bank.cims.service.AuthorizationScopeService authorizationScopeService;
+
+    /** Resolves the checker from the verified token only - client supplied IDs are ignored. */
+    private User currentActor() {
+        return authorizationScopeService.currentUser();
+    }
+
     @GetMapping("/tasks")
     public ResponseEntity<List<WorkflowTask>> getTasks(
             @RequestParam(required = false) String role,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String makerId) {
-        // Return only tasks relevant to the current workflow inbox.
-        // A checker gets pending tasks assigned to their role or hierarchical jurisdiction (excluding their own maker submissions per Four-Eyes Principle and Level 1 tasks they already approved).
-        // A maker also gets their own submissions matching the effective status.
+        // The inbox is scoped to the authenticated database user. Client supplied
+        // role/makerId values are never used to widen visibility.
+        User actor = currentActor();
+        if (actor == null) return ResponseEntity.ok(List.of());
+
+        String effectiveRole = actor.getRole();
+        String effectiveMakerId = actor.getId() != null && !actor.getId().isBlank()
+                ? actor.getId() : actor.getUsername();
         LinkedHashMap<String, WorkflowTask> result = new LinkedHashMap<>();
         String effectiveStatus = (status == null || status.isBlank()) ? "Pending" : status;
 
-        if (role != null && !role.isBlank()) {
-            List<WorkflowTask> allTasks = workflowTaskRepository.findAll();
-            for (WorkflowTask t : allTasks) {
+        if (effectiveRole != null && !effectiveRole.isBlank()) {
+            for (WorkflowTask t : workflowTaskRepository.findAll()) {
                 if ("ALL".equalsIgnoreCase(effectiveStatus) || effectiveStatus.equalsIgnoreCase(t.getStatus())) {
-                    boolean roleMatch = role.equalsIgnoreCase(t.getCandidateRole())
-                            || roleHierarchyService.isAuthorizedToActOn(role, t.getCandidateRole())
-                            || "ADMIN".equalsIgnoreCase(role) || "SYSADMIN".equalsIgnoreCase(role);
-                    if (roleMatch) {
-                        // Four-Eyes check for checker inbox: if querying pending approvals, exclude maker's own submissions
-                        if ("Pending".equalsIgnoreCase(effectiveStatus) && makerId != null && !makerId.isBlank() && isSamePerson(t.getMakerId(), makerId)) {
-                            continue;
-                        }
-                        // Multi-level hierarchy check: if task is in Level 2 Review, exclude users who already approved Level 1
-                        if ("Level 2 Review".equalsIgnoreCase(t.getCurrentStep()) && makerId != null && !makerId.isBlank()) {
-                            List<ApprovalHistory> histories = approvalHistoryRepository.findByWorkflowTaskIdOrderByDecidedAtDesc(t.getId());
-                            boolean alreadyApprovedLevel1 = histories.stream().anyMatch(h ->
-                                    "Approved".equalsIgnoreCase(h.getDecision()) && isSamePerson(h.getActorId(), makerId));
-                            if (alreadyApprovedLevel1) {
-                                continue;
-                            }
-                        }
-                        result.put(t.getId(), t);
+                    boolean roleMatch = effectiveRole.equalsIgnoreCase(t.getCandidateRole())
+                            || roleHierarchyService.isAuthorizedToActOn(effectiveRole, t.getCandidateRole());
+                    if (!roleMatch) continue;
+
+                    if ("Pending".equalsIgnoreCase(effectiveStatus)
+                            && effectiveMakerId != null && !effectiveMakerId.isBlank()
+                            && isSamePerson(t.getMakerId(), effectiveMakerId)) {
+                        continue;
                     }
+                    if ("Level 2 Review".equalsIgnoreCase(t.getCurrentStep())
+                            && effectiveMakerId != null && !effectiveMakerId.isBlank()) {
+                        List<ApprovalHistory> histories = approvalHistoryRepository.findByWorkflowTaskIdOrderByDecidedAtDesc(t.getId());
+                        boolean alreadyApprovedLevel1 = histories.stream().anyMatch(h ->
+                                "Approved".equalsIgnoreCase(h.getDecision()) && isSamePerson(h.getActorId(), effectiveMakerId));
+                        if (alreadyApprovedLevel1) continue;
+                    }
+                    result.put(t.getId(), t);
                 }
             }
-        } else if (status != null && !status.isBlank()) {
-            for (WorkflowTask t : workflowTaskRepository.findByStatus(status)) result.put(t.getId(), t);
         }
 
-        if (makerId != null && !makerId.isBlank()) {
-            for (WorkflowTask t : workflowTaskRepository.findByMakerIdIgnoreCase(makerId)) {
+        if (effectiveMakerId != null && !effectiveMakerId.isBlank()) {
+            for (WorkflowTask t : workflowTaskRepository.findByMakerIdIgnoreCase(effectiveMakerId)) {
                 if ("ALL".equalsIgnoreCase(effectiveStatus) || effectiveStatus.equalsIgnoreCase(t.getStatus())) {
                     result.put(t.getId(), t);
                 }
             }
         }
 
-        if (role == null && (status == null || status.isBlank()) && (makerId == null || makerId.isBlank())) {
-            return ResponseEntity.ok(workflowTaskRepository.findAll());
-        }
         return ResponseEntity.ok(new java.util.ArrayList<>(result.values()));
     }
 
     private boolean isSamePerson(String id1, String id2) {
         if (id1 == null || id2 == null) return false;
-        String a = id1.trim().toLowerCase().replace("_user", "");
-        String b = id2.trim().toLowerCase().replace("_user", "");
-        return a.equals(b);
+        return normalizeIdentity(id1).equals(normalizeIdentity(id2));
+    }
+
+    private String normalizeIdentity(String value) {
+        if (value == null || value.isBlank()) return "";
+        return value.trim().toLowerCase()
+                .replace("_user", "")
+                .replaceFirst("^usr[-_ ]?", "")
+                .replace("-", "");
     }
 
     @PostMapping("/tasks/{taskId}/approve")
     public ResponseEntity<Map<String, Object>> approveTask(
             @PathVariable String taskId,
-            @RequestParam String userId,
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false) String role,
             @RequestParam(required = false, defaultValue = "Approved by checker") String comments) {
-        if (userId == null || userId.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "userId is required to approve a task."));
+        User actor = currentActor();
+        if (actor == null) {
+            return ResponseEntity.status(401).body(Map.of("success", false, "error", "Authentication required."));
         }
         if (comments == null || comments.trim().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "Approval comments cannot be blank."));
         }
         try {
-            User authorized = workflowAuthorizationService.assertCanApprove(userId, taskId);
+            User authorized = workflowAuthorizationService.assertCanApprove(actor.getUsername(), taskId);
             cimsService.approveWorkflowTask(taskId, authorized.getUsername(), authorized.getRole(), comments.trim());
             return ResponseEntity.ok(Map.of("success", true, "message", "Task " + taskId + " approved."));
         } catch (RuntimeException e) {
@@ -123,17 +135,18 @@ public class WorkflowController {
     @PostMapping("/tasks/{taskId}/reject")
     public ResponseEntity<Map<String, Object>> rejectTask(
             @PathVariable String taskId,
-            @RequestParam String userId,
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false) String role,
             @RequestParam String comments) {
-        if (userId == null || userId.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "userId is required to reject a task."));
+        User actor = currentActor();
+        if (actor == null) {
+            return ResponseEntity.status(401).body(Map.of("success", false, "error", "Authentication required."));
         }
         if (comments == null || comments.trim().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "Mandatory rejection reason/comments required."));
         }
         try {
-            User authorized = workflowAuthorizationService.assertCanApprove(userId, taskId);
+            User authorized = workflowAuthorizationService.assertCanApprove(actor.getUsername(), taskId);
             cimsService.rejectWorkflowTask(taskId, authorized.getUsername(), authorized.getRole(), comments.trim());
             return ResponseEntity.ok(Map.of("success", true, "message", "Task " + taskId + " rejected."));
         } catch (RuntimeException e) {
@@ -144,17 +157,18 @@ public class WorkflowController {
     @PostMapping("/tasks/{taskId}/return")
     public ResponseEntity<Map<String, Object>> returnTask(
             @PathVariable String taskId,
-            @RequestParam String userId,
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false) String role,
             @RequestParam String correctionNote) {
-        if (userId == null || userId.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "userId is required to return a task."));
+        User actor = currentActor();
+        if (actor == null) {
+            return ResponseEntity.status(401).body(Map.of("success", false, "error", "Authentication required."));
         }
         if (correctionNote == null || correctionNote.trim().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "Mandatory return/correction notes required."));
         }
         try {
-            User authorized = workflowAuthorizationService.assertCanApprove(userId, taskId);
+            User authorized = workflowAuthorizationService.assertCanApprove(actor.getUsername(), taskId);
             cimsService.returnWorkflowTask(taskId, authorized.getUsername(), authorized.getRole(), correctionNote.trim());
             return ResponseEntity.ok(Map.of("success", true, "message", "Task " + taskId + " returned to maker for correction."));
         } catch (RuntimeException e) {
@@ -165,12 +179,14 @@ public class WorkflowController {
     @PostMapping("/tasks/{taskId}/resubmit")
     public ResponseEntity<Map<String, Object>> resubmitTask(
             @PathVariable String taskId,
-            @RequestParam String userId) {
-        if (userId == null || userId.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "userId is required to resubmit a task."));
+            @RequestParam(required = false) String userId) {
+        User actor = currentActor();
+        if (actor == null) {
+            return ResponseEntity.status(401).body(Map.of("success", false, "error", "Authentication required."));
         }
         try {
-            cimsService.resubmitReturnedWorkflowTask(taskId, userId);
+            cimsService.resubmitReturnedWorkflowTask(taskId, actor.getId() != null && !actor.getId().isBlank()
+                    ? actor.getId() : actor.getUsername());
             return ResponseEntity.ok(Map.of("success", true, "message", "Task resubmitted to the configured checker."));
         } catch (RuntimeException e) {
             return ResponseEntity.status(400).body(Map.of("success", false, "error", e.getMessage()));
@@ -180,11 +196,12 @@ public class WorkflowController {
     @PostMapping("/bulk-approve")
     public ResponseEntity<Map<String, Object>> bulkApprove(
             @RequestBody List<String> taskIds,
-            @RequestParam String userId,
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false) String role,
             @RequestParam(required = false, defaultValue = "Bulk approved by checker") String comments) {
-        if (userId == null || userId.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "userId is required to bulk approve."));
+        User actor = currentActor();
+        if (actor == null) {
+            return ResponseEntity.status(401).body(Map.of("success", false, "error", "Authentication required."));
         }
         if (comments == null || comments.trim().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", "A valid approval comment is required for bulk authorization."));
@@ -193,7 +210,7 @@ public class WorkflowController {
         List<String> failures = new java.util.ArrayList<>();
         for (String id : taskIds) {
             try {
-                User authorized = workflowAuthorizationService.assertCanApprove(userId, id);
+                User authorized = workflowAuthorizationService.assertCanApprove(actor.getUsername(), id);
                 cimsService.approveWorkflowTask(id, authorized.getUsername(), authorized.getRole(), comments);
                 approved++;
             } catch (RuntimeException e) {

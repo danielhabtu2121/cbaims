@@ -1,3 +1,4 @@
+import { formatEtbNumber } from '../../../utils/format.ts';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Search,
@@ -280,10 +281,10 @@ export const EnterpriseGlobalSearchBar: React.FC<EnterpriseGlobalSearchBarProps>
                       <div className="flex items-center gap-4 text-right">
                         <div>
                           <div className="text-xs font-bold text-emerald-700">
-                            ETB {Number(fac.outstandingBalance || 0).toLocaleString()}
+                            ETB {formatEtbNumber(Number(fac.outstandingBalance || 0))}
                           </div>
                           <div className="text-[10px] text-slate-500">
-                            Limit: ETB {Number(fac.approvedAmount || 0).toLocaleString()}
+                            Limit: ETB {formatEtbNumber(Number(fac.approvedAmount || 0))}
                           </div>
                         </div>
                         <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 group-hover:text-emerald-700 transition-transform" />
@@ -330,10 +331,10 @@ export const EnterpriseGlobalSearchBar: React.FC<EnterpriseGlobalSearchBarProps>
                       <div className="flex items-center gap-4 text-right">
                         <div>
                           <div className="text-xs font-bold text-slate-800">
-                            ETB {Number(col.marketValue || 0).toLocaleString()}
+                            ETB {formatEtbNumber(Number(col.marketValue || 0))}
                           </div>
                           <div className="text-[10px] text-emerald-700 font-semibold">
-                            Net: ETB {Number(col.netValue || 0).toLocaleString()}
+                            Net: ETB {formatEtbNumber(Number(col.netValue || 0))}
                           </div>
                         </div>
                         <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 group-hover:text-[#1F4E7A] transition-transform" />

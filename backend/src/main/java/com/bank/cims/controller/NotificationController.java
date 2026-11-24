@@ -52,6 +52,19 @@ public class NotificationController {
         return null;
     }
 
+    private User requireAuthenticatedUser() {
+        User user = resolveAuthenticatedUser();
+        if (user == null || !user.isActive()
+                || (user.getId() == null && (user.getUsername() == null || user.getUsername().isBlank()))) {
+            throw new org.springframework.security.access.AccessDeniedException("An authenticated user is required for this action.");
+        }
+        return user;
+    }
+
+    private String actorReference(User user) {
+        return user.getId() != null && !user.getId().isBlank() ? user.getId() : user.getUsername();
+    }
+
     @GetMapping
     public ResponseEntity<List<Notification>> getNotifications(
             @RequestParam(required = false) String channel,
@@ -88,8 +101,8 @@ public class NotificationController {
     @PostMapping("/{id}/resend")
     public ResponseEntity<Notification> resendNotification(
             @PathVariable String id,
-            @RequestParam(required = false, defaultValue = "SYSADMIN") String operatorId) {
-        return ResponseEntity.ok(notificationService.retryNotification(id, operatorId));
+            @RequestParam(required = false) String operatorId) {
+        return ResponseEntity.ok(notificationService.retryNotification(id, actorReference(requireAuthenticatedUser())));
     }
 
     @PostMapping("/{id}/read")
@@ -129,8 +142,7 @@ public class NotificationController {
 
     @PostMapping("/test-email")
     public ResponseEntity<?> sendTestEmail(@RequestBody Map<String, String> req) {
-        User admin = resolveAuthenticatedUser();
-        String adminId = admin != null ? admin.getId() : "usr-sysadmin";
+        String adminId = actorReference(requireAuthenticatedUser());
         String targetUserId = req.get("userId");
         if (targetUserId == null || targetUserId.isBlank()) {
             targetUserId = req.get("recipientUserId");
@@ -168,8 +180,8 @@ public class NotificationController {
     @PostMapping("/integrations/config")
     public ResponseEntity<Map<String, String>> saveIntegrationsConfig(
             @RequestBody Map<String, String> config,
-            @RequestParam(required = false, defaultValue = "SYSADMIN") String updatedBy) {
-        return ResponseEntity.ok(notificationService.saveIntegrationConfig(config, updatedBy));
+            @RequestParam(required = false) String updatedBy) {
+        return ResponseEntity.ok(notificationService.saveIntegrationConfig(config, actorReference(requireAuthenticatedUser())));
     }
 
     @PostMapping("/integrations/outlook/test")

@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { RoleCode, RolePermission } from '../../types';
+import { RolePermission } from '../../types';
+import { findScreenPermission } from '../../auth/session';
 
 export type NavPageId =
   | 'dashboard'
@@ -38,14 +39,15 @@ interface NavItemDef {
   label: string;
   icon: React.ElementType;
   section: string;
-  allowedRoles: RoleCode[];
+  permissionScreen: string;
   badgeCount?: number;
 }
 
 interface SidebarProps {
   activePage: NavPageId;
   onNavigate: (page: NavPageId) => void;
-  userRole: RoleCode;
+  userRole: string;
+  isAdmin?: boolean;
   permissions?: RolePermission[];
   pendingApprovalCount?: number;
   openExceptionCount?: number;
@@ -57,67 +59,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activePage,
   onNavigate,
   userRole,
+  isAdmin = false,
   permissions,
   pendingApprovalCount = 0,
   openExceptionCount = 0,
   collapsed,
   onToggleCollapse,
 }) => {
-  const allRoles: RoleCode[] = [
-    'EXEC',
-    'SYSADMIN',
-    'SRMGMT',
-    'HODEPT',
-    'DISTDIR',
-    'BRMGR',
-    'SRM',
-    'BRM',
-    'CRO',
-    'BRO',
-    'MGRCOLLDOC',
-    'COLLDOCOFF',
-    'COMPLIANCE',
-    'RISK',
-    'AUDITOR',
-    'RDONLY',
-  ];
-
+  // Navigation comes exclusively from the backend role/screen permission matrix.
+  // The Administration module additionally requires the backend-authoritative isAdmin flag.
   const navItems: NavItemDef[] = [
-    { id: 'dashboard', label: 'My Dashboard', icon: LayoutDashboard, section: 'Core', allowedRoles: allRoles },
-    {
-      id: 'customers',
-      label: 'Customers',
-      icon: Users,
-      section: 'Portfolios',
-      allowedRoles: ['EXEC', 'SRMGMT', 'HODEPT', 'DISTDIR', 'BRMGR', 'SRM', 'BRM', 'CRO', 'BRO', 'COMPLIANCE', 'RISK', 'AUDITOR', 'RDONLY'],
-    },
-    {
-      id: 'facilities',
-      label: 'Facilities / Loans',
-      icon: CreditCard,
-      section: 'Portfolios',
-      allowedRoles: ['EXEC', 'SRMGMT', 'HODEPT', 'DISTDIR', 'BRMGR', 'SRM', 'BRM', 'CRO', 'BRO', 'COMPLIANCE', 'RISK', 'AUDITOR', 'RDONLY'],
-    },
-    {
-      id: 'collateral',
-      label: 'Collateral',
-      icon: Building2,
-      section: 'Portfolios',
-      allowedRoles: ['EXEC', 'SRMGMT', 'HODEPT', 'DISTDIR', 'BRMGR', 'SRM', 'BRM', 'CRO', 'BRO', 'MGRCOLLDOC', 'COLLDOCOFF', 'COMPLIANCE', 'RISK', 'AUDITOR', 'RDONLY'],
-    },
-    {
-      id: 'insurance',
-      label: 'Insurance Policies',
-      icon: FileCheck,
-      section: 'Portfolios',
-      allowedRoles: ['EXEC', 'SRMGMT', 'HODEPT', 'DISTDIR', 'BRMGR', 'SRM', 'BRM', 'CRO', 'BRO', 'COMPLIANCE', 'RISK', 'AUDITOR', 'RDONLY'],
-    },
+    { id: 'dashboard', label: 'My Dashboard', icon: LayoutDashboard, section: 'Core', permissionScreen: 'Dashboard' },
+    { id: 'customers', label: 'Customers', icon: Users, section: 'Portfolios', permissionScreen: 'Customers' },
+    { id: 'facilities', label: 'Facilities / Loans', icon: CreditCard, section: 'Portfolios', permissionScreen: 'Facilities' },
+    { id: 'collateral', label: 'Collateral', icon: Building2, section: 'Portfolios', permissionScreen: 'Collateral' },
+    { id: 'insurance', label: 'Insurance Policies', icon: FileCheck, section: 'Portfolios', permissionScreen: 'Insurance' },
     {
       id: 'approvals',
       label: 'Workflow Approvals',
       icon: CheckSquare,
       section: 'Governance',
-      allowedRoles: allRoles,
+      permissionScreen: 'Approvals',
       badgeCount: pendingApprovalCount,
     },
     {
@@ -125,52 +87,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Exceptions',
       icon: AlertTriangle,
       section: 'Governance',
-      allowedRoles: allRoles,
+      permissionScreen: 'Exceptions',
       badgeCount: openExceptionCount,
     },
-    {
-      id: 'documents',
-      label: 'Documents (DMS)',
-      icon: FolderOpen,
-      section: 'Governance',
-      allowedRoles: allRoles,
-    },
-    { id: 'reports', label: 'Reports', icon: BarChart3, section: 'Analytics', allowedRoles: allRoles },
-    { id: 'audit', label: 'Audit Trail', icon: History, section: 'Analytics', allowedRoles: allRoles },
-    { id: 'notifications', label: 'Notifications', icon: Bell, section: 'System', allowedRoles: allRoles },
-    { id: 'admin', label: 'Administration', icon: Settings, section: 'System', allowedRoles: ['SYSADMIN'] },
-    { id: 'cbs-sim', label: 'CBS Simulator', icon: Cpu, section: 'System', allowedRoles: ['SYSADMIN', 'AUDITOR'] },
+    { id: 'documents', label: 'Documents (DMS)', icon: FolderOpen, section: 'Governance', permissionScreen: 'Documents' },
+    { id: 'reports', label: 'Reports', icon: BarChart3, section: 'Analytics', permissionScreen: 'Reports' },
+    { id: 'audit', label: 'Audit Trail', icon: History, section: 'Analytics', permissionScreen: 'Audit Trail' },
+    { id: 'notifications', label: 'Notifications', icon: Bell, section: 'System', permissionScreen: 'Notifications' },
+    { id: 'admin', label: 'Administration', icon: Settings, section: 'System', permissionScreen: 'Administration' },
+    { id: 'cbs-sim', label: 'CBS Simulator', icon: Cpu, section: 'System', permissionScreen: 'CBS Simulator' },
   ];
 
   const isPageAllowed = (item: NavItemDef): boolean => {
-    if (userRole === 'SYSADMIN') return true;
-    if (item.id === 'admin') return false;
-
-    if (permissions && permissions.length > 0) {
-      const match = permissions.find((p) => {
-        if (p.roleCode !== userRole) return false;
-        const s = p.screenName.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const navId = item.id.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const label = item.label.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-        if (s === navId || navId.includes(s) || s.includes(navId)) return true;
-        if (s === label || label.includes(s) || s.includes(label)) return true;
-        if (item.id === 'facilities' && s.includes('facilit')) return true;
-        if (item.id === 'approvals' && (s.includes('approv') || s.includes('workflow'))) return true;
-        if (item.id === 'insurance' && (s.includes('insuran') || s.includes('polic'))) return true;
-        if (item.id === 'documents' && (s.includes('docum') || s.includes('dms'))) return true;
-        if (item.id === 'audit' && s.includes('audit')) return true;
-        if (item.id === 'cbs-sim' && s.includes('cbs')) return true;
-        if (item.id === 'notifications' && s.includes('notif')) return true;
-        return false;
-      });
-
-      if (match !== undefined) {
-        return match.canView;
-      }
-    }
-
-    return item.allowedRoles.includes(userRole);
+    if (item.id === 'admin' && !isAdmin) return false;
+    const permission = findScreenPermission(permissions || [], userRole, item.permissionScreen);
+    return permission ? permission.canView : item.id === 'dashboard';
   };
 
   const visibleItems = navItems.filter(isPageAllowed);

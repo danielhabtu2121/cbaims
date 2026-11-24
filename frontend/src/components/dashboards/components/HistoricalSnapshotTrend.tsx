@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatEtbNumber } from '../../../utils/format.ts';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -246,7 +247,7 @@ export const HistoricalSnapshotTrend: React.FC<HistoricalSnapshotTrendProps> = (
                   <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                   <Tooltip
                     formatter={((val: any, name: any, item: any) => {
-                      const valStr = `ETB ${Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`;
+                      const valStr = `ETB ${formatEtbNumber(Number(val))}M`;
                       const key = item?.dataKey || name;
                       if (key === 'exposureM' || name === 'Outstanding Exposure') return [valStr, 'Outstanding Exposure'];
                       if (key === 'activeCoverM' || name === 'Active Insurance') return [valStr, 'Active Insurance Cover'];
@@ -287,7 +288,7 @@ export const HistoricalSnapshotTrend: React.FC<HistoricalSnapshotTrendProps> = (
                   <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
                   <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                   <Tooltip
-                    formatter={((val: any) => [`ETB ${Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`, 'Protection Deficit (Gap)']) as any}
+                    formatter={((val: any) => [`ETB ${formatEtbNumber(Number(val))}M`, 'Protection Deficit (Gap)']) as any}
                     labelFormatter={(label) => `Snapshot Date: ${label}`}
                     contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', fontSize: '12px' }}
                   />

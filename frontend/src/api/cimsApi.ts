@@ -53,6 +53,28 @@ import {
 } from '../types';
 
 const API_BASE = (import.meta as any).env?.VITE_CIMS_API_BASE || '/api';
+export const SESSION_EXPIRED_EVENT = 'cims.session_expired';
+
+// Once the local session is expired, no protected request may be issued again
+// until a new login resets this guard. The backend independently enforces the
+// same rule by rejecting expired/revoked tokens.
+let sessionExpired = false;
+let sessionExpiryEventDispatched = false;
+
+export function resetSessionState(): void {
+  sessionExpired = false;
+  sessionExpiryEventDispatched = false;
+}
+
+function isPublicAuthEndpointPath(pathname: string): boolean {
+  return /\/api\/auth\/(login|forgot-password|reset-password|policy)$/.test(pathname);
+}
+
+function expiredSessionError(): Error & { status: number } {
+  const error = new Error('Your session has expired. Please sign in again.') as Error & { status: number };
+  error.status = 401;
+  return error;
+}
 
 function getStoredSession(): any {
   try { return JSON.parse(localStorage.getItem('cims.currentUser') || 'null'); } catch { return null; }
@@ -73,16 +95,33 @@ export function authenticatedFetch(input: RequestInfo | URL, init: RequestInit =
   let pathname = rawUrl;
   try { pathname = new URL(rawUrl, window.location.origin).pathname; } catch { }
 
-  const isPublicAuthEndpoint = /\/api\/auth\/(login|forgot-password|reset-password|policy)$/.test(pathname);
+  const isPublicAuthEndpoint = isPublicAuthEndpointPath(pathname);
+  if (sessionExpired && !isPublicAuthEndpoint) {
+    return Promise.reject(expiredSessionError());
+  }
   const headers = new Headers(init.headers);
   const token = localStorage.getItem('cims.token') || getStoredSession()?.token;
   if (token && !isPublicAuthEndpoint && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  return window.fetch(input, { ...init, headers });
+  return window.fetch(input, { ...init, headers }).then((response) => {
+    // A 401 from any protected API means the server-side session is missing,
+    // expired or revoked. Clear local credentials and force the single login URL.
+    if (response.status === 401 && !isPublicAuthEndpoint) {
+      clearSession();
+      if (typeof window !== 'undefined' && !sessionExpiryEventDispatched) {
+        sessionExpiryEventDispatched = true;
+        window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, {
+          detail: { message: 'Your session has expired. Please sign in again.' },
+        }));
+      }
+    }
+    return response;
+  });
 }
 
 function rememberSession(user: any, token?: string) {
+  resetSessionState();
   try {
     const sessionToSave = { ...user };
     if (token) {
@@ -98,6 +137,7 @@ function rememberSession(user: any, token?: string) {
 }
 
 function clearSession() {
+  sessionExpired = true;
   try {
     localStorage.removeItem('cims.currentUser');
     localStorage.removeItem('cims.token');
@@ -178,14 +218,35 @@ export const cimsApi = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier, password }),
       });
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        return {
+          success: false,
+          message: res.status === 401
+            ? 'Invalid username or password.'
+            : `Server returned HTTP ${res.status}. Please ensure the backend is running at ${API_BASE}.`
+        };
+      }
+      if (!res.ok) {
+        return {
+          success: false,
+          message: data?.message || data?.error || `Authentication failed (HTTP ${res.status}).`
+        };
+      }
       if (data?.success && data?.user) {
         const token = data.token;
         rememberSession({ ...data.user, token }, token);
       }
       return data;
     } catch (e: any) {
-      return { success: false, message: e.message || 'Login request failed' };
+      return {
+        success: false,
+        message: e.message && !e.message.includes('fetch')
+          ? e.message
+          : 'Unable to connect to CIMS backend server. Please make sure the backend is running on port 8080.'
+      };
     }
   },
 
@@ -229,7 +290,7 @@ export const cimsApi = {
     return await res.json();
   },
 
-  async keepSessionAlive(): Promise<{ success: boolean; message?: string }> {
+  async keepSessionAlive(): Promise<{ success: boolean; message?: string; expiresAt?: string; sessionTimeoutMinutes?: number }> {
     try {
       const res = await authenticatedFetch(`${API_BASE}/auth/session/refresh`, {
         method: 'POST',
@@ -244,7 +305,7 @@ export const cimsApi = {
     }
   },
 
-  async validateSession(): Promise<{ valid: boolean; active?: boolean; username?: string }> {
+  async validateSession(): Promise<{ valid: boolean; active?: boolean; username?: string; user?: any }> {
     if (!sessionValidationInFlight) {
       sessionValidationInFlight = (async () => {
         const res = await authenticatedFetch(`${API_BASE}/auth/session/validate`, {
@@ -1246,6 +1307,8 @@ export const cimsApi = {
   async saveRolePermissionsBatch(permissions: RolePermission[], adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/permissions/save-batch?adminUserId=${encodeURIComponent(adminUserId)}`, { method: 'POST', body: JSON.stringify(permissions) }); },
   async saveCollateralTaxonomy(taxonomy: Partial<CollateralTaxonomy>, adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/taxonomy/save?userId=${encodeURIComponent(adminUserId)}`, { method: 'POST', body: JSON.stringify(taxonomy) }); },
   async saveMandatoryDocRule(rule: Partial<MandatoryDocumentRule>, adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/document-rules/save?userId=${encodeURIComponent(adminUserId)}`, { method: 'POST', body: JSON.stringify(rule) }); },
+  async deleteMandatoryDocRule(ruleId: string, adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/document-rules/${encodeURIComponent(ruleId)}/delete?userId=${encodeURIComponent(adminUserId)}`, { method: 'POST' }); },
+  async deleteAllMandatoryDocRules(adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/document-rules/delete-all?userId=${encodeURIComponent(adminUserId)}`, { method: 'POST' }); },
   async saveHolidayCalendar(holiday: Partial<HolidayCalendar>, adminUserId = 'SYSADMIN'): Promise<HolidayCalendar> { return requestJson<HolidayCalendar>(`${API_BASE}/admin/holidays/save?userId=${encodeURIComponent(adminUserId)}`, { method: 'POST', body: JSON.stringify(holiday) }); },
   async deleteHolidayCalendar(holidayId: string, adminUserId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/holidays/${encodeURIComponent(holidayId)}/delete?userId=${encodeURIComponent(adminUserId)}`, { method: 'POST' }); },
   async getDistricts(): Promise<any[]> { return requestJson<any[]>(`${API_BASE}/admin/districts`); },
@@ -1283,7 +1346,7 @@ export const cimsApi = {
   async addWorkingDays(date: string, days: number): Promise<any> { return requestJson<any>(`${API_BASE}/admin/calendar/add-working-days?date=${encodeURIComponent(date)}&days=${days}`); },
   async previewNotificationTemplate(template: string, context: Record<string, unknown> = {}): Promise<{ preview: string }> { return requestJson<{ preview: string }>(`${API_BASE}/admin/templates/preview`, { method: 'POST', body: JSON.stringify({ template, context }) }); },
   async validateNotificationTemplate(subject: string, body: string): Promise<any> { return requestJson<any>(`${API_BASE}/admin/templates/validate`, { method: 'POST', body: JSON.stringify({ subject, body }) }); },
-  async saveNotificationTemplate(template: NotificationTemplate, adminUserId = 'SYSADMIN'): Promise<NotificationTemplate> { return requestJson<NotificationTemplate>(`${API_BASE}/admin/templates/save?userId=${encodeURIComponent(adminUserId)}`, { method: 'POST', body: JSON.stringify({ id: template.id, name: template.name, type: template.type || template.channel || 'Email', triggerDaysBefore: template.triggerDaysBefore || 0, subject: template.subject || '', body: template.body, active: template.active !== false }) }); },
+  async saveNotificationTemplate(template: NotificationTemplate, adminUserId = 'SYSADMIN'): Promise<NotificationTemplate> { return requestJson<NotificationTemplate>(`${API_BASE}/admin/templates/save?userId=${encodeURIComponent(adminUserId)}`, { method: 'POST', body: JSON.stringify({ id: template.id, name: template.name, type: template.type || template.channel || 'Email', channel: template.channel || template.type || 'Email', eventType: template.eventType || 'Expiry Reminder', triggerDaysBefore: template.triggerDaysBefore || 0, scheduleId: template.scheduleId, audience: template.audience, subject: template.subject || '', body: template.body, active: template.active !== false }) }); },
   async getNotificationTemplates(): Promise<NotificationTemplate[]> { return requestJson<NotificationTemplate[]>(`${API_BASE}/admin/templates`); },
   async runPolicyReminders(userId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/reminders/run?userId=${encodeURIComponent(userId)}`, { method: 'POST' }); },
   async runRenewalEscalations(userId = 'SYSADMIN'): Promise<any> { return requestJson<any>(`${API_BASE}/admin/escalations/run?userId=${encodeURIComponent(userId)}`, { method: 'POST' }); },

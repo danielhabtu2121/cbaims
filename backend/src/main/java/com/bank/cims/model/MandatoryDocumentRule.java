@@ -11,6 +11,14 @@ public class MandatoryDocumentRule {
     @Column(name = "collateral_category", nullable = false)
     private String collateralCategory;
 
+    /**
+     * Business segment this rule applies to (e.g. "Corporate Banking",
+     * "Retail Banking", "All Segments"). Null/blank legacy rows are treated as
+     * "All Segments" so existing data keeps working.
+     */
+    @Column(name = "segment")
+    private String segment;
+
     @Column(name = "collateral_type")
     private String collateralType;
 
@@ -44,6 +52,8 @@ public class MandatoryDocumentRule {
     public void setId(String id) { this.id = id; }
     public String getCollateralCategory() { return collateralCategory; }
     public void setCollateralCategory(String collateralCategory) { this.collateralCategory = collateralCategory; }
+    public String getSegment() { return segment; }
+    public void setSegment(String segment) { this.segment = segment; }
     public String getCollateralType() { return collateralType; }
     public void setCollateralType(String collateralType) { this.collateralType = collateralType; }
     public String getDocumentType() { return documentType; }

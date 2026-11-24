@@ -1,12 +1,15 @@
 package com.bank.cims.controller;
 
 import com.bank.cims.model.Collateral;
+import com.bank.cims.model.User;
+import com.bank.cims.service.AuthorizationScopeService;
 import com.bank.cims.service.FirstDegreeSecondDegreeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @RestController
@@ -16,6 +19,19 @@ public class CollateralDegreeController {
 
     @Autowired
     private FirstDegreeSecondDegreeService degreeService;
+
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
+    private User currentActor() {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive()
+                || actor.getUsername() == null || actor.getUsername().isBlank()
+                || actor.getRole() == null || actor.getRole().isBlank()) {
+            throw new IllegalArgumentException("Authentication required: a valid signed-in user with an assigned role could not be identified.");
+        }
+        return actor;
+    }
 
     // --- Validate Second-Degree Collateral (Pre-Validation / Submission) ---
     @PostMapping({"/collaterals/second-degree/validate", "/collateral/second-degree/validate"})
@@ -38,10 +54,12 @@ public class CollateralDegreeController {
             @PathVariable String id,
             @RequestBody(required = false) Map<String, String> payload,
             @RequestParam(required = false) String role,
-            @RequestParam(defaultValue = "MGRCOLLDOC") String userId,
+            @RequestParam(required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String roleHeader) {
         try {
-            String effRole = (role != null && !role.isBlank()) ? role : (roleHeader != null && !roleHeader.isBlank() ? roleHeader : "MGRCOLLDOC");
+            User actor = currentActor();
+            userId = actor.getUsername();
+            String effRole = actor.getRole().trim().toUpperCase(Locale.ROOT);
             if (!PROMOTION_ROLES.contains(effRole.trim().toUpperCase())) {
                 return ResponseEntity.status(403).body(Map.of(
                         "success", false,
@@ -69,10 +87,12 @@ public class CollateralDegreeController {
             @PathVariable String id,
             @RequestBody(required = false) Map<String, Object> payload,
             @RequestParam(required = false) String role,
-            @RequestParam(defaultValue = "CRO_USER") String userId,
+            @RequestParam(required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String roleHeader) {
         try {
-            String effRole = (role != null && !role.isBlank()) ? role : (roleHeader != null && !roleHeader.isBlank() ? roleHeader : "CRO");
+            User actor = currentActor();
+            userId = actor.getUsername();
+            String effRole = actor.getRole().trim().toUpperCase(Locale.ROOT);
             if (!BALANCE_REFRESH_ROLES.contains(effRole.trim().toUpperCase())) {
                 return ResponseEntity.status(403).body(Map.of(
                         "success", false,
@@ -119,10 +139,12 @@ public class CollateralDegreeController {
             @PathVariable String linkId,
             @RequestBody(required = false) Map<String, String> payload,
             @RequestParam(required = false) String role,
-            @RequestParam(defaultValue = "MGRCOLLDOC") String userId,
+            @RequestParam(required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String roleHeader) {
         try {
-            String effRole = (role != null && !role.isBlank()) ? role : (roleHeader != null && !roleHeader.isBlank() ? roleHeader : "MGRCOLLDOC");
+            User actor = currentActor();
+            userId = actor.getUsername();
+            String effRole = actor.getRole().trim().toUpperCase(Locale.ROOT);
             if (!PROMOTION_ROLES.contains(effRole.trim().toUpperCase())) {
                 return ResponseEntity.status(403).body(Map.of(
                         "success", false,

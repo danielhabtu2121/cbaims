@@ -63,6 +63,12 @@ public class CollateralFacilityRelationshipService {
     @Autowired(required = false)
     private UserRepository userRepository;
 
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
+    @Autowired
+    private RoleHierarchyService roleHierarchyService;
+
     @Autowired(required = false)
     private OwnershipDocumentRepository ownershipDocumentRepository;
 
@@ -76,6 +82,25 @@ public class CollateralFacilityRelationshipService {
     }
 
     private static final java.util.concurrent.atomic.AtomicLong HISTORY_SEQ = new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis() * 1000);
+
+    private User resolveActor(String userId) {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null && userRepository != null && userId != null && !userId.isBlank()) {
+            actor = userRepository.findById(userId).or(() -> userRepository.findByUsername(userId)).orElse(null);
+        }
+        return actor;
+    }
+
+    /** Uses the Admin-configured approval hierarchy; no hardcoded checker role is trusted. */
+    private boolean isConfiguredLinkApprover(User actor, String actionType) {
+        if (actor == null) return false;
+        if ("SYSTEM".equalsIgnoreCase(actor.getUsername()) || "SYSTEM".equalsIgnoreCase(actor.getId())) return true;
+        if (actor.getRole() == null || actor.getRole().isBlank()) return false;
+        if (roleHierarchyService.isNeverApprovesRole(actor.getRole())) return false;
+        String configuredRole = roleHierarchyService.resolveApproverRole(
+                "PROC_COLLATERAL_LINK_CHANGE", actionType);
+        return roleHierarchyService.isAuthorizedToActOn(actor.getRole(), configuredRole);
+    }
 
     @Autowired(required = false)
     private CbsGateway cbsGateway;
@@ -1613,19 +1638,15 @@ public class CollateralFacilityRelationshipService {
         link.setOwnerWithoutCif(lockedCol.isOwnerWithoutCif() || req.isOwnerWithoutCif());
 
         // Governance & Status - Dual Control Maker-Checker (Audit Finding 1)
-        com.bank.cims.model.User caller = null;
-        if (userRepository != null && userId != null && !userId.isBlank()) {
-            caller = userRepository.findById(userId).or(() -> userRepository.findByUsername(userId)).orElse(null);
-        }
-        boolean isSysAdmin = caller != null && ("SYSADMIN".equalsIgnoreCase(caller.getRole()) || "SYSTEM".equalsIgnoreCase(caller.getRole()));
-        boolean isAutomated = "CBS_SYNC".equalsIgnoreCase(req.getSource())
+        com.bank.cims.model.User caller = resolveActor(userId);
+        boolean systemContext = authorizationScopeService.currentUser() == null;
+        boolean isAutomated = systemContext && ("CBS_SYNC".equalsIgnoreCase(req.getSource())
                 || "MIGRATION".equalsIgnoreCase(req.getSource())
                 || "SYSTEM".equalsIgnoreCase(req.getSource())
                 || "TEST".equalsIgnoreCase(req.getSource())
                 || "DIRECT".equalsIgnoreCase(req.getSource())
                 || "Active".equalsIgnoreCase(req.getStatus())
-                || req.isDirectActive()
-                || isSysAdmin;
+                || req.isDirectActive());
         String initialStatus = isAutomated ? "Active" : "Pending Approval";
         String authStat = isAutomated ? "A" : "U";
         String recordStat = isAutomated ? "O" : "U";
@@ -1806,9 +1827,9 @@ public class CollateralFacilityRelationshipService {
         link.setModNo(link.getModNo() + 1);
 
         // Record actual actor role (Finding 83)
-        User caller = userRepository != null && userId != null ? userRepository.findById(userId).or(() -> userRepository.findByUsername(userId)).orElse(null) : null;
+        User caller = resolveActor(userId);
         String actorRole = caller != null && caller.getRole() != null ? caller.getRole() : "MAKER";
-        boolean isChecker = "CHECKER".equalsIgnoreCase(actorRole) || "BRANCH_MANAGER".equalsIgnoreCase(actorRole) || "BRMGR".equalsIgnoreCase(actorRole) || "SYSADMIN".equalsIgnoreCase(actorRole) || "SYSTEM".equalsIgnoreCase(actorRole);
+        boolean isChecker = isConfiguredLinkApprover(caller, "LINK_UPDATE");
 
         if (isChecker) {
             link.setCheckerId(userId);
@@ -1866,9 +1887,9 @@ public class CollateralFacilityRelationshipService {
         double priorAlloc = link.getAllocatedAmount();
         String priorStatus = link.getStatus();
 
-        User caller = userRepository != null && userId != null ? userRepository.findById(userId).or(() -> userRepository.findByUsername(userId)).orElse(null) : null;
-        String actorRole = caller != null && caller.getRole() != null ? caller.getRole() : "MAKER";
-        boolean isAuthorizedChecker = "CHECKER".equalsIgnoreCase(actorRole) || "BRANCH_MANAGER".equalsIgnoreCase(actorRole) || "BRMGR".equalsIgnoreCase(actorRole) || "SYSADMIN".equalsIgnoreCase(actorRole) || "SYSTEM".equalsIgnoreCase(actorRole) || (userId != null && ("SYSTEM".equalsIgnoreCase(userId) || "SYSADMIN".equalsIgnoreCase(userId)));
+        User caller = resolveActor(userId);
+        String actorRole = caller != null && caller.getRole() != null ? caller.getRole() : ("SYSTEM".equalsIgnoreCase(userId) ? "SYSTEM" : "MAKER");
+        boolean isAuthorizedChecker = "SYSTEM".equalsIgnoreCase(userId) || isConfiguredLinkApprover(caller, "LINK_TERMINATION");
 
         // Finding 84: Ending a relationship requires release impact check if facility has uncleared balance
         if (loan != null && loan.getOutstandingBalance() > 0 && !"Closed".equalsIgnoreCase(loan.getStatus()) && !"Settled".equalsIgnoreCase(loan.getStatus())) {
@@ -2514,9 +2535,9 @@ public class CollateralFacilityRelationshipService {
                     }
                 } else {
                     // Finding 80: Bulk allocation dual-control approval routing
-                    User caller = userRepository != null && userId != null ? userRepository.findById(userId).or(() -> userRepository.findByUsername(userId)).orElse(null) : null;
-                    String actorRole = caller != null && caller.getRole() != null ? caller.getRole() : "CRO";
-                    boolean isChecker = "CHECKER".equalsIgnoreCase(actorRole) || "BRANCH_MANAGER".equalsIgnoreCase(actorRole) || "BRMGR".equalsIgnoreCase(actorRole) || "SYSADMIN".equalsIgnoreCase(actorRole) || "SYSTEM".equalsIgnoreCase(actorRole) || (userId != null && ("SYSTEM".equalsIgnoreCase(userId) || "SYSADMIN".equalsIgnoreCase(userId)));
+                    User caller = resolveActor(userId);
+                    String actorRole = caller != null && caller.getRole() != null ? caller.getRole() : "MAKER";
+                    boolean isChecker = isConfiguredLinkApprover(caller, "LINK_CREATION");
 
                     link = new LoanCollateralLink("LNK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(), loan.getId(), collateral.getId(), amt);
                     link.setFacilityId(loan.getLineCode() != null ? loan.getLineCode() : loan.getId());

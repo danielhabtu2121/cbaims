@@ -1,3 +1,5 @@
+import { formatEtbNumber } from '../../utils/format.ts';
+import { AmountInput } from '../common/AmountInput';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Building2,
@@ -68,6 +70,7 @@ import {
   InsuranceException,
   CollateralReleaseRequest,
 } from '../../types';
+import { canApproveAction, canMutate, isReadOnlyUser } from '../../auth/session';
 import { DataGrid, ColumnDef } from '../layout/DataGrid';
 import { StatusChip } from '../layout/StatusChip';
 import { CircularProgress } from '../layout/CircularProgress';
@@ -512,7 +515,9 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
   const [docPreviewTarget, setDocPreviewTarget] = useState<OwnershipDocument | null>(null);
   const [showDocPreviewModal, setShowDocPreviewModal] = useState<boolean>(false);
 
-  const isMaker = currentUser.canCreate !== false;
+  const isMaker = canMutate(currentUser, 'canCreate');
+  const isReadOnly = isReadOnlyUser(currentUser);
+  const canApprove = canApproveAction(currentUser);
 
   // Selected customer master details
   const selectedCustomer = customers.find(
@@ -1061,7 +1066,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
   const getStep5Errors = (): string[] => {
     const errors: string[] = [];
     if (isAllocationOverflow) {
-      errors.push(`Allocation Overflow: Total allocated security amount (ETB ${totalAllocatedAmount.toLocaleString()}) exceeds Net Collateral Value (ETB ${netCollateralValue.toLocaleString()}).`);
+      errors.push(`Allocation Overflow: Total allocated security amount (ETB ${formatEtbNumber(totalAllocatedAmount)}) exceeds Net Collateral Value (ETB ${formatEtbNumber(netCollateralValue)}).`);
     }
     return errors;
   };
@@ -1224,6 +1229,10 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
   };
 
   const handleSubmitCollateralExceptionRequest = async () => {
+    if (isReadOnly || !isMaker) {
+      alert('Your account is read-only and cannot submit collateral exception requests.');
+      return;
+    }
     if (!exceptionForm.reason.trim()) {
       alert('Validation Error: Reason / justification is mandatory when requesting an exception.');
       return;
@@ -1435,7 +1444,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
       accessorKey: 'valuationAmount',
       cell: (c) => (
         <div className="tabular-nums font-semibold text-[#00205B]">
-          {c.currency || 'ETB'} {c.valuationAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          {c.currency || 'ETB'} {formatEtbNumber(c.valuationAmount)}
         </div>
       ),
     },
@@ -1455,7 +1464,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
         const net = (c.valuationAmount || 0) * (1.0 - ((c.haircut || 0) / 100.0));
         return (
           <div className="tabular-nums font-bold text-emerald-700">
-            {c.currency || 'ETB'} {net.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {c.currency || 'ETB'} {formatEtbNumber(net)}
           </div>
         );
       },
@@ -1465,7 +1474,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
       accessorKey: 'currentAllocation',
       cell: (c) => (
         <div className="tabular-nums font-semibold text-blue-800">
-          {c.currency || 'ETB'} {(c.currentAllocation || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          {c.currency || 'ETB'} {formatEtbNumber((c.currentAllocation || 0))}
         </div>
       ),
     },
@@ -2458,7 +2467,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                           <div className="p-2.5 bg-white rounded border border-slate-200">
                             <span className="text-[10px] text-slate-500 uppercase font-semibold block">1st-Degree Loan Balance</span>
                             <strong className="text-rose-700 font-bold block mt-0.5 tabular-nums">
-                              ETB {(selectedCol.firstDegreeOutstandingBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber((selectedCol.firstDegreeOutstandingBalance || 0))}
                             </strong>
                             <span className="text-[10px] text-slate-500">
                               As of: {selectedCol.firstDegreeBalanceAsOfDate || '—'}
@@ -2468,7 +2477,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                           <div className="p-2.5 bg-white rounded border border-slate-200">
                             <span className="text-[10px] text-slate-500 uppercase font-semibold block">Registered Mortgage</span>
                             <strong className="text-slate-900 font-bold block mt-0.5 tabular-nums">
-                              ETB {(selectedCol.registeredMortgageAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber((selectedCol.registeredMortgageAmount || 0))}
                             </strong>
                             <span className="text-[10px] text-slate-500 font-mono">
                               Reg #{selectedCol.mortgageRegistrationNumber || '—'}
@@ -2498,7 +2507,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                                   Combined Exposure vs Bank-Assessed Valuation
                                 </span>
                                 <span>
-                                  Combined: ETB {combined.toLocaleString()} / Valuation: ETB {val.toLocaleString()}
+                                  Combined: ETB {formatEtbNumber(combined)} / Valuation: ETB {formatEtbNumber(val)}
                                 </span>
                               </div>
 
@@ -2506,24 +2515,24 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                                 <div
                                   className="bg-purple-600 h-2"
                                   style={{ width: `${Math.min(100, val > 0 ? (firstBal / val) * 100 : 0)}%` }}
-                                  title={`1st Degree: ETB ${firstBal.toLocaleString()}`}
+                                  title={`1st Degree: ETB ${formatEtbNumber(firstBal)}`}
                                 />
                                 <div
                                   className="bg-blue-600 h-2"
                                   style={{ width: `${Math.min(100, val > 0 ? (secondBal / val) * 100 : 0)}%` }}
-                                  title={`2nd Degree: ETB ${secondBal.toLocaleString()}`}
+                                  title={`2nd Degree: ETB ${formatEtbNumber(secondBal)}`}
                                 />
                               </div>
 
                               <div className="flex items-center justify-between text-[11px] text-slate-600">
-                                <span>🟣 1st Degree: ETB {firstBal.toLocaleString()}</span>
-                                <span>🔵 2nd Degree: ETB {secondBal.toLocaleString()}</span>
-                                <span className="font-bold">Total: ETB {combined.toLocaleString()}</span>
+                                <span>🟣 1st Degree: ETB {formatEtbNumber(firstBal)}</span>
+                                <span>🔵 2nd Degree: ETB {formatEtbNumber(secondBal)}</span>
+                                <span className="font-bold">Total: ETB {formatEtbNumber(combined)}</span>
                               </div>
 
                               {isOver && (
                                 <div className="p-2 bg-amber-100/90 rounded border border-amber-300 font-semibold text-amber-900 text-[11px]">
-                                  ⚠️ WARNING: Combined exposure of ETB {combined.toLocaleString()} exceeds the Bank-assessed valuation of ETB {val.toLocaleString()} by ETB {excess.toLocaleString()}. Excess exposure warning is flagged for credit monitoring.
+                                  ⚠️ WARNING: Combined exposure of ETB {formatEtbNumber(combined)} exceeds the Bank-assessed valuation of ETB {formatEtbNumber(val)} by ETB {formatEtbNumber(excess)}. Excess exposure warning is flagged for credit monitoring.
                                 </div>
                               )}
                             </div>
@@ -2668,7 +2677,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                       </h4>
                       <div>
                         <span className="text-slate-500">Collateral Value (Market):</span>{' '}
-                        <strong className="text-[#00205B] tabular-nums">{selectedCol.currency || 'ETB'} {selectedCol.valuationAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                        <strong className="text-[#00205B] tabular-nums">{selectedCol.currency || 'ETB'} {formatEtbNumber(selectedCol.valuationAmount)}</strong>
                       </div>
                       <div>
                         <span className="text-slate-500">Haircut Applied:</span>{' '}
@@ -2677,7 +2686,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                       <div>
                         <span className="text-slate-500">Net Security Value (NSV):</span>{' '}
                         <strong className="text-emerald-700 tabular-nums">
-                          {selectedCol.currency || 'ETB'} {(selectedCol.nsv ?? ((selectedCol.valuationAmount || 0) * (1.0 - ((selectedCol.haircut || 0) / 100.0)))).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          {selectedCol.currency || 'ETB'} {formatEtbNumber((selectedCol.nsv ?? ((selectedCol.valuationAmount || 0) * (1.0 - ((selectedCol.haircut || 0) / 100.0)))))}
                         </strong>
                       </div>
                       <div className="bg-emerald-50/70 border border-emerald-200 rounded p-2 text-[11px] text-emerald-900">
@@ -2686,16 +2695,16 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                           NSV Formula: Value × (1 - Haircut%)
                         </div>
                         <div className="font-mono text-[10px] text-emerald-700 mt-0.5">
-                          ETB {selectedCol.valuationAmount?.toLocaleString()} × (1 - {selectedCol.haircut ?? 20}%) = <strong>ETB {(selectedCol.nsv ?? ((selectedCol.valuationAmount || 0) * (1.0 - ((selectedCol.haircut || 0) / 100.0)))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                          ETB {formatEtbNumber(selectedCol.valuationAmount)} × (1 - {selectedCol.haircut ?? 20}%) = <strong>ETB {formatEtbNumber((selectedCol.nsv ?? ((selectedCol.valuationAmount || 0) * (1.0 - ((selectedCol.haircut || 0) / 100.0)))))}</strong>
                         </div>
                       </div>
                       <div>
                         <span className="text-slate-500">Total Allocated Amount:</span>{' '}
-                        <strong className="text-blue-800 tabular-nums">{selectedCol.currency || 'ETB'} {(col360Data?.totalAllocatedAmount ?? selectedCol.currentAllocation ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                        <strong className="text-blue-800 tabular-nums">{selectedCol.currency || 'ETB'} {formatEtbNumber((col360Data?.totalAllocatedAmount ?? selectedCol.currentAllocation ?? 0))}</strong>
                       </div>
                       <div>
                         <span className="text-slate-500">Remaining Capacity:</span>{' '}
-                        <strong className="text-indigo-800 tabular-nums">{selectedCol.currency || 'ETB'} {(col360Data?.remainingCollateralCapacity ?? Math.max(0, (selectedCol.nsv ?? ((selectedCol.valuationAmount || 0) * 0.8)) - (selectedCol.currentAllocation || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                        <strong className="text-indigo-800 tabular-nums">{selectedCol.currency || 'ETB'} {formatEtbNumber((col360Data?.remainingCollateralCapacity ?? Math.max(0, (selectedCol.nsv ?? ((selectedCol.valuationAmount || 0) * 0.8)) - (selectedCol.currentAllocation || 0))))}</strong>
                       </div>
                       <div>
                         <span className="text-slate-500">Capacity Utilization:</span>{' '}
@@ -2772,7 +2781,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                       <h4 className="font-bold text-[#101828] border-b border-[#E2E8F0] pb-1">Insurance & Governance</h4>
                       <div>
                         <span className="text-[#5B6472]">Insured Amount:</span>{' '}
-                        <strong className="text-emerald-700 tabular-nums">{selectedCol.currency || 'ETB'} {(selectedCol.insuredAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                        <strong className="text-emerald-700 tabular-nums">{selectedCol.currency || 'ETB'} {formatEtbNumber((selectedCol.insuredAmount || 0))}</strong>
                         <div className="text-[10px] text-[#5B6472] italic">(Directly maintained baseline; synchronized with active policies)</div>
                       </div>
                       <div>
@@ -2937,19 +2946,19 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 shadow-2xs">
                           <div className="text-[11px] text-[#00205B] font-semibold uppercase">Total Outstanding Exposure</div>
                           <div className="text-base font-bold text-[#00205B] mt-1 tabular-nums">
-                            ETB {exposureSummary.totalOutstandingExposure?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(exposureSummary.totalOutstandingExposure)}
                           </div>
                         </div>
                         <div className="cims-card p-4 bg-emerald-50 border-emerald-100">
                           <div className="text-[11px] text-emerald-700 font-semibold uppercase">Total Active Insurance</div>
                           <div className="text-base font-bold text-emerald-900 mt-1 tabular-nums">
-                            ETB {exposureSummary.currentInsuredAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(exposureSummary.currentInsuredAmount)}
                           </div>
                         </div>
                         <div className="cims-card p-4 bg-blue-50 border-blue-100">
                           <div className="text-[11px] text-blue-700 font-semibold uppercase">Required Insurance (Max[Exp, Val])</div>
                           <div className="text-base font-bold text-blue-900 mt-1 tabular-nums">
-                            ETB {exposureSummary.requiredInsuranceAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(exposureSummary.requiredInsuranceAmount)}
                           </div>
                         </div>
                         <div className="cims-card p-4 bg-purple-50 border-purple-100 flex items-center justify-between">
@@ -3011,7 +3020,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                               <div className="p-2.5 bg-white rounded border border-slate-200">
                                 <span className="text-[10px] text-slate-500 uppercase font-semibold block">1st-Degree Debt</span>
                                 <strong className="text-purple-900 font-bold block mt-0.5 tabular-nums">
-                                  ETB {firstBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  ETB {formatEtbNumber(firstBal)}
                                 </strong>
                                 <span className="text-[10px] text-slate-500">Prior Charge Holder</span>
                               </div>
@@ -3019,7 +3028,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                               <div className="p-2.5 bg-white rounded border border-slate-200">
                                 <span className="text-[10px] text-slate-500 uppercase font-semibold block">2nd-Degree Bank Debt</span>
                                 <strong className="text-blue-900 font-bold block mt-0.5 tabular-nums">
-                                  ETB {secondBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  ETB {formatEtbNumber(secondBal)}
                                 </strong>
                                 <span className="text-[10px] text-slate-500">Dashen Bank Allocations</span>
                               </div>
@@ -3027,7 +3036,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                               <div className="p-2.5 bg-white rounded border border-slate-200">
                                 <span className="text-[10px] text-slate-500 uppercase font-semibold block">Combined Exposure</span>
                                 <strong className="text-slate-900 font-black block mt-0.5 tabular-nums text-sm">
-                                  ETB {combined.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  ETB {formatEtbNumber(combined)}
                                 </strong>
                                 <span className="text-[10px] text-slate-500">Total Asset Liability</span>
                               </div>
@@ -3035,7 +3044,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                               <div className="p-2.5 bg-white rounded border border-slate-200">
                                 <span className="text-[10px] text-slate-500 uppercase font-semibold block">Bank-Assessed Valuation</span>
                                 <strong className="text-emerald-800 font-bold block mt-0.5 tabular-nums">
-                                  ETB {val.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  ETB {formatEtbNumber(val)}
                                 </strong>
                                 <span className="text-[10px] text-slate-500">Valuation Cap</span>
                               </div>
@@ -3051,12 +3060,12 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                                 <div
                                   className="bg-purple-600 h-2.5"
                                   style={{ width: `${Math.min(100, val > 0 ? (firstBal / val) * 100 : 0)}%` }}
-                                  title={`1st Degree: ETB ${firstBal.toLocaleString()}`}
+                                  title={`1st Degree: ETB ${formatEtbNumber(firstBal)}`}
                                 />
                                 <div
                                   className={`${isExceeded ? 'bg-amber-500' : 'bg-blue-600'} h-2.5`}
                                   style={{ width: `${Math.min(100 - (val > 0 ? (firstBal / val) * 100 : 0), val > 0 ? (secondBal / val) * 100 : 0)}%` }}
-                                  title={`2nd Degree: ETB ${secondBal.toLocaleString()}`}
+                                  title={`2nd Degree: ETB ${formatEtbNumber(secondBal)}`}
                                 />
                               </div>
                             </div>
@@ -3065,7 +3074,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                               <div className="p-2.5 bg-amber-100 rounded-lg border border-amber-300 text-xs font-semibold text-amber-900 flex items-start gap-2">
                                 <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                                 <div>
-                                  <strong>VALUATION CAP WARNING (Requirement 4):</strong> Combined exposure of ETB {combined.toLocaleString()} exceeds the Bank-assessed valuation of ETB {val.toLocaleString()} by ETB {excess.toLocaleString()}. Credit exposure warning raised for Credit Committee review.
+                                  <strong>VALUATION CAP WARNING (Requirement 4):</strong> Combined exposure of ETB {formatEtbNumber(combined)} exceeds the Bank-assessed valuation of ETB {formatEtbNumber(val)} by ETB {formatEtbNumber(excess)}. Credit exposure warning raised for Credit Committee review.
                                 </div>
                               </div>
                             )}
@@ -3074,7 +3083,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                               <div className="p-2.5 bg-blue-100 rounded-lg border border-blue-300 text-xs font-semibold text-blue-900 flex items-start gap-2">
                                 <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
                                 <div>
-                                  <strong>INSURANCE COMBINED ADEQUACY CHECK:</strong> Active insured amount of ETB {exposureSummary.currentInsuredAmount.toLocaleString()} is below the combined exposure of ETB {combined.toLocaleString()} (Deficit: ETB {(combined - exposureSummary.currentInsuredAmount).toLocaleString()}). Insurance coverage must adequately test against combined priority debt.
+                                  <strong>INSURANCE COMBINED ADEQUACY CHECK:</strong> Active insured amount of ETB {formatEtbNumber(exposureSummary.currentInsuredAmount)} is below the combined exposure of ETB {formatEtbNumber(combined)} (Deficit: ETB {formatEtbNumber((combined - exposureSummary.currentInsuredAmount))}). Insurance coverage must adequately test against combined priority debt.
                                 </div>
                               </div>
                             )}
@@ -3213,10 +3222,10 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                             Bank-Assessed Insurable Value
                           </span>
                           <div className="text-base font-extrabold text-[#00205B] mt-1 tabular-nums">
-                            ETB {Number(adequacyAssessment.bankAssessedInsurableValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(Number(adequacyAssessment.bankAssessedInsurableValue || 0))}
                           </div>
                           <span className="text-[10px] text-slate-500 block mt-0.5">
-                            Structure Only {adequacyAssessment.landValue ? `(Land ETB ${Number(adequacyAssessment.landValue).toLocaleString()} excluded)` : ''}
+                            Structure Only {adequacyAssessment.landValue ? `(Land ETB ${formatEtbNumber(Number(adequacyAssessment.landValue))} excluded)` : ''}
                           </span>
                         </div>
 
@@ -3225,7 +3234,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                             Required Coverage ({adequacyAssessment.requiredCoveragePercentage ?? adequacyAssessment.requiredCoveragePct ?? 100}%)
                           </span>
                           <div className="text-base font-extrabold text-purple-900 mt-1 tabular-nums">
-                            ETB {Number(adequacyAssessment.requiredCoverageAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(Number(adequacyAssessment.requiredCoverageAmount || 0))}
                           </div>
                           <span className="text-[10px] text-purple-600 block mt-0.5">
                             Credit Policy Rule: {adequacyAssessment.applicableRuleDescription || adequacyAssessment.applicableRuleCode || adequacyAssessment.applicableRuleId || 'BR-18 Standard'}
@@ -3237,7 +3246,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                             Total Active Insured Amount
                           </span>
                           <div className="text-base font-extrabold text-emerald-900 mt-1 tabular-nums">
-                            ETB {Number(adequacyAssessment.totalInsuredAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(Number(adequacyAssessment.totalInsuredAmount || 0))}
                           </div>
                           <span className="text-[10px] text-emerald-600 block mt-0.5">
                             Aggregated from {(adequacyAssessment.contributingPolicies || adequacyAssessment.activePolicies)?.length || 0} active policy records
@@ -3249,7 +3258,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                             Aggregate Secured Exposure
                           </span>
                           <div className="text-base font-extrabold text-blue-900 mt-1 tabular-nums">
-                            ETB {Number(adequacyAssessment.aggregateSecuredExposure || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            ETB {formatEtbNumber(Number(adequacyAssessment.aggregateSecuredExposure || 0))}
                           </div>
                           <span className="text-[10px] text-blue-600 block mt-0.5">
                             Deduplicated across {(adequacyAssessment.contributingFacilities || adequacyAssessment.distinctFacilities)?.length || 0} distinct facilities
@@ -3280,7 +3289,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                           <div className="space-y-2 text-xs">
                             <div className="flex justify-between py-1 border-b border-slate-100">
                               <span className="text-slate-500">Insurable Structure Value:</span>
-                              <strong className="tabular-nums">ETB {Number(adequacyAssessment.bankAssessedInsurableValue || 0).toLocaleString()}</strong>
+                              <strong className="tabular-nums">ETB {formatEtbNumber(Number(adequacyAssessment.bankAssessedInsurableValue || 0))}</strong>
                             </div>
                             <div className="flex justify-between py-1 border-b border-slate-100">
                               <span className="text-slate-500">Required Coverage %:</span>
@@ -3288,11 +3297,11 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                             </div>
                             <div className="flex justify-between py-1 border-b border-slate-100">
                               <span className="text-slate-500">Required Insured Amount:</span>
-                              <strong className="text-purple-900 tabular-nums">ETB {Number(adequacyAssessment.requiredCoverageAmount || 0).toLocaleString()}</strong>
+                              <strong className="text-purple-900 tabular-nums">ETB {formatEtbNumber(Number(adequacyAssessment.requiredCoverageAmount || 0))}</strong>
                             </div>
                             <div className="flex justify-between py-1 border-b border-slate-100">
                               <span className="text-slate-500">Total Active Insured Amount:</span>
-                              <strong className="text-emerald-900 tabular-nums">ETB {Number(adequacyAssessment.totalInsuredAmount || 0).toLocaleString()}</strong>
+                              <strong className="text-emerald-900 tabular-nums">ETB {formatEtbNumber(Number(adequacyAssessment.totalInsuredAmount || 0))}</strong>
                             </div>
                             <div className="flex justify-between py-1 font-bold">
                               <span>Primary Coverage Ratio:</span>
@@ -3328,11 +3337,11 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                             </div>
                             <div className="flex justify-between py-1 border-b border-slate-100">
                               <span className="text-slate-500">Aggregate Secured Exposure:</span>
-                              <strong className="text-blue-900 tabular-nums">ETB {Number(adequacyAssessment.aggregateSecuredExposure || 0).toLocaleString()}</strong>
+                              <strong className="text-blue-900 tabular-nums">ETB {formatEtbNumber(Number(adequacyAssessment.aggregateSecuredExposure || 0))}</strong>
                             </div>
                             <div className="flex justify-between py-1 border-b border-slate-100">
                               <span className="text-slate-500">Total Active Insured Amount:</span>
-                              <strong className="text-emerald-900 tabular-nums">ETB {Number(adequacyAssessment.totalInsuredAmount || 0).toLocaleString()}</strong>
+                              <strong className="text-emerald-900 tabular-nums">ETB {formatEtbNumber(Number(adequacyAssessment.totalInsuredAmount || 0))}</strong>
                             </div>
                             <div className="flex justify-between py-1 font-bold">
                               <span>Exposure Coverage Ratio:</span>
@@ -3353,7 +3362,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                           <Info className="w-4 h-4 text-slate-500 shrink-0" />
                           <div>
                             <span className="font-bold text-slate-800">
-                              Estimated Market Value: ETB {Number(adequacyAssessment.estimatedValue || 0).toLocaleString()}
+                              Estimated Market Value: ETB {formatEtbNumber(Number(adequacyAssessment.estimatedValue || 0))}
                             </span>
                             <span className="text-[10px] text-slate-500 block">
                               Source: {adequacyAssessment.estimatedValueSource || 'Valuation Report'} | Date: {adequacyAssessment.estimatedValuationDate || selectedCol.valuationDate || '—'}
@@ -3392,7 +3401,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                                     <td className="p-2.5 font-mono font-bold text-[#00205B]">{p.policyNumber}</td>
                                     <td className="p-2.5 font-semibold">{p.insurerName || p.insurer}</td>
                                     <td className="p-2.5 font-bold text-emerald-800 tabular-nums">
-                                      ETB {Number(p.insuredAmount || 0).toLocaleString()}
+                                      ETB {formatEtbNumber(Number(p.insuredAmount || 0))}
                                     </td>
                                     <td className="p-2.5 text-slate-600">{p.startDate || p.effectiveDate || '—'}</td>
                                     <td className="p-2.5 text-slate-600">{p.expiryDate || '—'}</td>
@@ -3433,9 +3442,9 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                                   <tr key={idx} className="hover:bg-slate-50">
                                     <td className="p-2.5 font-mono font-bold text-[#00205B]">{f.facilityNumber || f.loanReference || f.facilityId}</td>
                                     <td className="p-2.5 font-semibold">{f.borrowerName || f.facilityType || 'Standard Facility'}</td>
-                                    <td className="p-2.5 tabular-nums">ETB {Number(f.approvedLimit || 0).toLocaleString()}</td>
+                                    <td className="p-2.5 tabular-nums">ETB {formatEtbNumber(Number(f.approvedLimit || 0))}</td>
                                     <td className="p-2.5 font-bold text-blue-900 tabular-nums">
-                                      ETB {Number(f.outstandingBalance || 0).toLocaleString()}
+                                      ETB {formatEtbNumber(Number(f.outstandingBalance || 0))}
                                     </td>
                                     <td className="p-2.5 text-slate-600">{f.asOfDate || 'Live CBS Feed'}</td>
                                     <td className="p-2.5 text-slate-600">{f.linkageDate || '—'}</td>
@@ -3491,7 +3500,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                                   </div>
                                   <p className="text-slate-600 mt-1">Reason: <strong>{ex.reason}</strong></p>
                                   <span className="text-[10px] text-slate-500 block mt-0.5">
-                                    Amount: ETB {Number(ex.approvedExceptionAmount || 0).toLocaleString()} | Review Date: {ex.reviewDate || ex.validityEndDate} | Requester: {ex.requestingUser || ex.requestingUserId} {ex.supervisorApprover || ex.supervisorApproverId ? `| Approver: ${ex.supervisorApprover || ex.supervisorApproverId}` : ''}
+                                    Amount: ETB {formatEtbNumber(Number(ex.approvedExceptionAmount || 0))} | Review Date: {ex.reviewDate || ex.validityEndDate} | Requester: {ex.requestingUser || ex.requestingUserId} {ex.supervisorApprover || ex.supervisorApproverId ? `| Approver: ${ex.supervisorApprover || ex.supervisorApproverId}` : ''}
                                   </span>
                                 </div>
 
@@ -3587,7 +3596,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                         Run Impact Check
                       </button>
 
-                      {(!activeReleaseReq || activeReleaseReq.status === 'REJECTED' || activeReleaseReq.approvalStatus === 'REJECTED') && (
+                      {!isReadOnly && isMaker && (!activeReleaseReq || activeReleaseReq.status === 'REJECTED' || activeReleaseReq.approvalStatus === 'REJECTED') && (
                         <button
                           onClick={() => {
                             setReleaseReason('');
@@ -3752,19 +3761,19 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                           </h6>
                           <div className="flex justify-between py-1 border-b border-slate-200">
                             <span className="text-slate-500">Collateral Market Value:</span>
-                            <strong className="tabular-nums">ETB {Number(preReleaseImpact.currentCollateralValuation ?? preReleaseImpact.currentCollateralValue ?? 0).toLocaleString()}</strong>
+                            <strong className="tabular-nums">ETB {formatEtbNumber(Number(preReleaseImpact.currentCollateralValuation ?? preReleaseImpact.currentCollateralValue ?? 0))}</strong>
                           </div>
                           <div className="flex justify-between py-1 border-b border-slate-200">
                             <span className="text-slate-500">Insurable Structure Value:</span>
-                            <strong className="tabular-nums">ETB {Number(preReleaseImpact.currentInsurableValue || 0).toLocaleString()}</strong>
+                            <strong className="tabular-nums">ETB {formatEtbNumber(Number(preReleaseImpact.currentInsurableValue || 0))}</strong>
                           </div>
                           <div className="flex justify-between py-1 border-b border-slate-200">
                             <span className="text-slate-500">Active Insured Amount:</span>
-                            <strong className="text-emerald-800 tabular-nums">ETB {Number(preReleaseImpact.currentInsuredAmount || 0).toLocaleString()}</strong>
+                            <strong className="text-emerald-800 tabular-nums">ETB {formatEtbNumber(Number(preReleaseImpact.currentInsuredAmount || 0))}</strong>
                           </div>
                           <div className="flex justify-between py-1 border-b border-slate-200">
                             <span className="text-slate-500">Aggregate Secured Exposure:</span>
-                            <strong className="text-blue-900 tabular-nums">ETB {Number(preReleaseImpact.currentAggregateExposure || 0).toLocaleString()}</strong>
+                            <strong className="text-blue-900 tabular-nums">ETB {formatEtbNumber(Number(preReleaseImpact.currentAggregateExposure || 0))}</strong>
                           </div>
                           <div className="flex justify-between py-1 font-bold">
                             <span>Coverage Ratio:</span>
@@ -3784,15 +3793,15 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                           </h6>
                           <div className="flex justify-between py-1 border-b border-purple-100">
                             <span className="text-slate-600">Remaining Collateral Security:</span>
-                            <strong className="tabular-nums text-purple-950">ETB {Number(preReleaseImpact.projectedPostReleaseAllocatedSecurity ?? preReleaseImpact.projectedRemainingCollateralValue ?? 0).toLocaleString()}</strong>
+                            <strong className="tabular-nums text-purple-950">ETB {formatEtbNumber(Number(preReleaseImpact.projectedPostReleaseAllocatedSecurity ?? preReleaseImpact.projectedRemainingCollateralValue ?? 0))}</strong>
                           </div>
                           <div className="flex justify-between py-1 border-b border-purple-100">
                             <span className="text-slate-600">Remaining Insurable Value:</span>
-                            <strong className="tabular-nums text-purple-950">ETB {Number(preReleaseImpact.projectedRemainingInsurableValue || 0).toLocaleString()}</strong>
+                            <strong className="tabular-nums text-purple-950">ETB {formatEtbNumber(Number(preReleaseImpact.projectedRemainingInsurableValue || 0))}</strong>
                           </div>
                           <div className="flex justify-between py-1 border-b border-purple-100">
                             <span className="text-slate-600">Projected Post-Release Exposure:</span>
-                            <strong className="text-blue-900 tabular-nums">ETB {Number(preReleaseImpact.projectedPostReleaseAggregateExposure ?? preReleaseImpact.projectedPostReleaseExposure ?? 0).toLocaleString()}</strong>
+                            <strong className="text-blue-900 tabular-nums">ETB {formatEtbNumber(Number(preReleaseImpact.projectedPostReleaseAggregateExposure ?? preReleaseImpact.projectedPostReleaseExposure ?? 0))}</strong>
                           </div>
                           <div className="flex justify-between py-1 border-b border-purple-100">
                             <span className="text-slate-600">Projected Coverage Ratio:</span>
@@ -3839,10 +3848,10 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                                   <tr key={idx} className="hover:bg-slate-50">
                                     <td className="p-2.5 font-mono font-bold text-[#00205B]">{af.facilityNumber || af.loanReference || af.facilityId}</td>
                                     <td className="p-2.5 font-semibold">{af.borrowerName || af.facilityType || 'Standard'}</td>
-                                    <td className="p-2.5 tabular-nums">ETB {Number(af.outstandingBalance ?? af.preReleaseBalance ?? 0).toLocaleString()}</td>
+                                    <td className="p-2.5 tabular-nums">ETB {formatEtbNumber(Number(af.outstandingBalance ?? af.preReleaseBalance ?? 0))}</td>
                                     <td className="p-2.5 tabular-nums">{af.preReleaseCoverageRatio != null ? af.preReleaseCoverageRatio.toFixed(1) : '0'}%</td>
                                     <td className="p-2.5 font-bold text-purple-900 tabular-nums">
-                                      ETB {Number(af.postReleaseAllocatedSecurity ?? af.postReleaseAvailableCollateral ?? 0).toLocaleString()}
+                                      ETB {formatEtbNumber(Number(af.postReleaseAllocatedSecurity ?? af.postReleaseAvailableCollateral ?? 0))}
                                     </td>
                                     <td className="p-2.5 font-bold tabular-nums">{af.postReleaseCoverageRatio != null ? af.postReleaseCoverageRatio.toFixed(1) : '0'}%</td>
                                     <td className="p-2.5">
@@ -3887,7 +3896,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                           </div>
 
                           {/* Checker Approval Actions (if Pending) */}
-                          {(activeReleaseReq.status === 'PENDING_APPROVAL' || activeReleaseReq.approvalStatus === 'PENDING_APPROVAL') && (
+                          {canApprove && (activeReleaseReq.status === 'PENDING_APPROVAL' || activeReleaseReq.approvalStatus === 'PENDING_APPROVAL') && (
                             <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200 space-y-2">
                               <strong className="block text-xs font-bold text-indigo-950">
                                 Supervisor / Checker Approval Action
@@ -3990,17 +3999,19 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                                   </span>
                                 </div>
 
-                                <button
-                                  onClick={() => {
-                                    setManualCbsStatus(((activeReleaseReq.cbsUpdateStatus || activeReleaseReq.manualCbsUpdateStatus) as any) || 'COMPLETED');
-                                    setManualCbsRef(activeReleaseReq.cbsReferenceNo || activeReleaseReq.manualCbsReference || '');
-                                    setManualCbsNotes(activeReleaseReq.cbsUpdateNotes || activeReleaseReq.manualCbsNotes || '');
-                                    setShowManualCbsModal(true);
-                                  }}
-                                  className="btn-primary py-1.5 px-3 text-xs bg-[#00205B] hover:bg-[#0E284E] text-white font-semibold rounded-lg"
-                                >
-                                  Record Manual CBS Update
-                                </button>
+                                {canMutate(currentUser, 'canEdit') && (
+                                  <button
+                                    onClick={() => {
+                                      setManualCbsStatus(((activeReleaseReq.cbsUpdateStatus || activeReleaseReq.manualCbsUpdateStatus) as any) || 'COMPLETED');
+                                      setManualCbsRef(activeReleaseReq.cbsReferenceNo || activeReleaseReq.manualCbsReference || '');
+                                      setManualCbsNotes(activeReleaseReq.cbsUpdateNotes || activeReleaseReq.manualCbsNotes || '');
+                                      setShowManualCbsModal(true);
+                                    }}
+                                    className="btn-primary py-1.5 px-3 text-xs bg-[#00205B] hover:bg-[#0E284E] text-white font-semibold rounded-lg"
+                                  >
+                                    Record Manual CBS Update
+                                  </button>
+                                )}
                               </div>
                             </div>
                           )}
@@ -4047,7 +4058,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                         <div className="p-2.5 bg-white/10 rounded-lg border border-white/10 min-w-0">
                           <span className="text-[10px] text-blue-200 uppercase font-semibold block truncate">2. Aggregate Exposure</span>
                           <strong className="text-xs sm:text-sm font-bold text-amber-300 block mt-0.5 tabular-nums truncate">
-                            ETB {(m3SecuredSummary?.aggregateSecuredExposure ?? (col360Data?.totalSecuredExposure || 0)).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                            ETB {formatEtbNumber((m3SecuredSummary?.aggregateSecuredExposure ?? (col360Data?.totalSecuredExposure || 0)))}
                           </strong>
                           <span className="text-[9px] text-blue-300 block truncate">Sum of Outstandings</span>
                         </div>
@@ -4055,7 +4066,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                         <div className="p-2.5 bg-white/10 rounded-lg border border-white/10 min-w-0">
                           <span className="text-[10px] text-blue-200 uppercase font-semibold block truncate">3. Total Allocation</span>
                           <strong className="text-xs sm:text-sm font-bold text-emerald-300 block mt-0.5 tabular-nums truncate">
-                            ETB {(m3SecuredSummary?.totalAllocatedSecurity ?? (col360Data?.totalAllocatedAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                            ETB {formatEtbNumber((m3SecuredSummary?.totalAllocatedSecurity ?? (col360Data?.totalAllocatedAmount || 0)))}
                           </strong>
                           <span className="text-[9px] text-blue-300 block truncate">Pledged Security</span>
                         </div>
@@ -4063,7 +4074,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                         <div className="p-2.5 bg-white/10 rounded-lg border border-white/10 min-w-0">
                           <span className="text-[10px] text-blue-200 uppercase font-semibold block truncate">4. Capacity Remaining</span>
                           <strong className="text-xs sm:text-sm font-bold text-cyan-300 block mt-0.5 tabular-nums truncate">
-                            ETB {(m3SecuredSummary?.unallocatedSecurity ?? (col360Data?.remainingCollateralCapacity || 0)).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                            ETB {formatEtbNumber((m3SecuredSummary?.unallocatedSecurity ?? (col360Data?.remainingCollateralCapacity || 0)))}
                           </strong>
                           <span className="text-[9px] text-blue-300 block truncate">Unallocated Headroom</span>
                         </div>
@@ -4071,7 +4082,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                         <div className="p-2.5 bg-white/10 rounded-lg border border-white/10 min-w-0">
                           <span className="text-[10px] text-blue-200 uppercase font-semibold block truncate">5. Insurance Required</span>
                           <strong className="text-xs sm:text-sm font-bold text-slate-200 block mt-0.5 tabular-nums truncate">
-                            ETB {(m3SecuredSummary?.requiredInsuranceAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                            ETB {formatEtbNumber((m3SecuredSummary?.requiredInsuranceAmount ?? 0))}
                           </strong>
                           <span className="text-[9px] text-blue-300 block truncate">Min Coverage Need</span>
                         </div>
@@ -4079,7 +4090,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                         <div className="p-2.5 bg-white/10 rounded-lg border border-white/10 min-w-0">
                           <span className="text-[10px] text-blue-200 uppercase font-semibold block truncate">6. Insurance Active</span>
                           <strong className="text-xs sm:text-sm font-bold text-emerald-300 block mt-0.5 tabular-nums truncate">
-                            ETB {(m3SecuredSummary?.currentInsuredAmount ?? selectedCol.insuredAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                            ETB {formatEtbNumber((m3SecuredSummary?.currentInsuredAmount ?? selectedCol.insuredAmount ?? 0))}
                           </strong>
                           <span className="text-[9px] text-blue-300 block truncate">Valid Policy Cover</span>
                         </div>
@@ -4089,7 +4100,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                           <strong className={`text-xs sm:text-sm font-bold block mt-0.5 tabular-nums truncate ${
                             (m3SecuredSummary?.insuranceGap ?? 0) > 0 ? 'text-rose-400 font-black' : 'text-emerald-400'
                           }`}>
-                            ETB {(m3SecuredSummary?.insuranceGap ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                            ETB {formatEtbNumber((m3SecuredSummary?.insuranceGap ?? 0))}
                           </strong>
                           <span className="text-[9px] text-blue-300 block truncate">
                             {(m3SecuredSummary?.insuranceGap ?? 0) > 0 ? 'Deficit Warning' : 'Adequate'}
@@ -4131,7 +4142,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                       <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                         <span className="text-slate-500 block text-[10px] uppercase font-semibold">Net Collateral Value</span>
                         <strong className="text-slate-900 font-bold tabular-nums text-sm">
-                          ETB {(m3SecuredSummary?.netCollateralValue ?? (selectedCol.valuationAmount * (1 - (selectedCol.haircut || 20) / 100))).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ETB {formatEtbNumber((m3SecuredSummary?.netCollateralValue ?? (selectedCol.valuationAmount * (1 - (selectedCol.haircut || 20) / 100))))}
                         </strong>
                         <span className="text-[10px] text-slate-400 block mt-0.5">Allocation Ceiling (MV - {selectedCol.haircut || 20}%)</span>
                       </div>
@@ -4139,7 +4150,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                       <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                         <span className="text-blue-700 block text-[10px] uppercase font-semibold">Total Allocated Security</span>
                         <strong className="text-blue-800 font-bold tabular-nums text-sm">
-                          ETB {(m3SecuredSummary?.totalAllocatedSecurity ?? (col360Data?.totalAllocatedAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ETB {formatEtbNumber((m3SecuredSummary?.totalAllocatedSecurity ?? (col360Data?.totalAllocatedAmount || 0)))}
                         </strong>
                         <span className="text-[10px] text-blue-600 block mt-0.5">Pledged Security Value</span>
                       </div>
@@ -4147,7 +4158,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                       <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                         <span className="text-slate-500 block text-[10px] uppercase font-semibold">Unallocated Security</span>
                         <strong className="text-indigo-900 font-bold tabular-nums text-sm">
-                          ETB {(m3SecuredSummary?.unallocatedSecurity ?? (col360Data?.remainingCollateralCapacity || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ETB {formatEtbNumber((m3SecuredSummary?.unallocatedSecurity ?? (col360Data?.remainingCollateralCapacity || 0)))}
                         </strong>
                         <span className="text-[10px] text-slate-400 block mt-0.5">Available Collateral Capacity</span>
                       </div>
@@ -4155,7 +4166,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                       <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                         <span className="text-slate-500 block text-[10px] uppercase font-semibold">Aggregate Secured Exposure</span>
                         <strong className="text-slate-900 font-bold tabular-nums text-sm">
-                          ETB {(m3SecuredSummary?.aggregateSecuredExposure ?? (col360Data?.totalSecuredExposure || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          ETB {formatEtbNumber((m3SecuredSummary?.aggregateSecuredExposure ?? (col360Data?.totalSecuredExposure || 0)))}
                         </strong>
                         <span className="text-[10px] text-slate-400 block mt-0.5">Sum of Active Linked Outstandings</span>
                       </div>
@@ -4172,17 +4183,17 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                           <div className="text-[11px] text-slate-500">
                             Active Valid Insurance:{' '}
                             <strong className="text-emerald-700">
-                              ETB {(m3SecuredSummary?.currentInsuredAmount ?? selectedCol.insuredAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber((m3SecuredSummary?.currentInsuredAmount ?? selectedCol.insuredAmount ?? 0))}
                             </strong>
                             {' • '}
                             Required:{' '}
                             <strong>
-                              ETB {(m3SecuredSummary?.requiredInsuranceAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber((m3SecuredSummary?.requiredInsuranceAmount ?? 0))}
                             </strong>
                             {' • '}
                             Insurance Gap:{' '}
                             <strong className={m3SecuredSummary && m3SecuredSummary.insuranceGap > 0 ? 'text-red-600' : 'text-emerald-600'}>
-                              ETB {(m3SecuredSummary?.insuranceGap ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber((m3SecuredSummary?.insuranceGap ?? 0))}
                             </strong>
                           </div>
                         </div>
@@ -4312,14 +4323,14 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                                 </td>
                                 <td className="p-2.5 text-right tabular-nums">
                                   <div className="font-semibold text-slate-900">
-                                    ETB {Number(l.approvedLimit || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    ETB {formatEtbNumber(Number(l.approvedLimit || 0))}
                                   </div>
                                   <div className="text-[10px] text-amber-700">
-                                    Out: ETB {Number(l.outstandingBalance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    Out: ETB {formatEtbNumber(Number(l.outstandingBalance || 0))}
                                   </div>
                                 </td>
                                 <td className="p-2.5 text-right tabular-nums font-bold text-blue-700">
-                                  ETB {Number(l.allocatedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  ETB {formatEtbNumber(Number(l.allocatedAmount || 0))}
                                 </td>
                                 <td className="p-2.5 text-right tabular-nums font-semibold text-slate-700">
                                   {Number(l.collateralAllocationPct || 0).toFixed(1)}%
@@ -4465,7 +4476,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                             <td className="p-2.5">{p.insurerName}</td>
                             <td className="p-2.5">{p.coverageType}</td>
                             <td className="p-2.5 text-right tabular-nums font-semibold text-emerald-700">
-                              ETB {p.insuredAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              ETB {formatEtbNumber(p.insuredAmount)}
                             </td>
                             <td className="p-2.5">{p.expiryDate}</td>
                             <td className="p-2.5">
@@ -4762,11 +4773,16 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
           mandatoryDocRules={mandatoryDocRules}
           systemParameters={systemParameters}
           onClose={() => setShowRegisterWizard(false)}
-          onSuccess={(col) => {
-            onRegisterCollateral?.(col);
+          onSuccess={(col, persisted) => {
+            // The wizard persists the record itself; never post it a second time.
+            if (!persisted) void onRegisterCollateral?.(col);
             setShowRegisterWizard(false);
             onRefreshData?.();
+            // Return to the refreshed collateral list so the new record is
+            // visible with its workflow status.
+            onNavigate?.('collateral');
           }}
+          onNavigate={onNavigate}
         />
       )}
 
@@ -5708,7 +5724,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                 <div>
                   <span className="text-slate-500 block text-[10px]">Market Valuation:</span>
                   <strong className="text-emerald-700 font-bold">
-                    ETB {promotingCol.valuationAmount?.toLocaleString()}
+                    ETB {formatEtbNumber(promotingCol.valuationAmount)}
                   </strong>
                 </div>
               </div>
@@ -5817,7 +5833,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
               <div>
                 <span className="text-slate-500 block text-[10px]">Previous Balance:</span>
                 <strong className="text-rose-700 tabular-nums">
-                  ETB {(refreshingCol.firstDegreeOutstandingBalance || 0).toLocaleString()} (as of {refreshingCol.firstDegreeBalanceAsOfDate || '—'})
+                  ETB {formatEtbNumber((refreshingCol.firstDegreeOutstandingBalance || 0))} (as of {refreshingCol.firstDegreeBalanceAsOfDate || '—'})
                 </strong>
               </div>
             </div>
@@ -5827,12 +5843,11 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                 <label className="block text-slate-700 font-semibold mb-1">
                   Updated Outstanding Balance (ETB) <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={refreshBalAmt ?? ''}
-                  onChange={(e) => setRefreshBalAmt(e.target.value === '' ? ('' as any) : Number(e.target.value))}
-                  className="w-full p-2 border border-slate-300 rounded font-bold tabular-nums text-xs bg-white"
+                <AmountInput
+                  value={typeof refreshBalAmt === 'number' ? refreshBalAmt : undefined}
+                  onChange={(val) => setRefreshBalAmt(val || 0)}
+                  placeholder="Enter amount"
+                  required
                 />
               </div>
 
@@ -5869,7 +5884,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                   try {
                     const userId = currentUser?.username || currentUser?.name || 'CRO_USER';
                     await cimsApi.refreshFirstDegreeBalance(refreshingCol.id, refreshBalAmt, refreshAsOfDate, userId);
-                    alert(`✓ External first-degree balance updated to ETB ${refreshBalAmt.toLocaleString()} (as of ${refreshAsOfDate})!`);
+                    alert(`✓ External first-degree balance updated to ETB ${formatEtbNumber(refreshBalAmt)} (as of ${refreshAsOfDate})!`);
                     setShowRefreshBalModal(false);
                     setRefreshingCol(null);
                     loadExposureSummary(refreshingCol.id);
@@ -6070,7 +6085,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                 <input
                   type="text"
                   readOnly
-                  value={`${selectedCol.code} — ${selectedCol.description || selectedCol.type} (Valuation: ETB ${Number(selectedCol.valuationAmount || 0).toLocaleString()})`}
+                  value={`${selectedCol.code} — ${selectedCol.description || selectedCol.type} (Valuation: ETB ${formatEtbNumber(Number(selectedCol.valuationAmount || 0))})`}
                   className="w-full p-2 border border-slate-200 rounded bg-slate-100 font-mono text-slate-700 font-bold"
                 />
               </div>
@@ -6085,7 +6100,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
                   <option value="">ALL Linked Facilities (Full Asset Release)</option>
                   {colLinks.map((l) => (
                     <option key={l.id} value={l.loanAccountId}>
-                      Facility #{l.loanAccountId} (Allocated: ETB {Number(l.allocatedAmount || 0).toLocaleString()})
+                      Facility #{l.loanAccountId} (Allocated: ETB {formatEtbNumber(Number(l.allocatedAmount || 0))})
                     </option>
                   ))}
                 </select>
@@ -6128,7 +6143,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
               </button>
               <button
                 type="button"
-                disabled={submittingEarlyRelease || !releaseReason.trim() || !releaseDmsDocId.trim()}
+                disabled={isReadOnly || submittingEarlyRelease || !releaseReason.trim() || !releaseDmsDocId.trim()}
                 onClick={async () => {
                   setSubmittingEarlyRelease(true);
                   try {

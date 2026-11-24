@@ -36,6 +36,18 @@ export interface UserSession {
   canEdit?: boolean;
   canDelete?: boolean;
   token?: string;
+  // Authoritative scope supplied by the backend authenticated user record.
+  allowedSegments?: string[];
+  allowedBranches?: string[];
+  allowedDistricts?: string[];
+  bankWide?: boolean;
+  readOnly?: boolean;
+  scopeRestricted?: boolean;
+  isAdmin?: boolean;
+  active?: boolean;
+  email?: string;
+  phone?: string;
+  permissions?: RolePermission[];
 }
 
 export type BusinessSegmentName =
@@ -448,6 +460,8 @@ export interface Collateral {
   // Module 4 Enhancement: Insurable Value, Data Requirements & Early Release
   insurableValue?: number;
   landValue?: number;
+  /** Land/location value used with net security value for facility allocation capacity. */
+  locationValue?: number;
   estimatedValue?: number;
   estimatedValueSource?: string;
   estimatedValuationDate?: string;
@@ -1262,6 +1276,8 @@ export interface NotificationTemplate {
   eventType?: string;
   channel: 'SMS' | 'Email';
   triggerDaysBefore?: number;
+  scheduleId?: string;
+  audience?: string;
   subject?: string;
   body: string;
   active?: boolean;
@@ -1310,15 +1326,18 @@ export interface ApprovalHierarchyConfig {
 
 export interface ReminderSchedule {
   id: string;
+  name?: string;
   daysBeforeExpiry: number;
   channelsJson: string;
   recipientRolesJson: string;
   active: boolean;
-  audience?: 'Staff' | 'Customer' | string;
+  audience?: 'Staff' | 'Customer' | 'Both' | 'Insurer' | string;
   triggerBasis?: 'Before Expiry' | 'After Expiry' | string;
   offsetDays?: number;
   dayType?: 'Working Day' | 'Calendar Day' | string;
-  recurrence?: 'One-time' | 'Every N Working Days' | 'Every N Calendar Days' | string;
+  recurrence?: string;
+  recurrenceInterval?: number;
+  recurrenceUnit?: 'DAYS' | 'WORKING_DAYS' | 'CALENDAR_DAYS' | 'MINUTES' | string;
   continueUntil?: 'Renewed' | 'Resolved' | 'Other' | string;
 }
 
@@ -1366,6 +1385,7 @@ export interface CollateralTaxonomy {
 
 export interface MandatoryDocumentRule {
   id: string;
+  segment?: string;
   collateralCategory: string;
   collateralType?: string;
   documentType: string;

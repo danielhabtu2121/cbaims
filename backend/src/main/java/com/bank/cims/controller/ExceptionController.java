@@ -3,6 +3,7 @@ package com.bank.cims.controller;
 import com.bank.cims.dto.*;
 import com.bank.cims.model.*;
 import com.bank.cims.repository.CimsExceptionRepository;
+import com.bank.cims.service.AuthorizationScopeService;
 import com.bank.cims.service.CimsService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,17 @@ public class ExceptionController {
     @Autowired
     private CimsService cimsService;
 
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
+    private String currentActorUsername() {
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive() || actor.getUsername() == null || actor.getUsername().isBlank()) {
+            throw new IllegalArgumentException("Authentication required: a valid signed-in user could not be identified.");
+        }
+        return actor.getUsername();
+    }
+
     @GetMapping
     public ResponseEntity<List<CimsException>> getExceptions(
             @RequestParam(required = false) String status,
@@ -35,9 +47,8 @@ public class ExceptionController {
             @RequestHeader(value = "X-User-Id", required = false) String headerUserId,
             @RequestHeader(value = "X-User-Role", required = false) String headerUserRole,
             @RequestParam(required = false) String userId) {
-
-        String effUserId = (headerUserId != null && !headerUserId.isBlank()) ? headerUserId : userId;
-        return ResponseEntity.ok(cimsService.getScopedExceptions(status, role, severity, type, slaStatus, search, effUserId, headerUserRole));
+        String actor = currentActorUsername();
+        return ResponseEntity.ok(cimsService.getScopedExceptions(status, role, severity, type, slaStatus, search, actor, null));
     }
 
     @GetMapping("/summary")
@@ -45,28 +56,19 @@ public class ExceptionController {
             @RequestHeader(value = "X-User-Id", required = false) String headerUserId,
             @RequestHeader(value = "X-User-Role", required = false) String headerUserRole,
             @RequestParam(required = false) String userId) {
-
-        String effUserId = (headerUserId != null && !headerUserId.isBlank()) ? headerUserId : userId;
-        return ResponseEntity.ok(cimsService.getExceptionSummary(effUserId, headerUserRole));
+        String actor = currentActorUsername();
+        return ResponseEntity.ok(cimsService.getExceptionSummary(actor, null));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<CimsException> getExceptionById(@PathVariable String id) {
+        cimsService.assertExceptionAccess(id);
         return cimsExceptionRepository.findById(id)
                 .map(exc -> {
                     exc.computeSlaAndOperationalMetrics(LocalDate.now());
                     return ResponseEntity.ok(exc);
                 })
                 .orElse(ResponseEntity.notFound().build());
-    }
-
-    private String resolveVerifiedUser(String headerUserId, String fallbackUserId) {
-        String eff = (headerUserId != null && !headerUserId.isBlank()) ? headerUserId.trim()
-                : (fallbackUserId != null && !fallbackUserId.isBlank() ? fallbackUserId.trim() : null);
-        if (eff == null || eff.isBlank() || "SYSTEM".equalsIgnoreCase(eff)) {
-            throw new IllegalArgumentException("Authentication required: A valid user identity (X-User-Id) is required. SYSTEM identity is not permitted for client requests.");
-        }
-        return eff;
     }
 
     @PostMapping("/{id}/resolve")
@@ -106,8 +108,7 @@ public class ExceptionController {
         }
 
         try {
-            String effUserId = resolveVerifiedUser(headerUserId, req.getUserId() != null ? req.getUserId() : userId);
-            cimsService.resolveException(id, req, effUserId);
+            cimsService.resolveException(id, req, currentActorUsername());
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "Exception " + id + " has been successfully resolved.",
@@ -140,8 +141,7 @@ public class ExceptionController {
         }
 
         try {
-            String effUserId = resolveVerifiedUser(headerUserId, req.getUserId() != null ? req.getUserId() : userId);
-            cimsService.assignException(id, req, effUserId);
+            cimsService.assignException(id, req, currentActorUsername());
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "Exception " + id + " has been assigned successfully.",
@@ -174,8 +174,7 @@ public class ExceptionController {
         }
 
         try {
-            String effUserId = resolveVerifiedUser(headerUserId, req.getUserId() != null ? req.getUserId() : userId);
-            cimsService.escalateException(id, req, effUserId);
+            cimsService.escalateException(id, req, currentActorUsername());
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "Exception " + id + " has been escalated successfully.",
@@ -205,8 +204,7 @@ public class ExceptionController {
             @RequestHeader(value = "X-User-Id", required = false) String headerUserId) {
 
         try {
-            String effUserId = resolveVerifiedUser(headerUserId, body != null ? body.getUserId() : null);
-            cimsService.addInvestigationNote(id, body, effUserId);
+            cimsService.addInvestigationNote(id, body, currentActorUsername());
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "Investigation note added successfully.",
@@ -228,8 +226,7 @@ public class ExceptionController {
             @RequestHeader(value = "X-User-Id", required = false) String headerUserId) {
 
         try {
-            String effUserId = resolveVerifiedUser(headerUserId, body != null ? body.getUserId() : null);
-            cimsService.addExceptionEvidence(id, body, effUserId);
+            cimsService.addExceptionEvidence(id, body, currentActorUsername());
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "Supporting evidence associated successfully.",
@@ -251,8 +248,7 @@ public class ExceptionController {
             @RequestHeader(value = "X-User-Id", required = false) String headerUserId) {
 
         try {
-            String effUserId = resolveVerifiedUser(headerUserId, body != null ? body.getUserId() : null);
-            cimsService.recordExceptionCorrectiveAction(id, body, effUserId);
+            cimsService.recordExceptionCorrectiveAction(id, body, currentActorUsername());
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "Corrective action recorded successfully.",
@@ -269,11 +265,13 @@ public class ExceptionController {
 
     @GetMapping("/{id}/investigation-notes")
     public ResponseEntity<List<CimsExceptionInvestigationNote>> getInvestigationNotes(@PathVariable String id) {
+        cimsService.assertExceptionAccess(id);
         return ResponseEntity.ok(cimsService.getInvestigationNotes(id));
     }
 
     @GetMapping("/{id}/history")
     public ResponseEntity<Map<String, Object>> getExceptionHistory(@PathVariable String id) {
+        cimsService.assertExceptionAccess(id);
         Map<String, Object> history = new HashMap<>();
         history.put("investigationNotes", cimsService.getInvestigationNotes(id));
         history.put("escalationHistory", cimsService.getEscalationHistory(id));
@@ -284,7 +282,6 @@ public class ExceptionController {
     @PostMapping("/scan-now")
     public ResponseEntity<ScanResultDto> triggerScan() {
         ScanResultDto result = cimsService.scanAndGenerateExceptions();
-        // Also trigger auto escalation check for overdue exceptions
         cimsService.runAutomaticExceptionEscalation();
         return ResponseEntity.ok(result);
     }
@@ -295,8 +292,7 @@ public class ExceptionController {
             @RequestHeader(value = "X-User-Id", required = false) String headerUserId,
             @RequestParam(required = false) String userId) {
         try {
-            String effUserId = resolveVerifiedUser(headerUserId, userId);
-            return ResponseEntity.ok(cimsService.submitEntryTimeException(request, effUserId));
+            return ResponseEntity.ok(cimsService.submitEntryTimeException(request, currentActorUsername()));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
         } catch (Exception e) {

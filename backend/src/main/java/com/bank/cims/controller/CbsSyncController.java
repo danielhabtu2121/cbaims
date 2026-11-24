@@ -4,6 +4,7 @@ import com.bank.cims.dto.cbs.CbsThreeViewImportResultDto;
 import com.bank.cims.dto.cbs.CbsThreeViewPreviewDto;
 import com.bank.cims.model.*;
 import com.bank.cims.repository.*;
+import com.bank.cims.service.AuthorizationScopeService;
 import com.bank.cims.service.CbsEnrichmentService;
 import com.bank.cims.service.CbsSyncService;
 import com.bank.cims.service.cbs.CbsConnectionStatus;
@@ -59,12 +60,16 @@ public class CbsSyncController {
     @Autowired
     private CbsCodeMappingRepository codeMappingRepository;
 
+    @Autowired
+    private AuthorizationScopeService authorizationScopeService;
+
     private String getCurrentUser() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getName() != null && !auth.getName().isBlank()) {
-            return auth.getName();
+        User actor = authorizationScopeService.currentUser();
+        if (actor == null || !actor.isActive()
+                || actor.getUsername() == null || actor.getUsername().isBlank()) {
+            throw new IllegalArgumentException("Authentication required: a valid signed-in user could not be identified.");
         }
-        return "AUTHORIZED_USER";
+        return actor.getUsername();
     }
 
     // =========================================================================
@@ -255,28 +260,32 @@ public class CbsSyncController {
     // =========================================================================
 
     @PostMapping("/sync/all")
-    public ResponseEntity<Map<String, Object>> syncAll(@RequestHeader(value = "X-User-Id", defaultValue = "SYSTEM") String userId) {
+    public ResponseEntity<Map<String, Object>> syncAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+        userId = getCurrentUser();
         return ResponseEntity.ok(cbsSyncService.syncAllFromCbs(userId));
     }
 
     @PostMapping("/sync/customer/{cif}")
     public ResponseEntity<Map<String, Object>> syncCustomer(
             @PathVariable String cif,
-            @RequestHeader(value = "X-User-Id", defaultValue = "SYSTEM") String userId) {
+            @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        userId = getCurrentUser();
         return ResponseEntity.ok(cbsSyncService.syncCustomerFromCbs(cif, userId));
     }
 
     @PostMapping("/sync/facility/{loanRef}")
     public ResponseEntity<Map<String, Object>> syncFacility(
             @PathVariable String loanRef,
-            @RequestHeader(value = "X-User-Id", defaultValue = "SYSTEM") String userId) {
+            @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        userId = getCurrentUser();
         return ResponseEntity.ok(cbsSyncService.syncFacilityFromCbs(loanRef, userId));
     }
 
     @PostMapping("/sync/collateral/{collateralCode}")
     public ResponseEntity<Map<String, Object>> syncCollateral(
             @PathVariable String collateralCode,
-            @RequestHeader(value = "X-User-Id", defaultValue = "SYSTEM") String userId) {
+            @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        userId = getCurrentUser();
         return ResponseEntity.ok(cbsSyncService.syncCollateralFromCbs(collateralCode, userId));
     }
 
