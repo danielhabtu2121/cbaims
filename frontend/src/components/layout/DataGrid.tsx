@@ -10,6 +10,17 @@ export interface ColumnDef<T> {
   filterable?: boolean;
 }
 
+interface ServerSidePagination {
+  totalItems: number;
+  currentPage: number; // 1-indexed
+  pageSize: number;
+  searchQuery: string;
+  loading?: boolean;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  onSearchChange: (q: string) => void;
+}
+
 interface DataGridProps<T> {
   data: T[];
   columns: ColumnDef<T>[];
@@ -20,6 +31,7 @@ interface DataGridProps<T> {
   onRowClick?: (item: T) => void;
   pageSizeOptions?: number[];
   searchPlaceholder?: string;
+  serverSide?: ServerSidePagination;
 }
 
 export function DataGrid<T extends Record<string, any>>({
@@ -32,6 +44,7 @@ export function DataGrid<T extends Record<string, any>>({
   onRowClick,
   pageSizeOptions = [25, 50, 100],
   searchPlaceholder = 'Search records...',
+  serverSide,
 }: DataGridProps<T>) {
   const [search, setSearch] = useState('');
   const [pageSize, setPageSize] = useState(pageSizeOptions[0]);
@@ -47,8 +60,12 @@ export function DataGrid<T extends Record<string, any>>({
   });
   const [showColToggle, setShowColToggle] = useState(false);
 
-  // Search filter with deep extraction and multi-term tokenized matching
+  const effectiveSearch = serverSide ? serverSide.searchQuery : search;
+  const effectivePageSize = serverSide ? serverSide.pageSize : pageSize;
+
+  // Search filter with deep extraction and multi-term tokenized matching (client-side only)
   const filteredData = useMemo(() => {
+    if (serverSide) return data;
     if (!search.trim()) return data;
     const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
 
@@ -87,12 +104,14 @@ export function DataGrid<T extends Record<string, any>>({
   }, [filteredData, sortKey, sortOrder]);
 
   // Pagination with safePage clamp
-  const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize));
-  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+  const totalCount = serverSide ? serverSide.totalItems : sortedData.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / effectivePageSize));
+  const safePage = Math.min(Math.max(1, serverSide ? serverSide.currentPage : currentPage), totalPages);
   const pagedData = useMemo(() => {
+    if (serverSide) return sortedData;
     const start = (safePage - 1) * pageSize;
     return sortedData.slice(start, start + pageSize);
-  }, [sortedData, safePage, pageSize]);
+  }, [serverSide, sortedData, safePage, pageSize]);
 
   const handleSort = (key?: string) => {
     if (!key) return;
@@ -145,18 +164,26 @@ export function DataGrid<T extends Record<string, any>>({
             <input
               type="text"
               placeholder={searchPlaceholder}
-              value={search}
+              value={effectiveSearch}
               onChange={(e) => {
-                setSearch(e.target.value);
-                setCurrentPage(1);
+                if (serverSide) {
+                  serverSide.onSearchChange(e.target.value);
+                } else {
+                  setSearch(e.target.value);
+                  setCurrentPage(1);
+                }
               }}
               className="pl-9 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:ring-1 focus:ring-[#D48806] focus:border-[#D48806] w-48 md:w-64 text-slate-800 transition-colors"
             />
-            {search && (
+            {effectiveSearch && (
               <button
                 onClick={() => {
-                  setSearch('');
-                  setCurrentPage(1);
+                  if (serverSide) {
+                    serverSide.onSearchChange('');
+                  } else {
+                    setSearch('');
+                    setCurrentPage(1);
+                  }
                 }}
                 className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
                 title="Clear search"
@@ -275,19 +302,25 @@ export function DataGrid<T extends Record<string, any>>({
       {/* Pagination Footer */}
       <div className="p-3 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
         <div>
-          Showing <span className="font-bold text-slate-800 tabular-nums">{(safePage - 1) * pageSize + (sortedData.length > 0 ? 1 : 0)}</span> to{' '}
-          <span className="font-bold text-slate-800 tabular-nums">{Math.min(safePage * pageSize, sortedData.length)}</span> of{' '}
-          <span className="font-bold text-slate-800 tabular-nums">{sortedData.length}</span> entries
+          Showing <span className="font-bold text-slate-800 tabular-nums">{totalCount > 0 ? (safePage - 1) * effectivePageSize + 1 : 0}</span> to{' '}
+          <span className="font-bold text-slate-800 tabular-nums">{Math.min(safePage * effectivePageSize, totalCount)}</span> of{' '}
+          <span className="font-bold text-slate-800 tabular-nums">{totalCount.toLocaleString()}</span> entries
+          {serverSide?.loading && <span className="ml-2 text-[#00205B] font-medium">Loading...</span>}
         </div>
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <span>Rows:</span>
             <select
-              value={pageSize}
+              value={effectivePageSize}
               onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
+                const newSize = Number(e.target.value);
+                if (serverSide) {
+                  serverSide.onPageSizeChange(newSize);
+                } else {
+                  setPageSize(newSize);
+                  setCurrentPage(1);
+                }
               }}
               className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#D48806]"
             >
@@ -301,17 +334,25 @@ export function DataGrid<T extends Record<string, any>>({
 
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+              onClick={() => {
+                const prev = Math.max(1, safePage - 1);
+                if (serverSide) serverSide.onPageChange(prev);
+                else setCurrentPage(prev);
+              }}
               disabled={safePage === 1}
               className="p-1 rounded-lg border border-slate-200 bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <span className="px-2 font-bold text-[#00205B] tabular-nums">
-              {safePage} / {totalPages}
+              {safePage.toLocaleString()} / {totalPages.toLocaleString()}
             </span>
             <button
-              onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+              onClick={() => {
+                const next = Math.min(totalPages, safePage + 1);
+                if (serverSide) serverSide.onPageChange(next);
+                else setCurrentPage(next);
+              }}
               disabled={safePage === totalPages}
               className="p-1 rounded-lg border border-slate-200 bg-white text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
             >

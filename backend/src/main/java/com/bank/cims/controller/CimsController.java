@@ -6,6 +6,8 @@ import com.bank.cims.repository.*;
 import com.bank.cims.service.CimsService;
 import com.bank.cims.service.ExposureCalculationService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,6 +44,9 @@ public class CimsController {
     private CollateralRepository collateralRepository;
 
     @Autowired
+    private LoanAccountRepository loanAccountRepository;
+
+    @Autowired
     private LoanCollateralLinkRepository loanCollateralLinkRepository;
 
     @Autowired
@@ -56,6 +61,71 @@ public class CimsController {
     @GetMapping("/state")
     public ResponseEntity<Map<String, Object>> getState() {
         return ResponseEntity.ok(cimsService.getFullState());
+    }
+
+    @GetMapping("/customers/paged")
+    public ResponseEntity<Page<Customer>> getPagedCustomers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String segment) {
+        String seg = (segment != null && !"ALL".equalsIgnoreCase(segment)) ? segment.trim() : null;
+        String q = (search != null && !search.isBlank()) ? search.trim() : null;
+        int safeSize = Math.min(Math.max(size, 1), 200);
+        return ResponseEntity.ok(customerRepository.findPaged(q, seg, PageRequest.of(Math.max(page, 0), safeSize)));
+    }
+
+    @GetMapping("/facilities/paged")
+    public ResponseEntity<Page<LoanAccount>> getPagedFacilities(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String segment) {
+        String seg = (segment != null && !"ALL".equalsIgnoreCase(segment)) ? segment.trim() : null;
+        String q = (search != null && !search.isBlank()) ? search.trim() : null;
+        int safeSize = Math.min(Math.max(size, 1), 200);
+        Page<LoanAccount> result = loanAccountRepository.findPaged(q, seg, PageRequest.of(Math.max(page, 0), safeSize));
+        List<LoanAccount> items = result.getContent();
+        if (!items.isEmpty()) {
+            List<String> loanIds = items.stream().map(LoanAccount::getId).toList();
+            Map<String, Integer> countByLoanId = new java.util.HashMap<>();
+            for (Object[] row : loanCollateralLinkRepository.countActiveCollateralsByLoanAccountIds(loanIds)) {
+                if (row[0] != null && row[1] != null) {
+                    countByLoanId.put(row[0].toString(), ((Number) row[1]).intValue());
+                }
+            }
+            java.util.Set<String> custIds = items.stream()
+                    .map(LoanAccount::getCustomerId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .collect(java.util.stream.Collectors.toSet());
+            Map<String, String> custNameById = new java.util.HashMap<>();
+            if (!custIds.isEmpty()) {
+                for (Customer c : customerRepository.findAllById(custIds)) {
+                    custNameById.put(c.getId(), c.getName());
+                }
+            }
+            for (LoanAccount la : items) {
+                la.setLinkedAssetCount(countByLoanId.getOrDefault(la.getId(), 0));
+                if (la.getCustomerId() != null && custNameById.containsKey(la.getCustomerId())) {
+                    la.setCustomerName(custNameById.get(la.getCustomerId()));
+                }
+            }
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/collaterals/paged")
+    public ResponseEntity<Page<Collateral>> getPagedCollaterals(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String segment,
+            @RequestParam(required = false) String origin) {
+        String seg = (segment != null && !"ALL".equalsIgnoreCase(segment)) ? segment.trim() : null;
+        String orig = (origin != null && !"ALL".equalsIgnoreCase(origin)) ? origin.trim() : null;
+        String q = (search != null && !search.isBlank()) ? search.trim() : null;
+        int safeSize = Math.min(Math.max(size, 1), 200);
+        return ResponseEntity.ok(collateralRepository.findPaged(q, seg, orig, PageRequest.of(Math.max(page, 0), safeSize)));
     }
 
     @GetMapping("/config/system-date")

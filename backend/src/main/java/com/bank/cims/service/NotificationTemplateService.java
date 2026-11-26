@@ -206,6 +206,8 @@ public class NotificationTemplateService {
                 resolveLoanAccount(links.get(0).getLoanAccountId(), ctx);
             }
         }
+        ctx.putIfAbsent("Loan Account Number", "Unlinked");
+        ctx.putIfAbsent("Facility Number", "Unlinked");
 
         // Guarantee Relationship Manager and Branch placeholders are always populated
         String branchHint = collateral != null ? collateral.getBranch() : null;
@@ -219,6 +221,11 @@ public class NotificationTemplateService {
         ctx.putIfAbsent("Current Date", today.toString());
         ctx.putIfAbsent("Report Date", today.toString());
         ctx.putIfAbsent("report date", today.toString());
+        ctx.putIfAbsent("District Name", String.valueOf(ctx.getOrDefault("district", ctx.getOrDefault("District", "All Districts"))));
+        ctx.putIfAbsent("district name", String.valueOf(ctx.getOrDefault("district", ctx.getOrDefault("District", "All Districts"))));
+        ctx.putIfAbsent("overdue count", String.valueOf(ctx.getOrDefault("overdueCount", "0")));
+        ctx.putIfAbsent("total exposure", String.valueOf(ctx.getOrDefault("totalExposure", "0.00")));
+        ctx.putIfAbsent("remarks", String.valueOf(ctx.getOrDefault("remarks", "Consolidated scheduled portfolio review.")));
         String staffName = String.valueOf(ctx.getOrDefault("Staff Name", ctx.getOrDefault("Customer Name", "CIMS Portfolio Manager")));
         ctx.putIfAbsent("Staff Name", staffName);
         ctx.putIfAbsent("staff name", staffName);

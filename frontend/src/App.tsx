@@ -710,13 +710,15 @@ export function App() {
 
   // CBS Simulator Handlers
   const handleSyncEntity = async (type: string, id: string) => {
-    await cimsApi.syncCbsEntity(type, id);
+    const res = await cimsApi.syncCbsEntity(type, id);
     await loadData();
+    return res;
   };
 
   const handleSyncAll = async () => {
-    await cimsApi.syncAllPending();
+    const res = await cimsApi.syncAllPending();
     await loadData();
+    return res;
   };
 
   const handleSaveCbsCustomer = async (cust: Partial<CbsCustomer>) => {

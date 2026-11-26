@@ -17,18 +17,37 @@ public class CbsSyncException extends RuntimeException {
     }
 
     private final ErrorCode errorCode;
+    private final String failingView;
 
     public CbsSyncException(ErrorCode errorCode, String message) {
         super(message);
         this.errorCode = errorCode;
+        this.failingView = null;
     }
 
     public CbsSyncException(ErrorCode errorCode, String message, Throwable cause) {
         super(message, cause);
         this.errorCode = errorCode;
+        this.failingView = null;
+    }
+
+    public CbsSyncException(ErrorCode errorCode, String message, String failingView) {
+        super(message);
+        this.errorCode = errorCode;
+        this.failingView = failingView;
+    }
+
+    public CbsSyncException(ErrorCode errorCode, String message, String failingView, Throwable cause) {
+        super(message, cause);
+        this.errorCode = errorCode;
+        this.failingView = failingView;
     }
 
     public ErrorCode getErrorCode() {
         return errorCode;
+    }
+
+    public String getFailingView() {
+        return failingView;
     }
 }

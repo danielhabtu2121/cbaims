@@ -125,9 +125,21 @@ public class CbsThreeViewImportService {
         Map<String, Object> schemaCheck = cbsGateway.validateSchema();
         preview.setSchemaStatus(String.valueOf(schemaCheck.get("status")));
 
-        List<CbsCustomerViewRow> customers = cbsGateway.fetchCustomerViewRows();
         List<CbsFacilityViewRow> facilities = cbsGateway.fetchFacilityViewRows();
         List<CbsCollateralViewRow> collaterals = cbsGateway.fetchCollateralViewRows();
+
+        Set<String> neededPreviewCifs = new HashSet<>();
+        for (CbsFacilityViewRow f : facilities) {
+            if (f.getCustomerId() != null && !f.getCustomerId().isBlank()) neededPreviewCifs.add(f.getCustomerId().trim());
+        }
+        for (CbsCollateralViewRow c : collaterals) {
+            if (c.getCollateralOwnerCif() != null && !c.getCollateralOwnerCif().isBlank()) neededPreviewCifs.add(c.getCollateralOwnerCif().trim());
+            if (c.getBorrowerCif() != null && !c.getBorrowerCif().isBlank()) neededPreviewCifs.add(c.getBorrowerCif().trim());
+        }
+
+        List<CbsCustomerViewRow> customers = ("REAL".equalsIgnoreCase(cbsGateway.getMode()) && !neededPreviewCifs.isEmpty())
+                ? cbsGateway.fetchCustomerViewRowsByCifs(neededPreviewCifs)
+                : cbsGateway.fetchCustomerViewRows();
 
         preview.setTotalCustomerRows(customers.size());
         preview.setTotalFacilityRows(facilities.size());
@@ -325,10 +337,22 @@ public class CbsThreeViewImportService {
         result.setBatchReference(finalBatchRef);
         result.setStartTime(startTime);
 
-        // Step 1: Bulk Fetch from Adapter
-        List<CbsCustomerViewRow> customerRows = cbsGateway.fetchCustomerViewRows();
+        // Step 1: Bulk Fetch from Adapter (Facilities & Collaterals first to isolate required customer CIFs)
         List<CbsFacilityViewRow> facilityRows = cbsGateway.fetchFacilityViewRows();
         List<CbsCollateralViewRow> collateralRows = cbsGateway.fetchCollateralViewRows();
+
+        Set<String> neededImportCifs = new HashSet<>();
+        for (CbsFacilityViewRow f : facilityRows) {
+            if (f.getCustomerId() != null && !f.getCustomerId().isBlank()) neededImportCifs.add(f.getCustomerId().trim());
+        }
+        for (CbsCollateralViewRow c : collateralRows) {
+            if (c.getCollateralOwnerCif() != null && !c.getCollateralOwnerCif().isBlank()) neededImportCifs.add(c.getCollateralOwnerCif().trim());
+            if (c.getBorrowerCif() != null && !c.getBorrowerCif().isBlank()) neededImportCifs.add(c.getBorrowerCif().trim());
+        }
+
+        List<CbsCustomerViewRow> customerRows = ("REAL".equalsIgnoreCase(cbsGateway.getMode()) && !neededImportCifs.isEmpty())
+                ? cbsGateway.fetchCustomerViewRowsByCifs(neededImportCifs)
+                : cbsGateway.fetchCustomerViewRows();
 
         batch.setCustomerRows(customerRows.size());
         batch.setFacilityRows(facilityRows.size());
@@ -891,8 +915,10 @@ public class CbsThreeViewImportService {
         if (linkedSegments.size() == 1) {
             col.setOwningSegment(linkedSegments.iterator().next());
         } else if (linkedSegments.size() > 1) {
-            // Cross-segment collateral: leave owningSegment null and hold in mapping queue
+            col.setOwningSegment("Cross-Segment");
             recordUnresolvedOrg("COLLATERAL", col.getCode(), "Cross-segment security across multiple segments: " + linkedSegments, batchId);
+        } else if (col.getOwningSegment() == null || col.getOwningSegment().isBlank()) {
+            col.setOwningSegment("Corporate Banking");
         }
 
         // 3. CRO Assignment

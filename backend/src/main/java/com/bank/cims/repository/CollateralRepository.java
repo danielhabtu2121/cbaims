@@ -40,4 +40,11 @@ public interface CollateralRepository extends JpaRepository<Collateral, String> 
     long countByOriginTypeAndEnrichmentStatus(String originType, String enrichmentStatus);
     List<Collateral> findByOriginType(String originType);
     List<Collateral> findByOriginTypeAndDataQualityStatus(String originType, String dataQualityStatus);
+
+    @Query("SELECT c FROM Collateral c WHERE (:segment IS NULL OR :segment = '' OR UPPER(c.owningSegment) = UPPER(:segment)) " +
+           "AND (:origin IS NULL OR :origin = '' OR UPPER(c.originType) = UPPER(:origin)) " +
+           "AND (:query IS NULL OR :query = '' OR LOWER(c.code) LIKE LOWER(CONCAT('%', :query, '%')) " +
+           "OR (c.description IS NOT NULL AND LOWER(c.description) LIKE LOWER(CONCAT('%', :query, '%'))) " +
+           "OR (c.customerId IS NOT NULL AND LOWER(c.customerId) LIKE LOWER(CONCAT('%', :query, '%'))))")
+    org.springframework.data.domain.Page<Collateral> findPaged(@Param("query") String query, @Param("segment") String segment, @Param("origin") String origin, Pageable pageable);
 }

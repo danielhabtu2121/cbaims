@@ -46,6 +46,35 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
   const [active360Tab, setActive360Tab] = useState<'overview' | 'facilities' | 'collateral' | 'policies' | 'documents' | 'approvals' | 'exceptions' | 'audit'>('overview');
   const [selected360Policy, setSelected360Policy] = useState<InsurancePolicy | null>(null);
 
+  const [pagedCustomers, setPagedCustomers] = useState<Customer[]>(customers);
+  const [totalCustomers, setTotalCustomers] = useState<number>(customers.length);
+  const [custPage, setCustPage] = useState<number>(1);
+  const [custPageSize, setCustPageSize] = useState<number>(25);
+  const [custSearch, setCustSearch] = useState<string>('');
+  const [custLoading, setCustLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(async () => {
+      setCustLoading(true);
+      try {
+        const res = await cimsApi.getPagedCustomers(custPage - 1, custPageSize, custSearch);
+        if (active && res && Array.isArray(res.content)) {
+          setPagedCustomers(res.content);
+          setTotalCustomers(res.totalElements ?? res.content.length);
+        }
+      } catch (e) {
+        if (active) {
+          setPagedCustomers(customers);
+          setTotalCustomers(customers.length);
+        }
+      } finally {
+        if (active) setCustLoading(false);
+      }
+    }, custSearch ? 250 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [custPage, custPageSize, custSearch, customers]);
+
   useEffect(() => {
     if (initialCustomerId && customers.length > 0) {
       const found = customers.find(
@@ -256,10 +285,21 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
       <DataGrid
         title="Customer Master & 360 View"
         subtitle="Comprehensive Single Customer View across Credit Facilities, Pledged Collateral, Insurance Coverages, and Approvals"
-        data={customers}
+        data={pagedCustomers}
         columns={customerColumns}
         keyExtractor={(c) => c.id}
         onRowClick={(c) => load360Data(c)}
+        searchPlaceholder="Search by CIF, Name, or TIN across all customers..."
+        serverSide={{
+          totalItems: totalCustomers,
+          currentPage: custPage,
+          pageSize: custPageSize,
+          searchQuery: custSearch,
+          loading: custLoading,
+          onPageChange: setCustPage,
+          onPageSizeChange: (sz) => { setCustPageSize(sz); setCustPage(1); },
+          onSearchChange: (q) => { setCustSearch(q); setCustPage(1); },
+        }}
         actions={
           isMakerRole ? (
             <button

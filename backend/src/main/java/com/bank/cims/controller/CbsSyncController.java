@@ -107,6 +107,65 @@ public class CbsSyncController {
         return ResponseEntity.ok(cbsGateway.validateSchema());
     }
 
+    @GetMapping("/config")
+    public ResponseEntity<Map<String, Object>> getCbsConfig() {
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("mode", cbsGateway.getMode());
+        com.bank.cims.service.cbs.RealCbsAdapter rca = cbsGateway.getRealCbsAdapter();
+        if (rca != null) {
+            resp.put("oracle", rca.getConfigSummary());
+        }
+        CbsConnectionStatus conn = cbsGateway.checkConnectionStatus();
+        resp.put("connectionStatus", conn.getStatus());
+        resp.put("connectionMessage", conn.getMessage());
+        return ResponseEntity.ok(resp);
+    }
+
+    @PostMapping("/config")
+    public ResponseEntity<Map<String, Object>> updateCbsConfig(@RequestBody Map<String, Object> body) {
+        if (body != null) {
+            String newMode = (String) body.get("mode");
+            if (newMode != null && (newMode.equalsIgnoreCase("SIMULATOR") || newMode.equalsIgnoreCase("REAL"))) {
+                cbsGateway.setMode(newMode);
+            }
+            com.bank.cims.service.cbs.RealCbsAdapter rca = cbsGateway.getRealCbsAdapter();
+            if (rca != null) {
+                String jdbcUrl = (String) body.get("jdbcUrl");
+                String username = (String) body.get("username");
+                String password = (String) body.get("password");
+                String schema = (String) body.get("schema");
+                String customerView = (String) body.get("customerView");
+                String facilityView = (String) body.get("facilityView");
+                String collateralView = (String) body.get("collateralView");
+                rca.updateConfig(jdbcUrl, username, password, schema, customerView, facilityView, collateralView);
+            }
+        }
+        return getCbsConfig();
+    }
+
+    @PostMapping("/test-connection")
+    public ResponseEntity<Map<String, Object>> testConnection(@RequestBody(required = false) Map<String, String> body) {
+        com.bank.cims.service.cbs.RealCbsAdapter rca = cbsGateway.getRealCbsAdapter();
+        if (rca == null) {
+            return ResponseEntity.ok(Map.of(
+                    "status", "ERROR",
+                    "message", "Real CBS Adapter is not available in context."
+            ));
+        }
+
+        String testUrl = body != null ? body.get("jdbcUrl") : null;
+        String testUser = body != null ? body.get("username") : null;
+        String testPass = body != null ? body.get("password") : null;
+
+        CbsConnectionStatus status = rca.testAdhocConnection(testUrl, testUser, testPass);
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("mode", "REAL");
+        resp.put("status", status.getStatus());
+        resp.put("message", status.getMessage());
+        resp.put("timestamp", LocalDateTime.now().toString());
+        return ResponseEntity.ok(resp);
+    }
+
     // =========================================================================
     // Three-View Dry-Run Preview & Import Execution
     // =========================================================================

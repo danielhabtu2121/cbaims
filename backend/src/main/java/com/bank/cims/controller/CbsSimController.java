@@ -3,10 +3,13 @@ package com.bank.cims.controller;
 import com.bank.cims.model.*;
 import com.bank.cims.repository.*;
 import com.bank.cims.service.CbsSyncService;
+import com.bank.cims.service.cbs.CbsSyncException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -253,7 +256,7 @@ public class CbsSimController {
             }
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Unknown entity type: " + entityType));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+            return buildErrorResponse(e);
         }
     }
 
@@ -262,8 +265,55 @@ public class CbsSimController {
         try {
             return ResponseEntity.ok(cbsSyncService.syncAllFromCbs(userId));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+            return buildErrorResponse(e);
         }
+    }
+
+    private ResponseEntity<Map<String, Object>> buildErrorResponse(Exception e) {
+        Throwable root = e;
+        while (root.getCause() != null && !(root instanceof CbsSyncException)) {
+            root = root.getCause();
+        }
+
+        if (root instanceof CbsSyncException cbsEx) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", false);
+            body.put("failingView", cbsEx.getFailingView() != null ? cbsEx.getFailingView() : "N/A");
+            body.put("message", cbsEx.getMessage());
+
+            if (cbsEx.getErrorCode() == CbsSyncException.ErrorCode.SOURCE_TIMEOUT) {
+                body.put("status", 504);
+                body.put("errorCategory", "CBS_QUERY_TIMEOUT");
+                return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(body);
+            } else if (cbsEx.getErrorCode() == CbsSyncException.ErrorCode.SOURCE_NOT_AVAILABLE) {
+                body.put("status", 502);
+                body.put("errorCategory", "CBS_UNAVAILABLE");
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+            } else if (cbsEx.getErrorCode() == CbsSyncException.ErrorCode.SOURCE_AUTHENTICATION_ERROR) {
+                body.put("status", 502);
+                body.put("errorCategory", "CBS_AUTHENTICATION_ERROR");
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+            } else if (cbsEx.getErrorCode() == CbsSyncException.ErrorCode.SCHEMA_MISMATCH) {
+                body.put("status", 502);
+                body.put("errorCategory", "CBS_SCHEMA_MISMATCH");
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+            } else if (cbsEx.getErrorCode() == CbsSyncException.ErrorCode.SOURCE_VALIDATION_ERROR) {
+                body.put("status", 400);
+                body.put("errorCategory", "VALIDATION_ERROR");
+                return ResponseEntity.badRequest().body(body);
+            } else {
+                body.put("status", 502);
+                body.put("errorCategory", "CBS_QUERY_FAILED");
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body);
+            }
+        }
+
+        Map<String, Object> generic = new LinkedHashMap<>();
+        generic.put("success", false);
+        generic.put("status", 500);
+        generic.put("errorCategory", "INTERNAL_ERROR");
+        generic.put("message", e.getMessage() != null ? e.getMessage() : "Unknown synchronization error");
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(generic);
     }
 
     @GetMapping("/cbs-sim/sync-logs")

@@ -31,4 +31,10 @@ public interface CustomerRepository extends JpaRepository<Customer, String> {
 
     @Query("SELECT c FROM Customer c WHERE LOWER(c.name) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(c.cif) LIKE LOWER(CONCAT('%', :query, '%')) OR (c.taxIdNo IS NOT NULL AND LOWER(c.taxIdNo) LIKE LOWER(CONCAT('%', :query, '%')))")
     List<Customer> searchCustomers(@Param("query") String query, Pageable pageable);
+
+    @Query("SELECT c FROM Customer c WHERE (:segment IS NULL OR :segment = '' OR UPPER(c.segment) = UPPER(:segment)) " +
+           "AND (:query IS NULL OR :query = '' OR LOWER(c.name) LIKE LOWER(CONCAT('%', :query, '%')) " +
+           "OR LOWER(c.cif) LIKE LOWER(CONCAT('%', :query, '%')) " +
+           "OR (c.taxIdNo IS NOT NULL AND LOWER(c.taxIdNo) LIKE LOWER(CONCAT('%', :query, '%'))))")
+    org.springframework.data.domain.Page<Customer> findPaged(@Param("query") String query, @Param("segment") String segment, Pageable pageable);
 }
