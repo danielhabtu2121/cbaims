@@ -368,16 +368,26 @@ public class CbsSyncService {
                             ? findExistingCustomer(ccol.getCustomerCif(), cimsCustByCif)
                             : null;
 
+                    LoanAccount linkedLoan = (ccol.getLinkedAccountNo() != null && !ccol.getLinkedAccountNo().isBlank())
+                            ? findExistingLoan(ccol.getLinkedAccountNo(), cimsLoanByRef)
+                            : null;
+
                     Collateral mapped = cbsMapper.mapCollateral(ccol, existing, matchedCust, sourceSystem);
                     if (mapped.getOwningSegment() == null || mapped.getOwningSegment().isBlank()) {
-                        mapped.setOwningSegment(matchedCust != null && matchedCust.getSegment() != null && !matchedCust.getSegment().isBlank()
+                        String fallbackSeg = (matchedCust != null && matchedCust.getSegment() != null && !matchedCust.getSegment().isBlank())
                                 ? matchedCust.getSegment()
-                                : "Corporate Banking");
+                                : (linkedLoan != null && linkedLoan.getSegment() != null && !linkedLoan.getSegment().isBlank()
+                                        ? linkedLoan.getSegment()
+                                        : "Corporate Banking");
+                        mapped.setOwningSegment(fallbackSeg);
                     }
                     if (mapped.getBranch() == null || mapped.getBranch().isBlank()) {
-                        mapped.setBranch(matchedCust != null && matchedCust.getBranch() != null && !matchedCust.getBranch().isBlank()
-                                ? matchedCust.getBranch()
-                                : "Head Office");
+                        String fallbackBranch = (linkedLoan != null && linkedLoan.getBranch() != null && !linkedLoan.getBranch().isBlank())
+                                ? linkedLoan.getBranch()
+                                : (matchedCust != null && matchedCust.getBranch() != null && !matchedCust.getBranch().isBlank()
+                                        ? matchedCust.getBranch()
+                                        : "Head Office");
+                        mapped.setBranch(fallbackBranch);
                     }
                     if (mapped.getStatus() == null || mapped.getStatus().isBlank()) {
                         mapped.setStatus("Active");
