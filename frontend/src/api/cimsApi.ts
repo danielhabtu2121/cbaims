@@ -393,6 +393,28 @@ export const cimsApi = {
     return state.links || [];
   },
 
+  async getPagedCustomers(page = 0, size = 25, search = '', segment = ''): Promise<{ content: Customer[]; totalElements: number; totalPages: number; number: number; size: number }> {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    if (search.trim()) params.set('search', search.trim());
+    if (segment && segment !== 'ALL') params.set('segment', segment);
+    return requestJson(`${API_BASE}/customers/paged?${params.toString()}`);
+  },
+
+  async getPagedFacilities(page = 0, size = 25, search = '', segment = ''): Promise<{ content: LoanAccount[]; totalElements: number; totalPages: number; number: number; size: number }> {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    if (search.trim()) params.set('search', search.trim());
+    if (segment && segment !== 'ALL') params.set('segment', segment);
+    return requestJson(`${API_BASE}/facilities/paged?${params.toString()}`);
+  },
+
+  async getPagedCollaterals(page = 0, size = 25, search = '', segment = '', origin = ''): Promise<{ content: Collateral[]; totalElements: number; totalPages: number; number: number; size: number }> {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    if (search.trim()) params.set('search', search.trim());
+    if (segment && segment !== 'ALL') params.set('segment', segment);
+    if (origin && origin !== 'ALL') params.set('origin', origin);
+    return requestJson(`${API_BASE}/collaterals/paged?${params.toString()}`);
+  },
+
   async getPolicies(): Promise<InsurancePolicy[]> {
     const state = await this.fetchFullState();
     return state.policies || [];
@@ -630,20 +652,42 @@ export const cimsApi = {
     return res.json();
   },
 
-  async syncCbsEntity(entityType: string, id: string, userId = 'SYSADMIN'): Promise<{ success: boolean; message: string }> {
+  async syncCbsEntity(entityType: string, id: string, userId = 'SYSADMIN'): Promise<{ success: boolean; message: string; errorCategory?: string; failingView?: string; status?: number }> {
     const res = await authenticatedFetch(`${API_BASE}/cbs-integration/sync/${entityType}/${id}?userId=${userId}`, {
       method: 'POST',
     });
     invalidateStateCache();
-    return res.json();
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg = payload?.message || payload?.error || `CBS sync failed with HTTP ${res.status}`;
+      return {
+        success: false,
+        message: msg,
+        errorCategory: payload?.errorCategory,
+        failingView: payload?.failingView,
+        status: res.status,
+      };
+    }
+    return payload || { success: true, message: 'Sync completed' };
   },
 
-  async syncAllPending(userId = 'SYSADMIN'): Promise<{ success: boolean; message: string }> {
+  async syncAllPending(userId = 'SYSADMIN'): Promise<{ success: boolean; message: string; errorCategory?: string; failingView?: string; status?: number }> {
     const res = await authenticatedFetch(`${API_BASE}/cbs-integration/sync-all?userId=${userId}`, {
       method: 'POST',
     });
     invalidateStateCache();
-    return res.json();
+    const payload = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg = payload?.message || payload?.error || `CBS sync failed with HTTP ${res.status}`;
+      return {
+        success: false,
+        message: msg,
+        errorCategory: payload?.errorCategory,
+        failingView: payload?.failingView,
+        status: res.status,
+      };
+    }
+    return payload || { success: true, message: 'Sync completed' };
   },
 
   async getCbsSyncLogs(): Promise<CbsSyncLog[]> {
@@ -2251,6 +2295,59 @@ export const cimsApi = {
   },
 
   // --- Production CBS Oracle 3-View Integration Operations ---
+  async setCbsMode(mode: 'SIMULATOR' | 'REAL'): Promise<{ message: string; mode: string }> {
+    return requestJson<any>(`${API_BASE}/cbs/mode`, {
+      method: 'POST',
+      body: JSON.stringify({ mode }),
+    });
+  },
+
+  async getCbsConfig(): Promise<{
+    mode: string;
+    oracle?: {
+      jdbcUrl: string;
+      rawJdbcUrl: string;
+      username: string;
+      hasPassword: boolean;
+      schema: string;
+      customerView: string;
+      facilityView: string;
+      collateralView: string;
+      isConfigured: boolean;
+    };
+    connectionStatus: string;
+    connectionMessage: string;
+  }> {
+    return requestJson<any>(`${API_BASE}/cbs/config`);
+  },
+
+  async updateCbsConfig(payload: {
+    mode?: string;
+    jdbcUrl?: string;
+    username?: string;
+    password?: string;
+    schema?: string;
+    customerView?: string;
+    facilityView?: string;
+    collateralView?: string;
+  }): Promise<any> {
+    return requestJson<any>(`${API_BASE}/cbs/config`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async testCbsConnection(payload?: {
+    jdbcUrl?: string;
+    username?: string;
+    password?: string;
+  }): Promise<{ mode: string; status: string; message: string; timestamp: string }> {
+    return requestJson<any>(`${API_BASE}/cbs/test-connection`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+  },
+
   async getCbsHealth(): Promise<{ mode: string; status: string; message: string; timestamp: string }> {
     return requestJson<any>(`${API_BASE}/cbs/health`);
   },

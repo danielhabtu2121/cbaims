@@ -18,6 +18,10 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 500
+        order_inserts: true
+        order_updates: true
   flyway:
     enabled: true
     baseline-on-migrate: true
@@ -25,18 +29,18 @@ spring:
 
 cims:
   cbs:
-    mode: ${CIMS_CBS_MODE:SIMULATOR} # Default to SIMULATOR; set to REAL only when connecting to CBS Oracle
+    mode: ${CIMS_CBS_MODE:REAL} # Default to REAL CBS Oracle connection
     sync-mode: MANUAL
     scheduled-interval-ms: 3600000
     real:
-      enabled: ${CIMS_CBS_REAL_ENABLED:false}
+      enabled: ${CIMS_CBS_REAL_ENABLED:true}
       base-url: ""
       connect-timeout-ms: 5000
       read-timeout-ms: 10000
       authentication-type: "NONE"
     # =========================================================================
     # CBS PRODUCTION ORACLE 3-VIEW CONFIGURATION
-    # Deployment Server: 172.22.11.55
+    # Deployment Server: 172.22.10.55
     # CBS Oracle Server: 10.41.30.114:1521 / Service: FCUBUAT
     # Schema Owner: FCUBSLIVE / User: CBAIMSUSER
     # Password: Set via environment variable CIMS_CBS_PASSWORD (never hardcode)
@@ -49,11 +53,11 @@ cims:
       customer-view: "${CIMS_CBS_CUSTOMER_VIEW:FCUBSLIVE.STVWCBS_CBAIMS_CUSTOMER}"
       facility-view: "${CIMS_CBS_FACILITY_VIEW:FCUBSLIVE.STVWCBS_CBAIMS_FACILITY}"
       collateral-view: "${CIMS_CBS_COLLATERAL_VIEW:FCUBSLIVE.STVWCBS_CBAIMS_COLLATERAL}"
-      connect-timeout-ms: ${CIMS_CBS_CONNECT_TIMEOUT_MS:5000}
-      read-timeout-ms: ${CIMS_CBS_READ_TIMEOUT_MS:15000}
-      maximum-pool-size: ${CIMS_CBS_MAX_POOL_SIZE:5}
-      minimum-idle: ${CIMS_CBS_MIN_IDLE:1}
-      fetch-size: ${CIMS_CBS_FETCH_SIZE:500}
+      connect-timeout-ms: ${CIMS_CBS_CONNECT_TIMEOUT_MS:10000}
+      read-timeout-ms: ${CIMS_CBS_READ_TIMEOUT_MS:300000}
+      maximum-pool-size: ${CIMS_CBS_MAX_POOL_SIZE:10}
+      minimum-idle: ${CIMS_CBS_MIN_IDLE:2}
+      fetch-size: ${CIMS_CBS_FETCH_SIZE:2000}
 
 logging:
   level:

@@ -627,7 +627,7 @@ export const DataQualityWorkbench: React.FC<DataQualityWorkbenchProps> = ({
                           )}
                         </div>
                         <p className="text-[11px] text-slate-500">
-                          Target: 10.41.31.114:1521/FCUBUAT (Schema: FCUBSLIVE) | Egress: 172.22.11.55
+                          Target: 10.41.31.114:1521/FCUBUAT (Schema: FCUBSLIVE) | Egress: 172.22.10.55
                         </p>
                       </div>
                     </div>

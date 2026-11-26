@@ -20,7 +20,7 @@ public class CbsGateway {
     @Qualifier("realCbsAdapter")
     private CbsAdapter realAdapter;
 
-    @Value("${cims.cbs.mode:SIMULATOR}")
+    @Value("${cims.cbs.mode:REAL}")
     private String cbsMode;
 
     public String getMode() {
@@ -33,6 +33,13 @@ public class CbsGateway {
         }
     }
 
+    public RealCbsAdapter getRealCbsAdapter() {
+        if (realAdapter instanceof RealCbsAdapter rca) {
+            return rca;
+        }
+        return null;
+    }
+
     public CbsAdapter getActiveAdapter() {
         if ("REAL".equalsIgnoreCase(getMode())) {
             return realAdapter;
@@ -42,6 +49,10 @@ public class CbsGateway {
 
     public List<CbsCustomer> fetchCustomers() {
         return getActiveAdapter().fetchCustomers();
+    }
+
+    public List<CbsCustomer> fetchCustomersByCifs(java.util.Collection<String> cifs) {
+        return getActiveAdapter().fetchCustomersByCifs(cifs);
     }
 
     public Optional<CbsCustomer> fetchCustomerByCif(String cif) {
@@ -92,12 +103,28 @@ public class CbsGateway {
         return getActiveAdapter().fetchCustomerViewRows();
     }
 
+    public List<com.bank.cims.dto.cbs.CbsCustomerViewRow> fetchCustomerViewRowsByCifs(java.util.Collection<String> cifs) {
+        return getActiveAdapter().fetchCustomerViewRowsByCifs(cifs);
+    }
+
     public List<com.bank.cims.dto.cbs.CbsFacilityViewRow> fetchFacilityViewRows() {
         return getActiveAdapter().fetchFacilityViewRows();
     }
 
     public List<com.bank.cims.dto.cbs.CbsCollateralViewRow> fetchCollateralViewRows() {
         return getActiveAdapter().fetchCollateralViewRows();
+    }
+
+    public void streamCustomerViewRows(java.util.function.Consumer<com.bank.cims.dto.cbs.CbsCustomerViewRow> consumer, int maxRows) {
+        getActiveAdapter().streamCustomerViewRows(consumer, maxRows);
+    }
+
+    public void streamFacilityViewRows(java.util.function.Consumer<com.bank.cims.dto.cbs.CbsFacilityViewRow> consumer, int maxRows) {
+        getActiveAdapter().streamFacilityViewRows(consumer, maxRows);
+    }
+
+    public void streamCollateralViewRows(java.util.function.Consumer<com.bank.cims.dto.cbs.CbsCollateralViewRow> consumer, int maxRows) {
+        getActiveAdapter().streamCollateralViewRows(consumer, maxRows);
     }
 
     public java.util.Map<String, Object> validateSchema() {

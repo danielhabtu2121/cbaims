@@ -124,6 +124,12 @@ public class LoanAccount {
     @Column(name = "customer_match_status")
     private String customerMatchStatus = "MATCHED";
 
+    @Transient
+    private Integer linkedAssetCount;
+
+    @Transient
+    private String customerName;
+
     public LoanAccount() {}
 
     public String getId() { return id; }
@@ -218,4 +224,8 @@ public class LoanAccount {
 
     public String getCustomerMatchStatus() { return customerMatchStatus; }
     public void setCustomerMatchStatus(String customerMatchStatus) { this.customerMatchStatus = customerMatchStatus; }
+    public Integer getLinkedAssetCount() { return linkedAssetCount; }
+    public void setLinkedAssetCount(Integer linkedAssetCount) { this.linkedAssetCount = linkedAssetCount; }
+    public String getCustomerName() { return customerName; }
+    public void setCustomerName(String customerName) { this.customerName = customerName; }
 }

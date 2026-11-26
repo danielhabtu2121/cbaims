@@ -409,23 +409,6 @@ public class CollateralFacilityRelationshipService {
             }
         }
 
-        // Build global facility -> collateral links map to track co-collaterals
-        List<LoanCollateralLink> allLinks = loanCollateralLinkRepository.findAll();
-        Map<String, List<String>> facilityToCollateralCodes = new HashMap<>();
-        for (LoanCollateralLink link : allLinks) {
-            if ("Active".equalsIgnoreCase(link.getStatus()) || "Pending Approval".equalsIgnoreCase(link.getStatus())) {
-                String colCode = link.getCbsCollateralRef() != null ? link.getCbsCollateralRef() : link.getCollateralId();
-                if (colCode != null) {
-                    if (link.getLoanAccountId() != null) {
-                        facilityToCollateralCodes.computeIfAbsent(link.getLoanAccountId().toLowerCase(), k -> new ArrayList<>()).add(colCode);
-                    }
-                    if (link.getFacilityId() != null && !link.getFacilityId().equalsIgnoreCase(link.getLoanAccountId())) {
-                        facilityToCollateralCodes.computeIfAbsent(link.getFacilityId().toLowerCase(), k -> new ArrayList<>()).add(colCode);
-                    }
-                }
-            }
-        }
-
         // Scope resolution
         DashboardService.ResolvedScope userScope = null;
         if (userId != null && !userId.isBlank() && dashboardService != null) {
@@ -445,10 +428,42 @@ public class CollateralFacilityRelationshipService {
             targetCustIds = resolveCustomerIds(targetCustomerId);
         }
 
-        List<LoanAccount> allFacilities = loanAccountRepository.findAll();
+        List<LoanAccount> candidateSourceFacilities;
+        if (targetCustIds != null && !targetCustIds.isEmpty()) {
+            candidateSourceFacilities = loanAccountRepository.findByCustomerIdIn(targetCustIds);
+        } else {
+            String segFilter = (effScope != null && !effScope.isBankWide()) ? effScope.effectiveSegment : null;
+            candidateSourceFacilities = loanAccountRepository.findPaged(
+                    null, segFilter, false, List.of("__NONE__"), org.springframework.data.domain.PageRequest.of(0, 200)
+            ).getContent();
+        }
+
+        // Build facility -> collateral links map ONLY for candidate facilities (avoids 315k-row findAll)
+        List<String> candFacIds = candidateSourceFacilities.stream()
+                .map(LoanAccount::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        List<LoanCollateralLink> scopedLinks = candFacIds.isEmpty()
+                ? Collections.emptyList()
+                : loanCollateralLinkRepository.findByLoanAccountIdIn(candFacIds);
+        Map<String, List<String>> facilityToCollateralCodes = new HashMap<>();
+        for (LoanCollateralLink link : scopedLinks) {
+            if ("Active".equalsIgnoreCase(link.getStatus()) || "Pending Approval".equalsIgnoreCase(link.getStatus())) {
+                String colCode = link.getCbsCollateralRef() != null ? link.getCbsCollateralRef() : link.getCollateralId();
+                if (colCode != null) {
+                    if (link.getLoanAccountId() != null) {
+                        facilityToCollateralCodes.computeIfAbsent(link.getLoanAccountId().toLowerCase(), k -> new ArrayList<>()).add(colCode);
+                    }
+                    if (link.getFacilityId() != null && !link.getFacilityId().equalsIgnoreCase(link.getLoanAccountId())) {
+                        facilityToCollateralCodes.computeIfAbsent(link.getFacilityId().toLowerCase(), k -> new ArrayList<>()).add(colCode);
+                    }
+                }
+            }
+        }
+
         List<FacilityCandidateDto> candidates = new ArrayList<>();
 
-        for (LoanAccount f : allFacilities) {
+        for (LoanAccount f : candidateSourceFacilities) {
             if (targetCustIds != null && (f.getCustomerId() == null || !targetCustIds.contains(f.getCustomerId().trim().toLowerCase()))) {
                 continue;
             }
@@ -613,7 +628,46 @@ public class CollateralFacilityRelationshipService {
         }
         final DashboardService.ResolvedScope effScope = userScope;
 
-        List<Collateral> allCollaterals = collateralRepository.findAll();
+        // Targeted candidate lookup: borrower's own collaterals + linked collaterals + bounded top-up (avoids 73k-row findAll + N+1 queries)
+        Map<String, Collateral> candidateColMap = new LinkedHashMap<>();
+        if (validBorrowerCustIds != null && !validBorrowerCustIds.isEmpty()) {
+            for (Collateral c : collateralRepository.findByCustomerIdIn(validBorrowerCustIds)) {
+                candidateColMap.put(c.getId(), c);
+            }
+        }
+        if (!activeLinksByColId.isEmpty()) {
+            Set<String> linkedIds = activeLinks.stream()
+                    .map(LoanCollateralLink::getCollateralId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+            for (Collateral c : collateralRepository.findAllById(linkedIds)) {
+                candidateColMap.put(c.getId(), c);
+            }
+        }
+        if (candidateColMap.size() < 100) {
+            String segFilter = (effScope != null && !effScope.isBankWide()) ? effScope.effectiveSegment : null;
+            for (Collateral c : collateralRepository.findPaged(
+                    null, segFilter, null, false, List.of("__NONE__"), org.springframework.data.domain.PageRequest.of(0, 100)
+            ).getContent()) {
+                candidateColMap.putIfAbsent(c.getId(), c);
+            }
+        }
+
+        Set<String> candCustIds = candidateColMap.values().stream()
+                .map(Collateral::getCustomerId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<String, Customer> custByIdMap = new HashMap<>();
+        if (!candCustIds.isEmpty()) {
+            for (Customer cust : customerRepository.findAllById(candCustIds)) {
+                custByIdMap.put(cust.getId(), cust);
+                if (cust.getCif() != null) {
+                    custByIdMap.put(cust.getCif().trim().toUpperCase(), cust);
+                }
+            }
+        }
+
+        List<Collateral> allCollaterals = new ArrayList<>(candidateColMap.values());
         List<CollateralCandidateDto> candidates = new ArrayList<>();
 
         for (Collateral c : allCollaterals) {
@@ -635,14 +689,16 @@ public class CollateralFacilityRelationshipService {
             dto.setAvailableCapacity(remainingCap);
             dto.setUtilizationPct(nsv > 0 ? (currentAlloc / nsv) * 100.0 : 0.0);
 
-            // Customer Name
+            // Customer Name (from batch map)
             if (c.getCustomerId() != null) {
-                customerRepository.findById(c.getCustomerId())
-                        .or(() -> customerRepository.findFirstByCifIgnoreCase(c.getCustomerId()))
-                        .ifPresent(cust -> {
-                            dto.setCustomerName(cust.getName());
-                            dto.setCustomerCif(cust.getCif());
-                        });
+                Customer cust = custByIdMap.get(c.getCustomerId());
+                if (cust == null) {
+                    cust = custByIdMap.get(c.getCustomerId().trim().toUpperCase());
+                }
+                if (cust != null) {
+                    dto.setCustomerName(cust.getName());
+                    dto.setCustomerCif(cust.getCif());
+                }
             }
 
             // Owners

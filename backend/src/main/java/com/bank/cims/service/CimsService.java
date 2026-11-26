@@ -8,6 +8,7 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.task.api.Task;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -462,11 +463,15 @@ public class CimsService {
 
     public Map<String, Object> getFullState() {
         Map<String, Object> state = new HashMap<>();
-        state.put("customers", customerRepository.findAll());
-        state.put("facilities", loanAccountRepository.findAll());
-        state.put("loans", state.get("facilities"));
-        state.put("collaterals", collateralRepository.findAll());
-        state.put("links", loanCollateralLinkRepository.findAll());
+        PageRequest stateLimit = PageRequest.of(0, 500);
+        state.put("customers", customerRepository.findAll(stateLimit).getContent());
+        state.put("facilities", loanAccountRepository.findAll(stateLimit).getContent());
+        state.put("collaterals", collateralRepository.findAll(stateLimit).getContent());
+        state.put("links", loanCollateralLinkRepository.findAll(stateLimit).getContent());
+        state.put("totalCustomersCount", customerRepository.count());
+        state.put("totalFacilitiesCount", loanAccountRepository.count());
+        state.put("totalCollateralsCount", collateralRepository.count());
+        state.put("totalLinksCount", loanCollateralLinkRepository.count());
         state.put("policies", insurancePolicyRepository.findAll());
         state.put("endorsements", policyEndorsementRepository.findAll());
         state.put("documents", ownershipDocumentRepository.findAll().stream().map(this::stripDocumentContent).toList());

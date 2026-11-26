@@ -27,6 +27,7 @@ interface FacilityManagerProps {
   policies: InsurancePolicy[];
   initialFacilityId?: string | null;
   currentUser?: UserSession;
+  selectedSegment?: string;
   onNavigate?: (page: string, params?: Record<string, any>) => void;
   onRefreshData?: () => void | Promise<void>;
 }
@@ -39,6 +40,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
   policies,
   initialFacilityId,
   currentUser,
+  selectedSegment,
   onNavigate,
   onRefreshData,
 }) => {
@@ -55,6 +57,36 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
   const [historyLinkId, setHistoryLinkId] = useState<string>('');
   const [historyRef, setHistoryRef] = useState<string>('');
   const [showReconcileModal, setShowReconcileModal] = useState<boolean>(false);
+
+  const [pagedFacilities, setPagedFacilities] = useState<LoanAccount[]>(facilities);
+  const [totalFacilities, setTotalFacilities] = useState<number>(facilities.length);
+  const [facPage, setFacPage] = useState<number>(1);
+  const [facPageSize, setFacPageSize] = useState<number>(25);
+  const [facSearch, setFacSearch] = useState<string>('');
+  const [facLoading, setFacLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(async () => {
+      setFacLoading(true);
+      try {
+        const segParam = selectedSegment && selectedSegment !== 'ALL' ? selectedSegment : '';
+        const res = await cimsApi.getPagedFacilities(facPage - 1, facPageSize, facSearch, segParam);
+        if (active && res && Array.isArray(res.content)) {
+          setPagedFacilities(res.content);
+          setTotalFacilities(res.totalElements ?? res.content.length);
+        }
+      } catch (e) {
+        if (active) {
+          setPagedFacilities(facilities);
+          setTotalFacilities(facilities.length);
+        }
+      } finally {
+        if (active) setFacLoading(false);
+      }
+    }, facSearch ? 250 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [facPage, facPageSize, facSearch, selectedSegment, facilities]);
 
   const loadSecuringCollaterals = async (facId: string) => {
     setLoadingSecuring(true);
@@ -98,6 +130,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
       header: 'Customer',
       cell: (r) => {
         const cust = customers.find((c) => c.id === r.customerId || c.cif === r.customerId);
+        const displayName = cust ? cust.name : ((r as any).customerName || r.customerId);
         return (
           <button
             type="button"
@@ -105,7 +138,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
             className="text-left font-medium text-blue-700 hover:text-blue-900 hover:underline flex items-center gap-1 cursor-pointer"
             title="Open Customer 360"
           >
-            <span>{cust ? cust.name : r.customerId}</span>
+            <span>{displayName}</span>
             <ArrowUpRight className="w-3 h-3 opacity-60 inline" />
           </button>
         );
@@ -133,7 +166,9 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
           l.loanAccountId === r.lineCode || l.facilityId === r.lineCode ||
           l.loanAccountId === r.loanReference || l.facilityId === r.loanReference
         );
-        const colCount = facLinks.length;
+        const colCount = typeof (r as any).linkedAssetCount === 'number'
+          ? (r as any).linkedAssetCount
+          : facLinks.length;
         return (
           <button
             onClick={(e) => {
@@ -267,9 +302,20 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
       <DataGrid
         title="Credit Facilities & Loans (GETM_FACILITY)"
         subtitle="Core Banking Credit Lines, Pledged Securities, and Insurance Adequacy"
-        data={facilities}
+        data={pagedFacilities}
         columns={facilityColumns}
         keyExtractor={(f) => f.id}
+        searchPlaceholder="Search by Loan Ref, Line Code, or CIF across all facilities..."
+        serverSide={{
+          totalItems: totalFacilities,
+          currentPage: facPage,
+          pageSize: facPageSize,
+          searchQuery: facSearch,
+          loading: facLoading,
+          onPageChange: setFacPage,
+          onPageSizeChange: (sz) => { setFacPageSize(sz); setFacPage(1); },
+          onSearchChange: (q) => { setFacSearch(q); setFacPage(1); },
+        }}
         onRowClick={(f) => {
           setSelectedFacility(f);
           setShowDetailModal(true);

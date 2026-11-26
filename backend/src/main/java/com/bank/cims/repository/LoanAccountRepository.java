@@ -29,4 +29,17 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, String
 
     @Query("SELECT l FROM LoanAccount l ORDER BY l.outstandingBalance DESC")
     List<LoanAccount> findTopByOutstandingBalance(Pageable pageable);
+
+    @Query("SELECT l FROM LoanAccount l WHERE (:segment IS NULL OR :segment = '' OR UPPER(l.segment) = UPPER(:segment)) " +
+           "AND (:applyBranchFilter = false OR (l.branch IS NOT NULL AND UPPER(TRIM(l.branch)) IN :branches)) " +
+           "AND (:query IS NULL OR :query = '' OR LOWER(l.loanReference) LIKE LOWER(CONCAT('%', :query, '%')) " +
+           "OR (l.lineCode IS NOT NULL AND LOWER(l.lineCode) LIKE LOWER(CONCAT('%', :query, '%'))) " +
+           "OR (l.accountNumber IS NOT NULL AND LOWER(l.accountNumber) LIKE LOWER(CONCAT('%', :query, '%'))) " +
+           "OR (l.customerId IS NOT NULL AND LOWER(l.customerId) LIKE LOWER(CONCAT('%', :query, '%'))))")
+    org.springframework.data.domain.Page<LoanAccount> findPaged(
+            @Param("query") String query,
+            @Param("segment") String segment,
+            @Param("applyBranchFilter") boolean applyBranchFilter,
+            @Param("branches") Collection<String> branches,
+            Pageable pageable);
 }

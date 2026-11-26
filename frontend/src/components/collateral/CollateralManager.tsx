@@ -113,6 +113,7 @@ interface CollateralManagerProps {
   customers?: Customer[];
   systemParameters?: SystemParameter[];
   currentUser: UserSession;
+  selectedSegment?: string;
   initialCollateralId?: string | null;
   onNavigate?: (page: string, params?: Record<string, any>) => void;
   onRegisterCollateral: (col: Partial<Collateral>, allocations?: any[], documents?: any[]) => Promise<void>;
@@ -138,6 +139,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
   customers = [],
   systemParameters = [],
   currentUser,
+  selectedSegment,
   initialCollateralId,
   onNavigate,
   onRegisterCollateral,
@@ -164,6 +166,13 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
   const [m3HistoryLinkId, setM3HistoryLinkId] = useState('');
   const [m3HistoryRef, setM3HistoryRef] = useState('');
   const [showM3ReconcileModal, setShowM3ReconcileModal] = useState(false);
+
+  const [pagedCollaterals, setPagedCollaterals] = useState<Collateral[]>(collaterals);
+  const [totalCollaterals, setTotalCollaterals] = useState<number>(collaterals.length);
+  const [colPage, setColPage] = useState<number>(1);
+  const [colPageSize, setColPageSize] = useState<number>(25);
+  const [colSearch, setColSearch] = useState<string>('');
+  const [colLoading, setColLoading] = useState<boolean>(false);
 
   // --- Insurance Adequacy (BR-18, BR-03, BR-11) & Early Release States ---
   const [adequacyAssessment, setAdequacyAssessment] = useState<InsuranceAdequacyAssessment | null>(null);
@@ -1952,6 +1961,31 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
     });
   }, [collaterals, filterRank, mainSubTab, filterOrigin]);
 
+  useEffect(() => {
+    if (filterRank !== 'ALL') return;
+    let active = true;
+    const timer = setTimeout(async () => {
+      setColLoading(true);
+      try {
+        const originParam = mainSubTab === 'cbaims' ? 'CBAIMS_REGISTERED' : (filterOrigin !== 'ALL' ? filterOrigin : '');
+        const segParam = selectedSegment && selectedSegment !== 'ALL' ? selectedSegment : '';
+        const res = await cimsApi.getPagedCollaterals(colPage - 1, colPageSize, colSearch, segParam, originParam);
+        if (active && res && Array.isArray(res.content)) {
+          setPagedCollaterals(res.content);
+          setTotalCollaterals(res.totalElements ?? res.content.length);
+        }
+      } catch (e) {
+        if (active) {
+          setPagedCollaterals(filteredCollaterals);
+          setTotalCollaterals(filteredCollaterals.length);
+        }
+      } finally {
+        if (active) setColLoading(false);
+      }
+    }, colSearch ? 250 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [colPage, colPageSize, colSearch, selectedSegment, mainSubTab, filterOrigin, filterRank, filteredCollaterals]);
+
   const count1st = collaterals.filter((c) => c.collateralRank !== '2nd').length;
   const count2ndInt = collaterals.filter((c) => c.collateralRank === '2nd' && c.isFirstDegreeInternal).length;
   const count2ndExt = collaterals.filter((c) => c.collateralRank === '2nd' && !c.isFirstDegreeInternal).length;
@@ -2140,9 +2174,20 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
           <DataGrid
             title={mainSubTab === 'cbaims' ? 'CBAIMS Registered Collateral Portfolio' : 'Collateral Master & Securities Overview'}
             subtitle={mainSubTab === 'cbaims' ? 'Manual registration portfolio created and managed in CBAIMS' : 'Manage Consolidated Pledged Assets, First/Second Degree Priorities, Allocations, and CBS Imports'}
-            data={filteredCollaterals}
+            data={filterRank === 'ALL' ? pagedCollaterals : filteredCollaterals}
             columns={collateralColumns}
             keyExtractor={(c) => c.id}
+            searchPlaceholder="Search by Collateral Code, Description, or CIF..."
+            serverSide={filterRank === 'ALL' ? {
+              totalItems: totalCollaterals,
+              currentPage: colPage,
+              pageSize: colPageSize,
+              searchQuery: colSearch,
+              loading: colLoading,
+              onPageChange: setColPage,
+              onPageSizeChange: (sz) => { setColPageSize(sz); setColPage(1); },
+              onSearchChange: (q) => { setColSearch(q); setColPage(1); },
+            } : undefined}
             onRowClick={(c) => {
               setSelectedCol(c);
               setShowDetailModal(true);

@@ -1,10 +1,15 @@
 package com.bank.cims.service.cbs;
 
 import com.bank.cims.model.*;
+import com.bank.cims.repository.BranchRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Dedicated Mapping Layer for CBS-to-CIMS canonical domain entities.
@@ -12,6 +17,210 @@ import java.util.UUID;
  */
 @Component
 public class CbsMapper {
+
+    private static final Map<String, String> FACILITY_TYPE_MAP = Map.ofEntries(
+            Map.entry("0", "Short Term Loan"),
+            Map.entry("1", "Medium-term Loan"),
+            Map.entry("2", "Long-term Loan"),
+            Map.entry("3", "Pre-shipment loans"),
+            Map.entry("4", "Post shipment loans"),
+            Map.entry("5", "Merchandise loans"),
+            Map.entry("6", "Advance on LC"),
+            Map.entry("7", "ECG loans"),
+            Map.entry("8", "Others (USAID and others)"),
+            // IFB Product Codes
+            Map.entry("DMAG", "Diminishing Musharaka Agriculture"),
+            Map.entry("DMCN", "Diminishing Musharaka Construction"),
+            Map.entry("DMDS", "Diminishing Musharaka Domestic Service"),
+            Map.entry("DMDT", "Diminishing Musharaka Domestic Trade"),
+            Map.entry("DMEX", "Diminishing Musharaka Export"),
+            Map.entry("DMIM", "Diminishing Musharaka Import"),
+            Map.entry("DMMF", "Diminishing Musharaka Manufacturing"),
+            Map.entry("DMMN", "Diminishing Musharaka Mining"),
+            Map.entry("DMRS", "Diminishing Musharaka Realestate"),
+            Map.entry("DMTR", "Diminishing Musharaka Transport"),
+            Map.entry("IJAG", "Ijara Agriculture"),
+            Map.entry("IJCN", "Ijara Construction"),
+            Map.entry("IJPC", "Ijara Personal/Consumer"),
+            Map.entry("IJRS", "Ijara Realestate"),
+            Map.entry("IJTR", "Ijara Transport"),
+            Map.entry("ISAG", "Istisna Agriculture"),
+            Map.entry("ISCN", "Istisna Construction"),
+            Map.entry("ISDS", "Istisna Domestic Service"),
+            Map.entry("ISDT", "Istisna Domestic Trade"),
+            Map.entry("ISEX", "Istisna Export"),
+            Map.entry("ISMF", "Istisna Manufacturing"),
+            Map.entry("ISMN", "Istisna Mining"),
+            Map.entry("ISRS", "Istisna Realestate"),
+            Map.entry("MDAG", "Mudaraba Agriculture"),
+            Map.entry("MDCN", "Mudaraba Construction"),
+            Map.entry("MDDS", "Mudaraba Domestic Service"),
+            Map.entry("MDDT", "Mudaraba Domestic Trade"),
+            Map.entry("MDEX", "Mudaraba Export"),
+            Map.entry("MDMF", "Mudaraba Manufacturing"),
+            Map.entry("MDMN", "Mudaraba Mining"),
+            Map.entry("MDRS", "Mudaraba Realestate"),
+            Map.entry("MDTR", "Mudaraba Transport"),
+            Map.entry("MODF", "MURABAHA MOBILE DEVICE FINANCING"),
+            Map.entry("MRAG", "Murabaha Agriculture"),
+            Map.entry("MRCN", "Murabaha Construction"),
+            Map.entry("MRDS", "Murabaha Domestic Service"),
+            Map.entry("MRDT", "Murabaha Domestic Trade"),
+            Map.entry("MREX", "Murabaha Export"),
+            Map.entry("MRIM", "Murabaha Import"),
+            Map.entry("MRMF", "Murabaha Manufacturing"),
+            Map.entry("MRMN", "Murabaha Mining"),
+            Map.entry("MRPC", "Murabaha Personal/Consumer"),
+            Map.entry("MRRS", "Murabaha Realestate"),
+            Map.entry("MRTR", "Murabaha Transport"),
+            Map.entry("MSAG", "Musharaka Agriculture"),
+            Map.entry("MSCN", "Musharaka Construction"),
+            Map.entry("MSDS", "Musharaka Domestic Service"),
+            Map.entry("MSEX", "Musharaka Export"),
+            Map.entry("MSIM", "Musharaka Import"),
+            Map.entry("MSMF", "Musharaka Manufacturing"),
+            Map.entry("MSMN", "Musharaka Mining"),
+            Map.entry("MSRS", "Musharaka Realestate"),
+            Map.entry("MSTR", "Musharaka Transport"),
+            Map.entry("OVAF", "Qard Overseas Employment Agency Financing"),
+            Map.entry("QASM", "Qard SME"),
+            Map.entry("SLAG", "Salam Agriculture"),
+            Map.entry("SLMN", "Salam Mining"),
+            Map.entry("MRSP", "MURABAHA SHORT TERM SMART POS FINANCING"),
+            Map.entry("MLCS", "MURABAHA L/C SETTLEMENT FINANCING"),
+            Map.entry("MRCO", "Murabaha Consumer"),
+            Map.entry("MRTA", "Murabaha Taxi Finanacing"),
+            Map.entry("SWHF", "Sharik Ware House Financing"),
+            Map.entry("TWHF", "Tijara Ware House Financing"),
+            Map.entry("ILCM", "Import L/C margin-Sharik"),
+            Map.entry("ILCS", "Import L/C settlement-Sharik"),
+            Map.entry("MREA", "Murabaha Personal/Consumer-Employment Agency Financing"),
+            Map.entry("MRSC", "Murabaha Consumer Staff"),
+            Map.entry("MSMR", "MURABAHA MESMER FINANCING"),
+            Map.entry("MUPL", "Murabah Financing- Plus Financing"),
+            Map.entry("QAPL", "Qard Murabah Financing- Plus"),
+            Map.entry("REVC", "Revolving Valuchain Financing"),
+            Map.entry("PAIS", "Parallal istisna"),
+            Map.entry("PASL", "Parallal selam"),
+            Map.entry("TIAG", "Tijara Agriculture"),
+            Map.entry("TIMF", "Tijara Manufacturing"),
+            Map.entry("TIDT", "Tijara Domestic Trade"),
+            // Conventional Product Codes (TESTER.XLSX)
+            Map.entry("MNGL", "Mining TermLoan"),
+            Map.entry("IMPT", "Import Term Loans"),
+            Map.entry("EXPT", "Export Term Loans"),
+            Map.entry("TRST", "Transport Term Loans"),
+            Map.entry("CMWF", "Construction,Machinery&Working Fund"),
+            Map.entry("MNFG", "Manufacturing Term Loans"),
+            Map.entry("RLST", "Real Estate Term Loans"),
+            Map.entry("SMFM", "SME Credit finance-Manufacturing"),
+            Map.entry("MCFD", "Master Card Foundation"),
+            Map.entry("AECT", "AEC TERM LOAN"),
+            Map.entry("RVCF", "REVOLVING VALUE CHAIN FINANCING"),
+            Map.entry("IPTL", "Insurance Premium Financing"),
+            Map.entry("BIME", "Bridge loan International Meeting"),
+            Map.entry("SMFA", "SME Credit finance-Agro Processing"),
+            Map.entry("SMFC", "SME Credit finance-Construction"),
+            Map.entry("SMFT", "SME Credit finance-Tourism"),
+            Map.entry("DSTL", "STAFF DUBE ALE"),
+            Map.entry("FNLP", "FLY NOW PAY LATER LAON Services"),
+            Map.entry("MACF", "Master Card Foundation-MESMER"),
+            Map.entry("FXEX", "FX Export Term Loans"),
+            Map.entry("AGSC", "Agricultural supply chain financing"),
+            Map.entry("SMKF", "DBE SME- KFW"),
+            Map.entry("RCFI", "Revolving Credit Facility Import"),
+            Map.entry("HOTR", "special financing-Hotel and Tourism"),
+            Map.entry("SMIP", "DBE-Innovation Project Loan"),
+            Map.entry("POTL", "POS Device Purchase Financing"),
+            Map.entry("TPMF", "Third Party Machinery Financing"),
+            Map.entry("AGCR", "Agricultural Term Loans"),
+            Map.entry("DMTS", "Domestic Trade And Services"),
+            Map.entry("DBAL", "Dube Ale Loan Services"),
+            Map.entry("PERS", "Personal Loans"),
+            Map.entry("EDFI", "Student Loan"),
+            Map.entry("SMAD", "DBE SME- ADELE")
+    );
+
+    private static final Map<String, String> BUSINESS_SEGMENT_MAP = Map.of(
+            "0", "Corporate Banking",
+            "1", "MSME Banking",
+            "2", "Retail Banking"
+    );
+
+    @Autowired(required = false)
+    private BranchRepository branchRepository;
+
+    private final Map<String, String> branchNameByCode = new ConcurrentHashMap<>();
+
+    public void refreshBranchCache(List<Branch> branches) {
+        branchNameByCode.clear();
+        if (branches == null) return;
+        for (Branch b : branches) {
+            if (b.getName() == null || b.getName().isBlank()) continue;
+            String name = b.getName().trim();
+            indexBranchKey(b.getCbsBranchCode(), name);
+            indexBranchKey(b.getCode(), name);
+            if (b.getCode() != null && b.getCode().toUpperCase().startsWith("CBS-")) {
+                indexBranchKey(b.getCode().substring(4), name);
+            }
+            branchNameByCode.putIfAbsent(name.toUpperCase(), name);
+        }
+    }
+
+    private void indexBranchKey(String rawKey, String name) {
+        if (rawKey == null || rawKey.isBlank()) return;
+        String key = rawKey.trim().toUpperCase();
+        branchNameByCode.putIfAbsent(key, name);
+        String stripped = key.replaceFirst("^0+(?!$)", "");
+        if (!stripped.isEmpty()) {
+            branchNameByCode.putIfAbsent(stripped, name);
+        }
+    }
+
+    public String resolveBranchName(String rawBranch) {
+        if (rawBranch == null || rawBranch.isBlank()) return null;
+        if (branchNameByCode.isEmpty() && branchRepository != null) {
+            refreshBranchCache(branchRepository.findAll());
+        }
+        String trimmed = rawBranch.trim();
+        String upper = trimmed.toUpperCase();
+        String match = branchNameByCode.get(upper);
+        if (match != null) return match;
+        String stripped = upper.replaceFirst("^0+(?!$)", "");
+        match = branchNameByCode.get(stripped);
+        if (match != null) return match;
+        if (stripped.matches("\\d{1,3}")) {
+            String padded = String.format("%03d", Integer.parseInt(stripped));
+            match = branchNameByCode.get(padded);
+            if (match != null) return match;
+            match = branchNameByCode.get("CBS-" + padded);
+            if (match != null) return match;
+        }
+        return trimmed;
+    }
+
+    public static String resolveFacilityType(String rawType) {
+        if (rawType == null || rawType.isBlank()) return "Term Loan";
+        String key = normalizeNumericCode(rawType).toUpperCase();
+        return FACILITY_TYPE_MAP.getOrDefault(key, rawType.trim());
+    }
+
+    public static String resolveBusinessSegment(String rawSegment) {
+        if (rawSegment == null || rawSegment.isBlank()) return null;
+        String key = normalizeNumericCode(rawSegment);
+        return BUSINESS_SEGMENT_MAP.getOrDefault(key, rawSegment.trim());
+    }
+
+    private static String normalizeNumericCode(String raw) {
+        String trimmed = raw.trim();
+        if (trimmed.endsWith(".0")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 2);
+        }
+        if (trimmed.matches("\\d+")) {
+            return trimmed.replaceFirst("^0+(?!$)", "");
+        }
+        return trimmed;
+    }
 
     /**
      * Maps incoming CBS Customer onto CIMS Customer master entity.
@@ -24,8 +233,19 @@ public class CbsMapper {
         }
 
         cust.setCif(cc.getCif() != null ? cc.getCif().trim() : null);
-        cust.setName(cc.getFullName());
-        cust.setCustomerType(cc.getCustomerType() != null ? cc.getCustomerType() : "Individual");
+
+        String fullName = cc.getFullName();
+        if (fullName != null && !fullName.isBlank()) {
+            cust.setName(fullName.trim());
+        } else if (existing != null && existing.getName() != null && !existing.getName().isBlank()) {
+            cust.setName(existing.getName().trim());
+        } else if (cc.getCif() != null && !cc.getCif().isBlank()) {
+            cust.setName("CBS Customer " + cc.getCif().trim());
+        } else {
+            cust.setName("Unnamed Customer");
+        }
+
+        cust.setCustomerType(cc.getCustomerType() != null && !cc.getCustomerType().isBlank() ? cc.getCustomerType() : "Individual");
         cust.setNationalId(cc.getNationalId());
         cust.setBusinessRegNo(cc.getBusinessRegNo());
         cust.setTaxIdNo(cc.getTaxIdNo());
@@ -34,12 +254,23 @@ public class CbsMapper {
         cust.setPhone(cc.getPhone());
         cust.setEmail(cc.getEmail());
         cust.setAddress(cc.getAddress());
-        cust.setSegment(cc.getBusinessSegment());
-        cust.setBranch(cc.getBranch());
-        cust.setRiskRating(cc.getRiskRating() != null ? cc.getRiskRating() : "Medium");
-        cust.setStatus(cc.getCustomerStatus() != null ? cc.getCustomerStatus() : "Active");
+
+        String segment = resolveBusinessSegment(cc.getBusinessSegment());
+        if (segment != null && !segment.isBlank()) {
+            cust.setSegment(segment);
+        } else if (existing != null && existing.getSegment() != null && !existing.getSegment().isBlank()) {
+            cust.setSegment(resolveBusinessSegment(existing.getSegment()));
+        } else {
+            cust.setSegment("General");
+        }
+
+        cust.setBranch(resolveBranchName(cc.getBranch()));
+        cust.setRiskRating(cc.getRiskRating() != null && !cc.getRiskRating().isBlank() ? cc.getRiskRating() : "Medium");
+        cust.setStatus(cc.getCustomerStatus() != null && !cc.getCustomerStatus().isBlank() ? cc.getCustomerStatus() : "Active");
 
         // Source metadata
+        cust.setOriginType("CBS_IMPORTED");
+        cust.setCbsSourceRef(cust.getCif());
         cust.setSource(sourceSystem != null ? sourceSystem : "CBS_SIM");
         cust.setCbsSyncStatus("Synced");
         cust.setCbsSyncedAt(LocalDateTime.now().toString());
@@ -77,8 +308,36 @@ public class CbsMapper {
         la.setAvailableAmount(cf.getAvailableAmount());
         la.setCollateralContribution(cf.getCollateralContribution());
         la.setCollateralPct(cf.getCollateralPct());
-        la.setSegment(cf.getBusinessSegment());
-        la.setBranch(cf.getBranch());
+        String segment = resolveBusinessSegment(cf.getBusinessSegment());
+        if (segment != null && !segment.isBlank()) {
+            la.setSegment(segment);
+        } else if (existing != null && existing.getSegment() != null && !existing.getSegment().isBlank()) {
+            la.setSegment(resolveBusinessSegment(existing.getSegment()));
+        } else if (matchedCustomer != null && matchedCustomer.getSegment() != null && !matchedCustomer.getSegment().isBlank()) {
+            la.setSegment(resolveBusinessSegment(matchedCustomer.getSegment()));
+        } else {
+            la.setSegment("Corporate Banking");
+        }
+
+        String branch = resolveBranchName(cf.getBranch());
+        if (branch != null && !branch.isBlank()) {
+            la.setBranch(branch);
+        } else if (existing != null && existing.getBranch() != null && !existing.getBranch().isBlank()) {
+            la.setBranch(resolveBranchName(existing.getBranch()));
+        } else if (matchedCustomer != null && matchedCustomer.getBranch() != null && !matchedCustomer.getBranch().isBlank()) {
+            la.setBranch(resolveBranchName(matchedCustomer.getBranch()));
+        } else {
+            la.setBranch("Head Office");
+        }
+
+        String facType = cf.getFacilityType();
+        if (facType != null && !facType.isBlank()) {
+            la.setFacilityType(resolveFacilityType(facType));
+        } else if (existing != null && existing.getFacilityType() != null && !existing.getFacilityType().isBlank()) {
+            la.setFacilityType(resolveFacilityType(existing.getFacilityType()));
+        } else {
+            la.setFacilityType("Term Loan");
+        }
         la.setRmUserId(cf.getRelationshipManager());
         la.setNextReviewDueDate(cf.getNextReviewDate());
 
@@ -91,6 +350,8 @@ public class CbsMapper {
         }
 
         // Source metadata
+        la.setOriginType("CBS_IMPORTED");
+        la.setCbsSourceRef(la.getLoanReference());
         la.setSource(sourceSystem != null ? sourceSystem : "CBS_SIM");
         la.setCbsSyncStatus("Synced");
         la.setCbsSyncedAt(LocalDateTime.now().toString());
@@ -141,11 +402,50 @@ public class CbsMapper {
         col.setStartDate(ccol.getStartDate());
         col.setReviewDate(ccol.getReviewDate());
         col.setTangible(ccol.isTangible());
-        col.setOwningSegment(ccol.getBusinessSegment());
-        col.setBranch(ccol.getBranch());
+
+        // Safe non-null fallback for PostgreSQL NOT NULL constraint on owning_segment
+        String colSegment = resolveBusinessSegment(ccol.getBusinessSegment());
+        if (colSegment != null && !colSegment.isBlank()) {
+            col.setOwningSegment(colSegment);
+        } else if (existing != null && existing.getOwningSegment() != null && !existing.getOwningSegment().isBlank()) {
+            col.setOwningSegment(resolveBusinessSegment(existing.getOwningSegment()));
+        } else if (matchedCustomer != null && matchedCustomer.getSegment() != null && !matchedCustomer.getSegment().isBlank()) {
+            col.setOwningSegment(resolveBusinessSegment(matchedCustomer.getSegment()));
+        } else {
+            col.setOwningSegment("Corporate Banking");
+        }
+
+        // Safe non-null fallback for PostgreSQL NOT NULL constraint on branch
+        String colBranch = resolveBranchName(ccol.getBranch());
+        if (colBranch != null && !colBranch.isBlank()) {
+            col.setBranch(colBranch);
+        } else if (existing != null && existing.getBranch() != null && !existing.getBranch().isBlank()) {
+            col.setBranch(resolveBranchName(existing.getBranch()));
+        } else if (matchedCustomer != null && matchedCustomer.getBranch() != null && !matchedCustomer.getBranch().isBlank()) {
+            col.setBranch(resolveBranchName(matchedCustomer.getBranch()));
+        } else {
+            col.setBranch("Head Office");
+        }
+
+        // Safe non-null fallback for status
+        if (existing != null && existing.getStatus() != null && !existing.getStatus().isBlank()) {
+            col.setStatus(existing.getStatus().trim());
+        } else {
+            col.setStatus("Active");
+        }
+
         col.setZipCode(ccol.getZipCode());
 
-        // Source metadata
+        // Source metadata & enrichment readiness
+        col.setOriginType("CBS_IMPORTED");
+        col.setCbsCollateralRef(col.getCode());
+        if (col.getEnrichmentStatus() == null || col.getEnrichmentStatus().isBlank() || "NOT_APPLICABLE".equalsIgnoreCase(col.getEnrichmentStatus())) {
+            col.setEnrichmentStatus("PENDING_ENRICHMENT");
+        }
+        if ((col.getDataQualityStatus() == null || col.getDataQualityStatus().isBlank() || "COMPLETE".equalsIgnoreCase(col.getDataQualityStatus()))
+                && !"APPROVED".equalsIgnoreCase(col.getEnrichmentStatus())) {
+            col.setDataQualityStatus("INCOMPLETE");
+        }
         col.setSource(sourceSystem != null ? sourceSystem : "CBS_SIM");
         col.setCbsSyncStatus("Synced");
         col.setCbsSyncedAt(LocalDateTime.now().toString());
@@ -198,13 +498,20 @@ public class CbsMapper {
         link.setCollateralCategory(cl.getCollateralCategory());
         link.setHaircut(cl.getHaircut());
         link.setLimitAmount(cl.getLimitAmount());
-        link.setAllocatedAmount(cl.getLinkedAmount());
-        link.setLinkedAmount(cl.getLinkedAmount());
-        link.setLinkedPercent(cl.getLinkedPercentNumber());
+
+        double effectiveLinkedAmt = cl.getLinkedAmount() > 0 ? cl.getLinkedAmount()
+                : (cl.getLimitAmount() > 0 ? cl.getLimitAmount()
+                        : (existing != null && existing.getLinkedAmount() > 0 ? existing.getLinkedAmount()
+                                : (matchedCollateral != null ? matchedCollateral.getValuationAmount() : 0.0)));
+
+        link.setAllocatedAmount(effectiveLinkedAmt);
+        link.setLinkedAmount(effectiveLinkedAmt);
+        link.setLinkedPercent(cl.getLinkedPercentNumber() > 0 ? cl.getLinkedPercentNumber()
+                : (existing != null && existing.getLinkedPercent() > 0 ? existing.getLinkedPercent() : 100.0));
         link.setUtilOrder(cl.getUtilOrder());
         link.setReinstateOrder(cl.getReinstateOrder());
         link.setUtilAmount(cl.getUtilAmount());
-        link.setStatus(cl.getStatus() != null ? cl.getStatus() : "Active");
+        link.setStatus("Active");
         link.setTakenOver(cl.getTakenOver() != null ? cl.getTakenOver() : "N");
 
         // Source metadata
@@ -229,16 +536,19 @@ public class CbsMapper {
         cust.setCif(row.getCustomerNo() != null ? row.getCustomerNo().trim() : null);
         cust.setCbsSourceRef(row.getCustomerNo() != null ? row.getCustomerNo().trim() : null);
         cust.setOriginType("CBS_IMPORTED");
-        cust.setName(row.getCustomerName1() != null ? row.getCustomerName1().trim() : "");
-        cust.setCustomerType(row.getCustomerType());
+        cust.setName(row.getCustomerName1() != null && !row.getCustomerName1().isBlank()
+                ? row.getCustomerName1().trim()
+                : (row.getCustomerNo() != null && !row.getCustomerNo().isBlank() ? "CBS Customer " + row.getCustomerNo().trim() : "Unnamed Customer"));
+        cust.setCustomerType(row.getCustomerType() != null && !row.getCustomerType().isBlank() ? row.getCustomerType() : "Individual");
         cust.setNationalId(row.getPNationalId());
         cust.setBusinessRegNo(row.getPassportNo());
         cust.setTaxIdNo(row.getTaxidNo());
         cust.setPhone(row.getMobileNumber());
         cust.setEmail(row.getEmail());
         cust.setAddress(row.getAddress());
-        cust.setSegment(row.getBusinessSegment());
-        cust.setBranch(row.getBranchCode());
+        String seg = resolveBusinessSegment(row.getBusinessSegment());
+        cust.setSegment(seg != null && !seg.isBlank() ? seg : "General");
+        cust.setBranch(resolveBranchName(row.getBranchCode()));
 
         // Status mapping
         if ("A".equalsIgnoreCase(row.getCustomerStatus())) {
@@ -293,9 +603,9 @@ public class CbsMapper {
             la.setCustomerMatchStatus("UNRESOLVED");
         }
 
-        la.setFacilityType(row.getProductCode());
-        la.setSegment(row.getBusinessSegment());
-        la.setBranch(row.getBranchCode());
+        la.setFacilityType(resolveFacilityType(row.getProductCode()));
+        la.setSegment(resolveBusinessSegment(row.getBusinessSegment()));
+        la.setBranch(resolveBranchName(row.getBranchCode()));
 
         if (row.getSancationAmount() != null) {
             la.setApprovedLimit(row.getSancationAmount().doubleValue());
@@ -358,7 +668,10 @@ public class CbsMapper {
         col.setCurrency(row.getCollateralCurrency());
         col.setOwnerType(row.getOwnerBorrowerRelationship());
         col.setOwningSegment(null); // Explicitly unmapped until organizational routing resolves it
-        col.setBranch(row.getBranchCode());
+        col.setBranch(resolveBranchName(row.getBranchCode()));
+        if (col.getEnrichmentStatus() == null || col.getEnrichmentStatus().isBlank() || "NOT_APPLICABLE".equalsIgnoreCase(col.getEnrichmentStatus())) {
+            col.setEnrichmentStatus("PENDING_ENRICHMENT");
+        }
 
         if (row.getCollateralValue() != null) {
             col.setValuationAmount(row.getCollateralValue().doubleValue());

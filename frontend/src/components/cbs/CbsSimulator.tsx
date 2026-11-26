@@ -19,6 +19,9 @@ import {
   Activity,
   Info,
   RefreshCw,
+  Settings,
+  Server,
+  EyeOff,
 } from 'lucide-react';
 import { CbsCustomer, CbsFacility, CbsCollateral, CbsSyncLog, CbsSyncStatus } from '../../types';
 import { cimsApi } from '../../api/cimsApi';
@@ -30,8 +33,8 @@ interface CbsSimulatorProps {
   facilities: CbsFacility[];
   collaterals: CbsCollateral[];
   syncLogs: CbsSyncLog[];
-  onSyncEntity: (type: string, id: string) => Promise<void>;
-  onSyncAll: () => Promise<void>;
+  onSyncEntity: (type: string, id: string) => Promise<any>;
+  onSyncAll: () => Promise<any>;
   onSaveCustomer: (cust: Partial<CbsCustomer>) => Promise<void>;
   onSaveFacility: (fac: Partial<CbsFacility>) => Promise<void>;
   onSaveCollateral: (col: Partial<CbsCollateral>) => Promise<void>;
@@ -65,6 +68,124 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
   const [logResultFilter, setLogResultFilter] = useState<'ALL' | 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED'>('ALL');
   const [logEntityFilter, setLogEntityFilter] = useState<'ALL' | 'Customer' | 'Facility' | 'Collateral' | 'Link'>('ALL');
   const [modalError, setModalError] = useState<string | null>(null);
+  const [syncBanner, setSyncBanner] = useState<{
+    type: 'success' | 'error' | 'info';
+    title: string;
+    message: string;
+    failingView?: string;
+  } | null>(null);
+
+  // Real CBS Configuration & Diagnostics state
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [cbsConfig, setCbsConfig] = useState<any | null>(null);
+  const [configForm, setConfigForm] = useState({
+    jdbcUrl: 'jdbc:oracle:thin:@//10.41.30.114:1521/FCUBUAT',
+    username: 'CBAIMSUSER',
+    password: '',
+    schema: 'FCUBSLIVE',
+    customerView: 'FCUBSLIVE.STVWCBS_CBAIMS_CUSTOMER',
+    facilityView: 'FCUBSLIVE.STVWCBS_CBAIMS_FACILITY',
+    collateralView: 'FCUBSLIVE.STVWCBS_CBAIMS_COLLATERAL',
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{ status: string; message: string } | null>(null);
+  const [validatingSchema, setValidatingSchema] = useState(false);
+  const [schemaResult, setSchemaResult] = useState<any | null>(null);
+  const [switchingMode, setSwitchingMode] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  const loadCbsConfig = async () => {
+    try {
+      const cfg = await cimsApi.getCbsConfig();
+      if (cfg) {
+        setCbsConfig(cfg);
+        const oracle = cfg.oracle;
+        if (oracle) {
+          setConfigForm((prev) => ({
+            ...prev,
+            jdbcUrl: oracle.rawJdbcUrl || prev.jdbcUrl,
+            username: oracle.username || prev.username,
+            schema: oracle.schema || prev.schema,
+            customerView: oracle.customerView || prev.customerView,
+            facilityView: oracle.facilityView || prev.facilityView,
+            collateralView: oracle.collateralView || prev.collateralView,
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load CBS config', err);
+    }
+  };
+
+  const handleToggleMode = async () => {
+    const currentMode = liveStatus?.cbsMode || cbsConfig?.mode || 'SIMULATOR';
+    const targetMode = currentMode === 'REAL' ? 'SIMULATOR' : 'REAL';
+    setSwitchingMode(true);
+    try {
+      await cimsApi.setCbsMode(targetMode as 'SIMULATOR' | 'REAL');
+      await loadStatus();
+      await loadCbsConfig();
+    } catch (err: any) {
+      alert(`Failed to switch CBS mode: ${err.message}`);
+    } finally {
+      setSwitchingMode(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await cimsApi.testCbsConnection({
+        jdbcUrl: configForm.jdbcUrl,
+        username: configForm.username,
+        password: configForm.password || undefined,
+      });
+      setTestResult(res);
+      await loadStatus();
+    } catch (err: any) {
+      setTestResult({ status: 'ERROR', message: err.message });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handleValidateSchema = async () => {
+    setValidatingSchema(true);
+    setSchemaResult(null);
+    try {
+      const res = await cimsApi.validateCbsSchema();
+      setSchemaResult(res);
+    } catch (err: any) {
+      setSchemaResult({ status: 'ERROR', message: err.message });
+    } finally {
+      setValidatingSchema(false);
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    setSavingConfig(true);
+    try {
+      await cimsApi.updateCbsConfig({
+        jdbcUrl: configForm.jdbcUrl,
+        username: configForm.username,
+        password: configForm.password || undefined,
+        schema: configForm.schema,
+        customerView: configForm.customerView,
+        facilityView: configForm.facilityView,
+        collateralView: configForm.collateralView,
+      });
+      await loadStatus();
+      await loadCbsConfig();
+      setShowConfigModal(false);
+      alert('CBS Oracle configuration updated successfully!');
+    } catch (err: any) {
+      alert(`Failed to save config: ${err.message}`);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   const loadStatus = async () => {
     try {
@@ -77,13 +198,33 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
 
   useEffect(() => {
     loadStatus();
+    loadCbsConfig();
   }, [syncLogs]);
 
   const handleSync = async (type: string, id: string) => {
     setSyncingId(id);
+    setSyncBanner(null);
     try {
-      await onSyncEntity(type, id);
+      const res: any = await onSyncEntity(type, id);
       await loadStatus();
+      if (res && res.success === false) {
+        setSyncBanner({
+          type: 'error',
+          title: res.errorCategory === 'CBS_QUERY_TIMEOUT'
+            ? 'CBS Oracle Query Timeout'
+            : res.errorCategory === 'CBS_UNAVAILABLE'
+            ? 'CBS Server Unreachable'
+            : 'CBS Entity Sync Failed',
+          message: res.message,
+          failingView: res.failingView,
+        });
+      }
+    } catch (err: any) {
+      setSyncBanner({
+        type: 'error',
+        title: 'CBS Entity Sync Failed',
+        message: err?.message || 'Failed to synchronize entity from CBS.',
+      });
     } finally {
       setSyncingId(null);
     }
@@ -91,9 +232,46 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
 
   const handleBatchSync = async () => {
     setBatchSyncing(true);
+    setSyncBanner(null);
     try {
-      await onSyncAll();
+      const res: any = await onSyncAll();
       await loadStatus();
+      if (res && res.success === false) {
+        setSyncBanner({
+          type: 'error',
+          title: res.errorCategory === 'CBS_QUERY_TIMEOUT'
+            ? 'CBS Oracle Query Timeout'
+            : res.errorCategory === 'CBS_UNAVAILABLE'
+            ? 'CBS Database Unreachable'
+            : 'CBS Synchronization Failed',
+          message: res.message,
+          failingView: res.failingView,
+        });
+      } else if (res && res.status === 'IN_PROGRESS') {
+        setSyncBanner({
+          type: 'info',
+          title: 'CBS Synchronization In Progress',
+          message: res.message || 'Synchronization is currently processing in the background.',
+        });
+      } else if (res && (res.status === 'PARTIAL_SUCCESS' || (res.totalErrors && res.totalErrors > 0))) {
+        setSyncBanner({
+          type: 'error',
+          title: 'CBS Partial Synchronization',
+          message: res.errorMessage || 'Some records failed during synchronization. See sync logs below for details.',
+        });
+      } else {
+        setSyncBanner({
+          type: 'success',
+          title: 'CBS Synchronization Successful',
+          message: 'All records successfully synchronized from CBS.',
+        });
+      }
+    } catch (err: any) {
+      setSyncBanner({
+        type: 'error',
+        title: 'CBS Synchronization Failed',
+        message: err?.message || 'Network error communicating with CBAIMS backend.',
+      });
     } finally {
       setBatchSyncing(false);
     }
@@ -322,69 +500,228 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
 
   return (
     <div className="p-6 space-y-6">
-      {/* Persistent Amber Warning Banner */}
-      <div
-        style={{
-          backgroundColor: '#FFF6DF',
-          border: '1px solid #B8860B',
-          borderRadius: '8px',
-          padding: '14px 18px',
-          color: '#0F172A',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-        }}
-      >
-        <AlertTriangle style={{ width: '24px', height: '24px', color: '#B8860B', flexShrink: 0 }} />
-        <div style={{ flex: 1 }}>
-          <strong style={{ fontSize: '13px', color: '#B8860B' }}>
-            ⚠ Simulated CBS Environment (Core Banking Stand-in)
-          </strong>
-          <p style={{ fontSize: '12px', color: '#5B6B82', margin: '2px 0 0 0' }}>
-            Data entered here represents mock core-banking source data for development &amp; testing.
-            The integration boundary follows the single <code>CbsAdapter</code> contract. Use <strong>Sync</strong> on any record or{' '}
-            <strong>Sync All Pending</strong> to push into CIMS canonical tables.
-          </p>
-        </div>
-        <button
-          onClick={handleBatchSync}
-          disabled={batchSyncing}
-          className="btn-primary py-1.5 px-3 text-xs"
-          style={{ backgroundColor: '#B8860B', borderColor: '#B8860B' }}
+      {/* Dynamic CBS Environment Banner (Simulator vs Real Oracle CBS) */}
+      {(liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL' ? (
+        <div
+          style={{
+            backgroundColor: '#F0FDF4',
+            border: '1px solid #86EFAC',
+            borderRadius: '8px',
+            padding: '14px 18px',
+            color: '#0F172A',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+          }}
         >
-          <RotateCw className={`w-3.5 h-3.5 ${batchSyncing ? 'animate-spin' : ''}`} />
-          {batchSyncing ? 'Syncing...' : 'Sync All Pending'}
-        </button>
-      </div>
+          <Server style={{ width: '24px', height: '24px', color: '#16A34A', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <div className="flex items-center gap-2">
+              <strong style={{ fontSize: '13px', color: '#15803D' }}>
+                🟢 Production CBS Oracle Flexcube Mode Active
+              </strong>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                LIVE CBS READ-ONLY
+              </span>
+            </div>
+            <p style={{ fontSize: '12px', color: '#334155', margin: '2px 0 0 0' }}>
+              Connected to CBS Oracle at <code>10.41.30.114:1521/FCUBUAT</code> (Schema: <code>FCUBSLIVE</code>).
+              Permitted Source Egress: Server <code>172.22.10.55</code>. Strict read-only 3-view ingestion. Zero write-back to CBS.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setShowConfigModal(true); loadCbsConfig(); }}
+              className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1 cursor-pointer"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              CBS Config
+            </button>
+            <button
+              onClick={handleToggleMode}
+              disabled={switchingMode}
+              className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1 cursor-pointer"
+            >
+              <Database className="w-3.5 h-3.5 text-amber-600" />
+              {switchingMode ? 'Switching...' : 'Switch to Simulator'}
+            </button>
+            <button
+              onClick={handleBatchSync}
+              disabled={batchSyncing}
+              className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1 cursor-pointer"
+              style={{ backgroundColor: '#15803D', borderColor: '#15803D' }}
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${batchSyncing ? 'animate-spin' : ''}`} />
+              {batchSyncing ? 'Syncing...' : 'Sync Live CBS'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            backgroundColor: '#FFF6DF',
+            border: '1px solid #B8860B',
+            borderRadius: '8px',
+            padding: '14px 18px',
+            color: '#0F172A',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+          }}
+        >
+          <AlertTriangle style={{ width: '24px', height: '24px', color: '#B8860B', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <div className="flex items-center gap-2">
+              <strong style={{ fontSize: '13px', color: '#B8860B' }}>
+                ⚠ Simulated CBS Environment (Core Banking Stand-in)
+              </strong>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                SIMULATOR
+              </span>
+            </div>
+            <p style={{ fontSize: '12px', color: '#5B6B82', margin: '2px 0 0 0' }}>
+              Data entered here represents mock core-banking source data for development &amp; testing.
+              The integration boundary follows the single <code>CbsAdapter</code> contract. Use <strong>Sync</strong> on any record or{' '}
+              <strong>Sync All Pending</strong> to push into CIMS canonical tables.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setShowConfigModal(true); loadCbsConfig(); }}
+              className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1 cursor-pointer"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              CBS Config
+            </button>
+            <button
+              onClick={handleToggleMode}
+              disabled={switchingMode}
+              className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1 font-semibold text-emerald-700 border-emerald-300 hover:bg-emerald-50 cursor-pointer"
+            >
+              <Server className="w-3.5 h-3.5 text-emerald-600" />
+              {switchingMode ? 'Switching...' : 'Switch to Real CBS'}
+            </button>
+            <button
+              onClick={handleBatchSync}
+              disabled={batchSyncing}
+              className="btn-primary py-1.5 px-3 text-xs"
+              style={{ backgroundColor: '#B8860B', borderColor: '#B8860B' }}
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${batchSyncing ? 'animate-spin' : ''}`} />
+              {batchSyncing ? 'Syncing...' : 'Sync All Pending'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sync Banner Notification */}
+      {syncBanner && (
+        <div
+          className={`p-4 rounded-lg border flex items-start gap-3 transition-all ${
+            syncBanner.type === 'error'
+              ? 'bg-rose-50 border-rose-300 text-rose-900'
+              : syncBanner.type === 'info'
+              ? 'bg-blue-50 border-blue-300 text-blue-900'
+              : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+          }`}
+        >
+          {syncBanner.type === 'error' ? (
+            <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+          ) : syncBanner.type === 'info' ? (
+            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          ) : (
+            <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+          )}
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wide">
+                {syncBanner.title}
+              </h4>
+              <button
+                type="button"
+                onClick={() => setSyncBanner(null)}
+                className="text-xs text-slate-500 hover:text-slate-800 cursor-pointer font-medium"
+              >
+                Dismiss
+              </button>
+            </div>
+            <p className="text-xs mt-1 text-slate-700 leading-relaxed font-medium">
+              {syncBanner.message}
+            </p>
+            {syncBanner.failingView && (
+              <p className="text-[11px] mt-1.5 font-mono text-rose-800 bg-rose-100/70 p-1 rounded inline-block">
+                View: {syncBanner.failingView}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Module 1: CBS Integration Status Area */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* Card 1: Adapter Mode & Connection Status */}
-        <div className="bg-white p-4 rounded-lg border border-[#E2E8F0] shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-[#5B6472]">CBS Adapter Mode</span>
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-bold bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]">
-              <span className="w-2 h-2 rounded-full bg-[#2563EB]" />
-              {liveStatus?.cbsMode || 'SIMULATOR'}
-            </span>
-          </div>
-          <div className="mt-2">
-            <div className="flex items-center gap-2">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${liveStatus?.connectionStatus === 'AVAILABLE'
-                    ? 'bg-emerald-500'
-                    : liveStatus?.connectionStatus === 'NOT_CONFIGURED'
-                      ? 'bg-amber-500'
-                      : 'bg-rose-500'
+        <div className="bg-white p-4 rounded-lg border border-[#E2E8F0] shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-[#5B6472]">CBS Adapter Mode</span>
+              <button
+                type="button"
+                onClick={handleToggleMode}
+                disabled={switchingMode}
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
+                  (liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
+                    : 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] hover:bg-blue-100'
+                }`}
+                title="Click to toggle between SIMULATOR and REAL CBS mode"
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    (liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL' ? 'bg-emerald-500' : 'bg-[#2563EB]'
                   }`}
-              />
-              <span className="text-xs font-bold text-[#101828]">
-                {liveStatus?.connectionStatus || 'AVAILABLE'}
-              </span>
+                />
+                {switchingMode ? '...' : (liveStatus?.cbsMode || cbsConfig?.mode || 'SIMULATOR')}
+              </button>
             </div>
-            <p className="text-[11px] text-[#5B6472] mt-1 line-clamp-2">
-              {liveStatus?.connectionMessage || 'CBS Simulator active and connected to cbs_sim schema.'}
-            </p>
+            <div className="mt-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    liveStatus?.connectionStatus === 'AVAILABLE'
+                      ? 'bg-emerald-500'
+                      : liveStatus?.connectionStatus === 'NOT_CONFIGURED'
+                        ? 'bg-amber-500'
+                        : 'bg-rose-500'
+                  }`}
+                />
+                <span className="text-xs font-bold text-[#101828]">
+                  {liveStatus?.connectionStatus || 'AVAILABLE'}
+                </span>
+              </div>
+              <p className="text-[11px] text-[#5B6472] mt-1 line-clamp-2" title={liveStatus?.connectionMessage}>
+                {liveStatus?.connectionMessage || 'CBS Simulator active and connected to cbs_sim schema.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-100 text-[11px]">
+            <button
+              type="button"
+              onClick={() => { setShowConfigModal(true); loadCbsConfig(); }}
+              className="text-[#00205B] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              Configure
+            </button>
+            <span className="text-slate-300">|</span>
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={testingConnection}
+              className="text-slate-600 font-semibold hover:text-slate-900 flex items-center gap-1 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${testingConnection ? 'animate-spin' : ''}`} />
+              Test
+            </button>
           </div>
         </div>
 
@@ -1610,6 +1947,286 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
                   className="btn-primary py-1.5 px-4"
                 >
                   Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Real CBS Oracle Connection Modal */}
+      {showConfigModal && (
+        <div className="fixed inset-0 bg-[#00205B]/60 backdrop-blur-2xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-slate-300 shadow-2xl max-w-2xl w-full overflow-hidden">
+            <div className="bg-[#00205B] text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Server className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-bold text-base">Core Banking System (CBS) Oracle Configuration</h3>
+              </div>
+              <button
+                onClick={() => setShowConfigModal(false)}
+                className="text-white/80 hover:text-white cursor-pointer font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-700 flex gap-2.5">
+                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-slate-800">Bank Security &amp; Architectural Safeguards</p>
+                  <p className="mt-0.5 leading-relaxed text-slate-600">
+                    CBAIMS connects with strict <strong>read-only</strong> access (autoCommit=false) to CBS Oracle 3-views (<code>STVWCBS_CBAIMS_*</code>). Zero write-back is executed on CBS.
+                    Permitted deployment server egress: <code>172.22.10.55</code>.
+                  </p>
+                </div>
+              </div>
+
+              {/* Adapter Mode Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Active Integration Target</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if ((liveStatus?.cbsMode || cbsConfig?.mode) !== 'REAL') {
+                        await handleToggleMode();
+                      }
+                    }}
+                    className={`p-3 rounded-lg border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                      (liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL'
+                        ? 'border-emerald-500 bg-emerald-50/50 text-emerald-950 font-semibold'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    <Server className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold flex items-center gap-1">
+                        REAL CBS (Oracle Flexcube)
+                        {(liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL' && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1 rounded">Active</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] font-normal text-slate-500">Live 3-view Oracle JDBC connection</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if ((liveStatus?.cbsMode || cbsConfig?.mode) !== 'SIMULATOR') {
+                        await handleToggleMode();
+                      }
+                    }}
+                    className={`p-3 rounded-lg border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
+                      (liveStatus?.cbsMode || cbsConfig?.mode) === 'SIMULATOR'
+                        ? 'border-amber-500 bg-amber-50/50 text-amber-950 font-semibold'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    <Database className="w-4 h-4 mt-0.5 text-amber-600 shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold flex items-center gap-1">
+                        CBS SIMULATOR
+                        {(liveStatus?.cbsMode || cbsConfig?.mode) === 'SIMULATOR' && (
+                          <span className="text-[10px] bg-amber-100 text-amber-800 px-1 rounded">Active</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] font-normal text-slate-500">Isolated development &amp; test stand-in</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* JDBC URL */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Oracle JDBC URL <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={configForm.jdbcUrl}
+                  onChange={(e) => setConfigForm({ ...configForm, jdbcUrl: e.target.value })}
+                  placeholder="jdbc:oracle:thin:@//10.41.30.114:1521/FCUBUAT"
+                  className="w-full text-xs font-mono p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00205B]"
+                />
+                <span className="text-[11px] text-slate-500 mt-0.5 block">
+                  Target host format: <code>jdbc:oracle:thin:@//&lt;host&gt;:&lt;port&gt;/&lt;service_name&gt;</code>
+                </span>
+              </div>
+
+              {/* Username & Password */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Oracle Database User <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={configForm.username}
+                    onChange={(e) => setConfigForm({ ...configForm, username: e.target.value })}
+                    placeholder="CBAIMSUSER"
+                    className="w-full text-xs font-mono p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00205B]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Oracle Password {cbsConfig?.oracle?.hasPassword && <span className="text-emerald-600 font-normal">(Configured)</span>}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={configForm.password}
+                      onChange={(e) => setConfigForm({ ...configForm, password: e.target.value })}
+                      placeholder={cbsConfig?.oracle?.hasPassword ? '••••••••  (Leave empty to keep current)' : 'Enter Oracle password'}
+                      className="w-full text-xs font-mono p-2.5 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00205B]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Schema & Views */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Oracle Schema Name</label>
+                <input
+                  type="text"
+                  value={configForm.schema}
+                  onChange={(e) => setConfigForm({ ...configForm, schema: e.target.value })}
+                  placeholder="FCUBSLIVE"
+                  className="w-full text-xs font-mono p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00205B]"
+                />
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <span className="text-xs font-bold text-slate-700 block">Production Oracle 3-View Mapping (62 Columns Total)</span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-semibold block">Customer View (16 cols)</label>
+                    <input
+                      type="text"
+                      value={configForm.customerView}
+                      onChange={(e) => setConfigForm({ ...configForm, customerView: e.target.value })}
+                      className="w-full text-[11px] font-mono p-2 border border-slate-300 rounded focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-semibold block">Facility View (15 cols)</label>
+                    <input
+                      type="text"
+                      value={configForm.facilityView}
+                      onChange={(e) => setConfigForm({ ...configForm, facilityView: e.target.value })}
+                      className="w-full text-[11px] font-mono p-2 border border-slate-300 rounded focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-semibold block">Collateral View (31 cols)</label>
+                    <input
+                      type="text"
+                      value={configForm.collateralView}
+                      onChange={(e) => setConfigForm({ ...configForm, collateralView: e.target.value })}
+                      className="w-full text-[11px] font-mono p-2 border border-slate-300 rounded focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Diagnostic Test Feedback */}
+              {testResult && (
+                <div
+                  className={`p-3 rounded-lg border text-xs ${
+                    testResult.status === 'AVAILABLE'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : testResult.status === 'NOT_CONFIGURED'
+                        ? 'bg-amber-50 border-amber-200 text-amber-800'
+                        : 'bg-rose-50 border-rose-200 text-rose-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold mb-0.5">
+                    {testResult.status === 'AVAILABLE' ? (
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-rose-600" />
+                    )}
+                    <span>Diagnostic Result: {testResult.status}</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">{testResult.message}</p>
+                  {testResult.status === 'NETWORK_UNAVAILABLE' && (
+                    <p className="text-[10px] mt-1.5 text-slate-600 bg-white/70 p-2 rounded border border-rose-100">
+                      💡 <strong>Bank DMZ Requirement:</strong> The Oracle host (<code>10.41.30.114:1521</code>) is protected behind the bank core banking firewall.
+                      Egress is authorized from server <code>172.22.10.55</code>. Connect via the bank VPN or deploy this service onto the authorized server.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Schema Validation Feedback */}
+              {schemaResult && (
+                <div
+                  className={`p-3 rounded-lg border text-xs ${
+                    schemaResult.status === 'AVAILABLE'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-amber-50 border-amber-200 text-amber-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold mb-0.5">
+                    {schemaResult.status === 'AVAILABLE' ? (
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    )}
+                    <span>Schema Status: {schemaResult.status}</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">{schemaResult.message}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={testingConnection}
+                  className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${testingConnection ? 'animate-spin' : ''}`} />
+                  {testingConnection ? 'Testing...' : 'Test Connection'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleValidateSchema}
+                  disabled={validatingSchema}
+                  className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1 cursor-pointer"
+                >
+                  <ShieldCheck className={`w-3.5 h-3.5 ${validatingSchema ? 'animate-spin' : ''}`} />
+                  {validatingSchema ? 'Checking...' : 'Validate Schema'}
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowConfigModal(false)}
+                  className="btn-secondary py-1.5 px-3 text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveConfig}
+                  disabled={savingConfig}
+                  className="btn-primary py-1.5 px-4 text-xs cursor-pointer"
+                >
+                  {savingConfig ? 'Saving...' : 'Save & Apply'}
                 </button>
               </div>
             </div>

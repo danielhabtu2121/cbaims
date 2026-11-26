@@ -15,6 +15,7 @@ interface CustomerManagerProps {
   segments?: BusinessSegment[];
   branches?: Branch[];
   currentUser: UserSession;
+  selectedSegment?: string;
   initialCustomerId?: string | null;
   onNavigate?: (page: string, params?: Record<string, any>) => void;
   onRegisterManualCustomer: (cust: Partial<Customer>) => Promise<void>;
@@ -30,6 +31,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
   segments,
   branches,
   currentUser,
+  selectedSegment,
   initialCustomerId,
   onNavigate,
   onRegisterManualCustomer,
@@ -46,6 +48,36 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
   const [maintainSubmitting, setMaintainSubmitting] = useState(false);
   const [active360Tab, setActive360Tab] = useState<'overview' | 'facilities' | 'collateral' | 'policies' | 'documents' | 'approvals' | 'exceptions' | 'audit'>('overview');
   const [selected360Policy, setSelected360Policy] = useState<InsurancePolicy | null>(null);
+
+  const [pagedCustomers, setPagedCustomers] = useState<Customer[]>(customers);
+  const [totalCustomers, setTotalCustomers] = useState<number>(customers.length);
+  const [custPage, setCustPage] = useState<number>(1);
+  const [custPageSize, setCustPageSize] = useState<number>(25);
+  const [custSearch, setCustSearch] = useState<string>('');
+  const [custLoading, setCustLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(async () => {
+      setCustLoading(true);
+      try {
+        const segParam = selectedSegment && selectedSegment !== 'ALL' ? selectedSegment : '';
+        const res = await cimsApi.getPagedCustomers(custPage - 1, custPageSize, custSearch, segParam);
+        if (active && res && Array.isArray(res.content)) {
+          setPagedCustomers(res.content);
+          setTotalCustomers(res.totalElements ?? res.content.length);
+        }
+      } catch (e) {
+        if (active) {
+          setPagedCustomers(customers);
+          setTotalCustomers(customers.length);
+        }
+      } finally {
+        if (active) setCustLoading(false);
+      }
+    }, custSearch ? 250 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [custPage, custPageSize, custSearch, selectedSegment, customers]);
 
   useEffect(() => {
     if (initialCustomerId && customers.length > 0) {
@@ -257,11 +289,41 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
       <DataGrid
         title="Customer Master & 360 View"
         subtitle="Comprehensive Single Customer View across Credit Facilities, Pledged Collateral, Insurance Coverages, and Approvals"
-        data={customers}
+        data={pagedCustomers}
         columns={customerColumns}
         keyExtractor={(c) => c.id}
         onRowClick={(c) => load360Data(c)}
-
+        searchPlaceholder="Search by CIF, Name, or TIN across all customers..."
+        serverSide={{
+          totalItems: totalCustomers,
+          currentPage: custPage,
+          pageSize: custPageSize,
+          searchQuery: custSearch,
+          loading: custLoading,
+          onPageChange: setCustPage,
+          onPageSizeChange: (sz) => { setCustPageSize(sz); setCustPage(1); },
+          onSearchChange: (q) => { setCustSearch(q); setCustPage(1); },
+        }}
+        actions={
+          isMakerRole ? (
+            <button
+              onClick={() => {
+                setNewCust({
+                  cif: '',
+                  customerType: 'Individual',
+                  segment: 'Corporate Banking',
+                  branch: currentUser.branch || 'Bole Special Branch',
+                  status: 'Active',
+                });
+                setShowManualRegModal(true);
+              }}
+              className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Register Customer Manually
+            </button>
+          ) : undefined
+        }
       />
 
       {/* Customer 360 Modal */}

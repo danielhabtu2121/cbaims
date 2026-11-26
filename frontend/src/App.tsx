@@ -505,13 +505,15 @@ function AppContent() {
 
   // CBS Simulator Handlers
   const handleSyncEntity = async (type: string, id: string) => {
-    await cimsApi.syncCbsEntity(type, id);
+    const res = await cimsApi.syncCbsEntity(type, id);
     await loadData();
+    return res;
   };
 
   const handleSyncAll = async () => {
-    await cimsApi.syncAllPending();
+    const res = await cimsApi.syncAllPending();
     await loadData();
+    return res;
   };
 
   const handleSaveCbsCustomer = async (cust: Partial<CbsCustomer>) => {
@@ -1113,6 +1115,7 @@ function AppContent() {
                     segments={segments}
                     branches={branches}
                     currentUser={effectiveUserSession}
+                    selectedSegment={effectiveSegment}
                     initialCustomerId={targetCustomerId}
                     onNavigate={handleNavigate}
                     onRegisterManualCustomer={handleRegisterManualCustomer}
@@ -1129,6 +1132,7 @@ function AppContent() {
                     policies={scopedPolicies}
                     initialFacilityId={targetFacilityId}
                     currentUser={effectiveUserSession}
+                    selectedSegment={effectiveSegment}
                     onNavigate={handleNavigate}
                     onRefreshData={loadData}
                   />
@@ -1144,6 +1148,7 @@ function AppContent() {
                     exceptions={scopedExceptions}
                     taxonomies={taxonomies}
                     mandatoryDocRules={mandatoryDocRules}
+                    selectedSegment={effectiveSegment}
                     segments={segments}
                     branches={branches}
                     customers={scopedCustomers}

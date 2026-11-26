@@ -93,6 +93,36 @@ public class DashboardService {
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter DISPLAY_DT_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm");
+    private static final long DASHBOARD_CACHE_TTL_MS = 60_000L;
+
+    private static class CachedValue<T> {
+        final T value;
+        final long expiresAt;
+        CachedValue(T value, long ttlMs) {
+            this.value = value;
+            this.expiresAt = System.currentTimeMillis() + ttlMs;
+        }
+        boolean isValid() { return System.currentTimeMillis() < expiresAt; }
+    }
+
+    private final java.util.concurrent.ConcurrentHashMap<String, CachedValue<DashboardSummaryDto>> summaryCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<String, CachedValue<DashboardChartDataDto>> chartsCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public void invalidateCache() {
+        summaryCache.clear();
+        chartsCache.clear();
+    }
+
+    private String buildCacheKey(String userId, String segment, String district, String branch, String category, String status, String expiry) {
+        return String.join("|",
+                userId != null ? userId : "",
+                segment != null ? segment : "",
+                district != null ? district : "",
+                branch != null ? branch : "",
+                category != null ? category : "",
+                status != null ? status : "",
+                expiry != null ? expiry : "");
+    }
 
     public LocalDate getCurrentSystemDate() {
         if (cimsService != null) {
@@ -547,7 +577,21 @@ public class DashboardService {
             allFacilities = loanAccountRepository.findAll();
         }
 
-        List<LoanCollateralLink> allLinks = loanCollateralLinkRepository.findAll();
+        List<LoanCollateralLink> allLinks;
+        if ((scope.effectiveBranch != null && !scope.effectiveBranch.equalsIgnoreCase("ALL"))
+                || (scope.effectiveDistrict != null && !scope.effectiveDistrict.equalsIgnoreCase("ALL"))
+                || (scope.effectiveSegment != null && !scope.effectiveSegment.equalsIgnoreCase("ALL"))) {
+            if (allCollaterals.isEmpty()) {
+                allLinks = Collections.emptyList();
+            } else if (allCollaterals.size() <= 5000) {
+                List<String> colIds = allCollaterals.stream().map(Collateral::getId).filter(Objects::nonNull).toList();
+                allLinks = colIds.isEmpty() ? Collections.emptyList() : loanCollateralLinkRepository.findByCollateralIdIn(colIds);
+            } else {
+                allLinks = loanCollateralLinkRepository.findAll();
+            }
+        } else {
+            allLinks = loanCollateralLinkRepository.findAll();
+        }
         List<InsurancePolicy> allPolicies = insurancePolicyRepository.findAll();
 
         // High-scale optimization: load lightweight document summaries without base64 binary fileContent
@@ -907,9 +951,16 @@ public class DashboardService {
      * Separates bank-wide branch count from authorized/scoped branch count.
      */
     public DashboardSummaryDto getSummary(String userId, String segment, String district, String branch, String category, String status, String expiry) {
+        String key = buildCacheKey(userId, segment, district, branch, category, status, expiry);
+        CachedValue<DashboardSummaryDto> cached = summaryCache.get(key);
+        if (cached != null && cached.isValid()) {
+            return cached.value;
+        }
         ResolvedScope scope = resolveUserScope(userId, segment, district, branch);
         ScopedDataset ds = loadScopedDataset(scope, category, status, expiry);
-        return computeSummary(ds, scope);
+        DashboardSummaryDto result = computeSummary(ds, scope);
+        summaryCache.put(key, new CachedValue<>(result, DASHBOARD_CACHE_TTL_MS));
+        return result;
     }
 
     public DashboardSummaryDto computeSummary(ScopedDataset ds, ResolvedScope scope) {
@@ -1228,6 +1279,11 @@ public class DashboardService {
     }
 
     public DashboardChartDataDto getCharts(String userId, String segment, String district, String branch, String category, String status, String expiry) {
+        String key = buildCacheKey(userId, segment, district, branch, category, status, expiry);
+        CachedValue<DashboardChartDataDto> cached = chartsCache.get(key);
+        if (cached != null && cached.isValid()) {
+            return cached.value;
+        }
         ResolvedScope scope = resolveUserScope(userId, segment, district, branch);
         ScopedDataset ds = loadScopedDataset(scope, category, status, expiry);
 
@@ -1844,6 +1900,7 @@ public class DashboardService {
         }
 
         charts.setPortfolioTimeline(computePortfolioTimeline(ds));
+        chartsCache.put(key, new CachedValue<>(charts, DASHBOARD_CACHE_TTL_MS));
         return charts;
     }
 

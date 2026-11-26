@@ -26,4 +26,7 @@ public interface LoanCollateralLinkRepository extends JpaRepository<LoanCollater
     List<LoanCollateralLink> findByCustomerId(String customerId);
     void deleteByCollateralId(String collateralId);
     void deleteByLoanAccountId(String loanAccountId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT l.loanAccountId, COUNT(DISTINCT l.collateralId) FROM LoanCollateralLink l WHERE l.loanAccountId IN :loanIds AND (l.status IS NULL OR UPPER(l.status) <> 'RELEASED') GROUP BY l.loanAccountId")
+    List<Object[]> countActiveCollateralsByLoanAccountIds(@org.springframework.data.repository.query.Param("loanIds") Collection<String> loanIds);
 }
