@@ -1279,9 +1279,9 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
     setDocumentUploadError('');
   };
 
-  // Run validation automatically when arriving at Page 9
+  // Run validation automatically when arriving at Step 3 (Validation & Submit)
   useEffect(() => {
-    if (currentStep === 9) {
+    if (currentStep === 3) {
       runPreValidation();
     }
   }, [currentStep]);
@@ -1306,7 +1306,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                 </span>
               </div>
               <p className="text-[11px] text-slate-300">
-                Step {currentStep} of 11: Banking-Grade Collateral Perfection &amp; Four-Eyes Dual Control
+                Step {currentStep} of 3: Collateral Registration &amp; Four-Eyes Dual Control
               </p>
             </div>
           </div>
@@ -1318,38 +1318,48 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           </button>
         </div>
 
-        {/* 11-Stage Navigation Stepper */}
-        <div className="grid grid-cols-11 bg-slate-50 border-b border-slate-200 text-center text-[10px] font-semibold divide-x divide-slate-200 select-none overflow-x-auto">
+        {/* 3-Step Clean Navigation Stepper */}
+        <div className="grid grid-cols-3 bg-slate-50 border-b border-slate-200 text-xs font-semibold divide-x divide-slate-200 select-none">
           {[
-            { step: 1, label: '1. Initiation' },
-            { step: 2, label: '2. Borrower' },
-            { step: 3, label: '3. Legal Owner' },
-            { step: 4, label: '4. Asset Details' },
-            { step: 5, label: '5. Valuation' },
-            { step: 6, label: '6. Security Rank' },
-            { step: 7, label: '7. Documents' },
-            { step: 8, label: '8. Facilities' },
-            { step: 9, label: '9. Validation' },
-            { step: 10, label: '10. Exceptions' },
-            { step: 11, label: '11. Review' },
+            { step: 1, label: '1. Borrower, Asset & Valuation', sub: 'Borrower, owner, asset details & rank' },
+            { step: 2, label: '2. Facilities & Documents', sub: 'Facility allocation & required uploads' },
+            { step: 3, label: '3. Validation & Submit', sub: 'Policy checks, exceptions & review' },
           ].map((s) => (
             <button
               key={s.step}
-              onClick={() => setCurrentStep(s.step)}
-              className={`py-2.5 px-1 transition-all ${currentStep === s.step
+              type="button"
+              onClick={() => {
+                if (s.step > 1 && !selectedBorrowerId) {
+                  dispatchInAppToast('Please select a borrower first.', 'warning', 'Selection Required');
+                  return;
+                }
+                setCurrentStep(s.step);
+              }}
+              className={`py-3 px-4 text-left transition-all flex items-center gap-3 ${currentStep === s.step
                 ? 'bg-white text-[#00205B] font-bold shadow-xs border-b-2 border-[#D48806]'
                 : currentStep > s.step
-                  ? 'text-[#00205B] hover:bg-slate-100 font-semibold'
-                  : 'text-slate-400 hover:bg-slate-100/50'
+                  ? 'text-[#00205B] hover:bg-slate-100/80 font-semibold'
+                  : 'text-slate-500 hover:bg-slate-100/50'
                 }`}
             >
-              <div className="truncate">{s.label}</div>
+              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${currentStep === s.step
+                ? 'bg-[#00205B] text-white'
+                : currentStep > s.step
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-200 text-slate-600'
+                }`}>
+                {currentStep > s.step ? '✓' : s.step}
+              </span>
+              <div className="min-w-0">
+                <div className="truncate">{s.label}</div>
+                <div className="text-[10px] font-normal text-slate-500 truncate">{s.sub}</div>
+              </div>
             </button>
           ))}
         </div>
 
         {/* Wizard Main Content Area */}
-        <div className="p-6 space-y-4 max-h-[72vh] overflow-y-auto bg-slate-50/30">
+        <div className="p-6 space-y-6 max-h-[72vh] overflow-y-auto bg-slate-50/50">
           {errorMessage && (
             <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
@@ -1506,7 +1516,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           {/* =========================================================================
               PAGE 2: BORROWER INFORMATION
               ========================================================================= */}
-          {currentStep === 2 && (
+          {currentStep === 1 && (
             <div className="space-y-4">
               <div className="border-b border-slate-200 pb-3">
                 <h4 className="font-bold text-[#101828] text-sm flex items-center gap-2">
@@ -1631,7 +1641,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           {/* =========================================================================
               PAGE 3: LEGAL COLLATERAL OWNER
               ========================================================================= */}
-          {currentStep === 3 && (
+          {currentStep === 1 && (
             <div className="space-y-4">
               <div className="border-b border-slate-200 pb-3">
                 <h4 className="font-bold text-[#101828] text-sm flex items-center gap-2">
@@ -2034,7 +2044,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           {/* =========================================================================
               PAGE 4: ASSET-SPECIFIC COLLATERAL DETAILS
               ========================================================================= */}
-          {currentStep === 4 && (
+          {currentStep === 1 && (
             <div className="space-y-4">
               <div className="border-b border-slate-200 pb-3">
                 <h4 className="font-bold text-[#101828] text-sm flex items-center gap-2">
@@ -2604,7 +2614,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           {/* =========================================================================
               PAGE 5: VALUATION INFORMATION
               ========================================================================= */}
-          {currentStep === 5 && (
+          {currentStep === 1 && (
             <div className="space-y-4">
               <div className="border-b border-slate-200 pb-3">
                 <h4 className="font-bold text-[#101828] text-sm flex items-center gap-2">
@@ -2777,7 +2787,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           {/* =========================================================================
               PAGE 6: SECURITY RANK AND MORTGAGE INFORMATION
               ========================================================================= */}
-          {currentStep === 6 && (
+          {currentStep === 1 && (
             <div className="space-y-4">
               <div className="border-b border-slate-200 pb-3">
                 <h4 className="font-bold text-[#101828] text-sm flex items-center gap-2">
@@ -2971,7 +2981,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           {/* =========================================================================
               PAGE 7: DOCUMENTS & EXCEPTIONS
               ========================================================================= */}
-          {currentStep === 7 && (
+          {currentStep === 2 && (
             <div className="space-y-6">
               <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
                 <div>
@@ -3315,7 +3325,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           {/* =========================================================================
               PAGE 8: FACILITY LINKAGE AND ALLOCATIONS
               ========================================================================= */}
-          {currentStep === 8 && (
+          {currentStep === 2 && (
             <div className="space-y-4">
               <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
                 <div>
@@ -3466,7 +3476,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           {/* =========================================================================
               PAGE 9: VALIDATION RESULTS
               ========================================================================= */}
-          {currentStep === 9 && (
+          {currentStep === 3 && (
             <div className="space-y-4">
               <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
                 <div>
@@ -3511,7 +3521,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                     {preValidationResult.canSubmitAsException && (
                       <button
                         type="button"
-                        onClick={() => setCurrentStep(10)}
+                        onClick={() => setCurrentStep(3)}
                         className="px-3 py-1 bg-amber-600 text-white rounded font-bold hover:bg-amber-700 text-xs shadow-xs"
                       >
                         Request Exception (Page 10) →
@@ -3575,7 +3585,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           {/* =========================================================================
               PAGE 10: EXCEPTION REQUEST AND MANAGEMENT
               ========================================================================= */}
-          {currentStep === 10 && (
+          {currentStep === 3 && (
             <div className="space-y-4">
               <div className="border-b border-slate-200 pb-3">
                 <h4 className="font-bold text-[#101828] text-sm flex items-center gap-2">
@@ -3655,7 +3665,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                   </p>
                   <button
                     type="button"
-                    onClick={() => setCurrentStep(11)}
+                    onClick={() => setCurrentStep(3)}
                     className="px-4 py-2 bg-[#00205B] text-white rounded font-bold hover:bg-[#00205B] text-xs shadow-xs"
                   >
                     Proceed to Final Review (Page 11) →
@@ -3797,7 +3807,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
           {/* =========================================================================
               PAGE 11: FINAL REVIEW AND SUBMISSION
               ========================================================================= */}
-          {currentStep === 11 && (
+          {currentStep === 3 && (
             <div className="space-y-4">
               <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
                 <div>
@@ -3864,7 +3874,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                               </p>
                             </div>
                           </div>
-                          <button type="button" onClick={() => setCurrentStep(8)} className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 text-xs shrink-0 shadow-xs">
+                          <button type="button" onClick={() => setCurrentStep(2)} className="px-3 py-1 bg-red-600 text-white rounded font-bold hover:bg-red-700 text-xs shrink-0 shadow-xs">
                             Go to Page 8 →
                           </button>
                         </div>
@@ -3913,7 +3923,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
                               </ul>
                             </div>
                           </div>
-                          <button type="button" onClick={() => setCurrentStep(7)} className="px-3 py-1 bg-amber-600 text-white rounded font-bold hover:bg-amber-700 text-xs shrink-0 shadow-xs">
+                          <button type="button" onClick={() => setCurrentStep(2)} className="px-3 py-1 bg-amber-600 text-white rounded font-bold hover:bg-amber-700 text-xs shrink-0 shadow-xs">
                             Go to Page 7 →
                           </button>
                         </div>
@@ -4114,11 +4124,11 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
               </button>
             )}
 
-            {currentStep < 11 && !submissionResult && (
+            {currentStep < 3 && !submissionResult && (
               <button
                 type="button"
                 onClick={() => {
-                  if (currentStep === 2 && !selectedBorrowerId) {
+                  if (currentStep === 1 && !selectedBorrowerId) {
                     dispatchInAppToast('Please select a borrower before continuing.', 'warning', 'Selection Required');
                     return;
                   }
@@ -4130,7 +4140,7 @@ export const CollateralRegistrationWizard: React.FC<CollateralRegistrationWizard
               </button>
             )}
 
-            {currentStep === 11 && !submissionResult && (() => {
+            {currentStep === 3 && !submissionResult && (() => {
               // Outstanding documents are informational only; the maker may submit and
               // the checker decides whether to accept the risk or require perfection.
               const isCapacityBlocked = isAllocationOverflow && !collateralExceptions.some((e) => e.failedRequirement?.toLowerCase().includes('capacity') || e.exceptionType?.toLowerCase().includes('capacity'));
