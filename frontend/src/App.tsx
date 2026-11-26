@@ -1342,6 +1342,7 @@ export function App() {
                     segments={segments}
                     branches={branches}
                     currentUser={effectiveUserSession}
+                    selectedSegment={effectiveSegment}
                     initialCustomerId={targetCustomerId}
                     onNavigate={handleNavigate}
                     onRegisterManualCustomer={handleRegisterManualCustomer}
@@ -1358,6 +1359,7 @@ export function App() {
                     policies={scopedPolicies}
                     initialFacilityId={targetFacilityId}
                     currentUser={effectiveUserSession}
+                    selectedSegment={effectiveSegment}
                     onNavigate={handleNavigate}
                     onRefreshData={loadData}
                   />
@@ -1373,6 +1375,7 @@ export function App() {
                     exceptions={scopedExceptions}
                     taxonomies={taxonomies}
                     mandatoryDocRules={mandatoryDocRules}
+                    selectedSegment={effectiveSegment}
                     segments={segments}
                     branches={branches}
                     customers={scopedCustomers}

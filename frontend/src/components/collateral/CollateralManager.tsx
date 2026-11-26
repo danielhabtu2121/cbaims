@@ -110,6 +110,7 @@ interface CollateralManagerProps {
   customers?: Customer[];
   systemParameters?: SystemParameter[];
   currentUser: UserSession;
+  selectedSegment?: string;
   initialCollateralId?: string | null;
   onNavigate?: (page: string, params?: Record<string, any>) => void;
   onRegisterCollateral: (col: Partial<Collateral>, allocations?: any[], documents?: any[]) => Promise<void>;
@@ -135,6 +136,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
   customers = [],
   systemParameters = [],
   currentUser,
+  selectedSegment,
   initialCollateralId,
   onNavigate,
   onRegisterCollateral,
@@ -1957,7 +1959,8 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
       setColLoading(true);
       try {
         const originParam = mainSubTab === 'cbaims' ? 'CBAIMS_REGISTERED' : (filterOrigin !== 'ALL' ? filterOrigin : '');
-        const res = await cimsApi.getPagedCollaterals(colPage - 1, colPageSize, colSearch, '', originParam);
+        const segParam = selectedSegment && selectedSegment !== 'ALL' ? selectedSegment : '';
+        const res = await cimsApi.getPagedCollaterals(colPage - 1, colPageSize, colSearch, segParam, originParam);
         if (active && res && Array.isArray(res.content)) {
           setPagedCollaterals(res.content);
           setTotalCollaterals(res.totalElements ?? res.content.length);
@@ -1972,7 +1975,7 @@ export const CollateralManager: React.FC<CollateralManagerProps> = ({
       }
     }, colSearch ? 250 : 0);
     return () => { active = false; clearTimeout(timer); };
-  }, [colPage, colPageSize, colSearch, mainSubTab, filterOrigin, filterRank, filteredCollaterals]);
+  }, [colPage, colPageSize, colSearch, selectedSegment, mainSubTab, filterOrigin, filterRank, filteredCollaterals]);
 
   const count1st = collaterals.filter((c) => c.collateralRank !== '2nd').length;
   const count2ndInt = collaterals.filter((c) => c.collateralRank === '2nd' && c.isFirstDegreeInternal).length;

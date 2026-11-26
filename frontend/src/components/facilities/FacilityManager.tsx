@@ -26,6 +26,7 @@ interface FacilityManagerProps {
   policies: InsurancePolicy[];
   initialFacilityId?: string | null;
   currentUser?: UserSession;
+  selectedSegment?: string;
   onNavigate?: (page: string, params?: Record<string, any>) => void;
   onRefreshData?: () => void | Promise<void>;
 }
@@ -38,6 +39,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
   policies,
   initialFacilityId,
   currentUser,
+  selectedSegment,
   onNavigate,
   onRefreshData,
 }) => {
@@ -67,7 +69,8 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
     const timer = setTimeout(async () => {
       setFacLoading(true);
       try {
-        const res = await cimsApi.getPagedFacilities(facPage - 1, facPageSize, facSearch);
+        const segParam = selectedSegment && selectedSegment !== 'ALL' ? selectedSegment : '';
+        const res = await cimsApi.getPagedFacilities(facPage - 1, facPageSize, facSearch, segParam);
         if (active && res && Array.isArray(res.content)) {
           setPagedFacilities(res.content);
           setTotalFacilities(res.totalElements ?? res.content.length);
@@ -82,7 +85,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
       }
     }, facSearch ? 250 : 0);
     return () => { active = false; clearTimeout(timer); };
-  }, [facPage, facPageSize, facSearch, facilities]);
+  }, [facPage, facPageSize, facSearch, selectedSegment, facilities]);
 
   const loadSecuringCollaterals = async (facId: string) => {
     setLoadingSecuring(true);

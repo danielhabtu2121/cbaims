@@ -58,6 +58,53 @@ public class CimsController {
     @Autowired
     private BusinessSegmentRepository businessSegmentRepository;
 
+    @Autowired(required = false)
+    private com.bank.cims.service.DashboardService dashboardService;
+
+    private record PagedScope(String segment, boolean applyBranchFilter, List<String> branches) {}
+
+    private PagedScope resolvePagedScope(jakarta.servlet.http.HttpServletRequest request, String requestedSegment) {
+        String seg = (requestedSegment != null && !"ALL".equalsIgnoreCase(requestedSegment.trim()) && !requestedSegment.isBlank())
+                ? requestedSegment.trim() : null;
+        if (request == null || dashboardService == null) {
+            return new PagedScope(seg, false, List.of("__NONE__"));
+        }
+        User authUser = (User) request.getAttribute("authenticatedUser");
+        String userId = authUser != null ? authUser.getId() : request.getHeader("X-User-Id");
+        if (userId == null || userId.isBlank()) {
+            return new PagedScope(seg, false, List.of("__NONE__"));
+        }
+        try {
+            com.bank.cims.service.DashboardService.ResolvedScope scope = dashboardService.resolveUserScope(userId, seg, null, null);
+            String effSeg = scope.effectiveSegment;
+            // Lock non-privileged segment/officer users to their assigned segment if they have one
+            String roleUpper = scope.role != null ? scope.role.toUpperCase() : "";
+            boolean isPrivilegedAllSeg = List.of("EXEC", "SRMGMT", "SYSADMIN", "AUDITOR", "COMPLIANCE", "RISK", "MGRCOLLDOC", "DISTDIR", "BRMGR").contains(roleUpper);
+            if (!isPrivilegedAllSeg && scope.user != null && scope.user.getSegment() != null
+                    && !scope.user.getSegment().isBlank() && !"ALL".equalsIgnoreCase(scope.user.getSegment().trim())) {
+                effSeg = scope.user.getSegment().trim();
+            }
+            if (scope.isBankWide()) {
+                return new PagedScope(effSeg, false, List.of("__NONE__"));
+            }
+            if (scope.effectiveBranch != null && !scope.effectiveBranch.isBlank()) {
+                return new PagedScope(effSeg, true, List.of(scope.effectiveBranch.trim().toUpperCase()));
+            }
+            if (scope.allowedBranches != null && !scope.allowedBranches.isEmpty()) {
+                List<String> upperBranches = scope.allowedBranches.stream()
+                        .filter(b -> b != null && !b.isBlank())
+                        .map(b -> b.trim().toUpperCase())
+                        .toList();
+                if (!upperBranches.isEmpty()) {
+                    return new PagedScope(effSeg, true, upperBranches);
+                }
+            }
+            return new PagedScope(effSeg, false, List.of("__NONE__"));
+        } catch (IllegalArgumentException ex) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, ex.getMessage());
+        }
+    }
+
     @GetMapping("/state")
     public ResponseEntity<Map<String, Object>> getState() {
         return ResponseEntity.ok(cimsService.getFullState());
@@ -68,11 +115,14 @@ public class CimsController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String segment) {
-        String seg = (segment != null && !"ALL".equalsIgnoreCase(segment)) ? segment.trim() : null;
+            @RequestParam(required = false) String segment,
+            jakarta.servlet.http.HttpServletRequest request) {
+        PagedScope pScope = resolvePagedScope(request, segment);
         String q = (search != null && !search.isBlank()) ? search.trim() : null;
         int safeSize = Math.min(Math.max(size, 1), 200);
-        return ResponseEntity.ok(customerRepository.findPaged(q, seg, PageRequest.of(Math.max(page, 0), safeSize)));
+        return ResponseEntity.ok(customerRepository.findPaged(
+                q, pScope.segment(), pScope.applyBranchFilter(), pScope.branches(),
+                PageRequest.of(Math.max(page, 0), safeSize)));
     }
 
     @GetMapping("/facilities/paged")
@@ -80,11 +130,14 @@ public class CimsController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String segment) {
-        String seg = (segment != null && !"ALL".equalsIgnoreCase(segment)) ? segment.trim() : null;
+            @RequestParam(required = false) String segment,
+            jakarta.servlet.http.HttpServletRequest request) {
+        PagedScope pScope = resolvePagedScope(request, segment);
         String q = (search != null && !search.isBlank()) ? search.trim() : null;
         int safeSize = Math.min(Math.max(size, 1), 200);
-        Page<LoanAccount> result = loanAccountRepository.findPaged(q, seg, PageRequest.of(Math.max(page, 0), safeSize));
+        Page<LoanAccount> result = loanAccountRepository.findPaged(
+                q, pScope.segment(), pScope.applyBranchFilter(), pScope.branches(),
+                PageRequest.of(Math.max(page, 0), safeSize));
         List<LoanAccount> items = result.getContent();
         if (!items.isEmpty()) {
             List<String> loanIds = items.stream().map(LoanAccount::getId).toList();
@@ -120,12 +173,15 @@ public class CimsController {
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String segment,
-            @RequestParam(required = false) String origin) {
-        String seg = (segment != null && !"ALL".equalsIgnoreCase(segment)) ? segment.trim() : null;
+            @RequestParam(required = false) String origin,
+            jakarta.servlet.http.HttpServletRequest request) {
+        PagedScope pScope = resolvePagedScope(request, segment);
         String orig = (origin != null && !"ALL".equalsIgnoreCase(origin)) ? origin.trim() : null;
         String q = (search != null && !search.isBlank()) ? search.trim() : null;
         int safeSize = Math.min(Math.max(size, 1), 200);
-        return ResponseEntity.ok(collateralRepository.findPaged(q, seg, orig, PageRequest.of(Math.max(page, 0), safeSize)));
+        return ResponseEntity.ok(collateralRepository.findPaged(
+                q, pScope.segment(), orig, pScope.applyBranchFilter(), pScope.branches(),
+                PageRequest.of(Math.max(page, 0), safeSize)));
     }
 
     @GetMapping("/config/system-date")

@@ -409,7 +409,7 @@ public class CollateralFacilityRelationshipService {
         } else {
             String segFilter = (effScope != null && !effScope.isBankWide()) ? effScope.effectiveSegment : null;
             candidateSourceFacilities = loanAccountRepository.findPaged(
-                    null, segFilter, org.springframework.data.domain.PageRequest.of(0, 200)
+                    null, segFilter, false, List.of("__NONE__"), org.springframework.data.domain.PageRequest.of(0, 200)
             ).getContent();
         }
 
@@ -622,7 +622,7 @@ public class CollateralFacilityRelationshipService {
         if (candidateColMap.size() < 100) {
             String segFilter = (effScope != null && !effScope.isBankWide()) ? effScope.effectiveSegment : null;
             for (Collateral c : collateralRepository.findPaged(
-                    null, segFilter, null, org.springframework.data.domain.PageRequest.of(0, 100)
+                    null, segFilter, null, false, List.of("__NONE__"), org.springframework.data.domain.PageRequest.of(0, 100)
             ).getContent()) {
                 candidateColMap.putIfAbsent(c.getId(), c);
             }

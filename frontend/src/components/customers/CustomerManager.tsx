@@ -14,6 +14,7 @@ interface CustomerManagerProps {
   segments?: BusinessSegment[];
   branches?: Branch[];
   currentUser: UserSession;
+  selectedSegment?: string;
   initialCustomerId?: string | null;
   onNavigate?: (page: string, params?: Record<string, any>) => void;
   onRegisterManualCustomer: (cust: Partial<Customer>) => Promise<void>;
@@ -29,6 +30,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
   segments,
   branches,
   currentUser,
+  selectedSegment,
   initialCustomerId,
   onNavigate,
   onRegisterManualCustomer,
@@ -58,7 +60,8 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
     const timer = setTimeout(async () => {
       setCustLoading(true);
       try {
-        const res = await cimsApi.getPagedCustomers(custPage - 1, custPageSize, custSearch);
+        const segParam = selectedSegment && selectedSegment !== 'ALL' ? selectedSegment : '';
+        const res = await cimsApi.getPagedCustomers(custPage - 1, custPageSize, custSearch, segParam);
         if (active && res && Array.isArray(res.content)) {
           setPagedCustomers(res.content);
           setTotalCustomers(res.totalElements ?? res.content.length);
@@ -73,7 +76,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
       }
     }, custSearch ? 250 : 0);
     return () => { active = false; clearTimeout(timer); };
-  }, [custPage, custPageSize, custSearch, customers]);
+  }, [custPage, custPageSize, custSearch, selectedSegment, customers]);
 
   useEffect(() => {
     if (initialCustomerId && customers.length > 0) {
