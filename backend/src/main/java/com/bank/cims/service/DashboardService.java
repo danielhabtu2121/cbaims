@@ -2287,7 +2287,7 @@ public class DashboardService {
 
                 Customer cust = ds.customerByCif.get(col.getCustomerId());
                 if (cust == null && ds.customers != null) {
-                    cust = ds.customers.stream().filter(c -> c.getId().equalsIgnoreCase(col.getCustomerId()) || c.getCif().equalsIgnoreCase(col.getCustomerId())).findFirst().orElse(null);
+                    cust = ds.customers.stream().filter(c -> (c.getId() != null && c.getId().equalsIgnoreCase(col.getCustomerId())) || (c.getCif() != null && c.getCif().equalsIgnoreCase(col.getCustomerId()))).findFirst().orElse(null);
                 }
                 item.put("customerName", cust != null ? cust.getName() : "Customer " + col.getCustomerId());
                 item.put("customerId", col.getCustomerId());
@@ -3023,7 +3023,7 @@ public class DashboardService {
                     .toList();
 
             List<CimsException> segExcs = ds.exceptions.stream()
-                    .filter(e -> e.getEntityId() != null && (segColIds.contains(e.getEntityId()) || segCusts.stream().anyMatch(c -> c.getId().equalsIgnoreCase(e.getEntityId()) || c.getCif().equalsIgnoreCase(e.getEntityId()))))
+                    .filter(e -> e.getEntityId() != null && (segColIds.contains(e.getEntityId()) || segCusts.stream().anyMatch(c -> (c.getId() != null && c.getId().equalsIgnoreCase(e.getEntityId())) || (c.getCif() != null && c.getCif().equalsIgnoreCase(e.getEntityId())))))
                     .toList();
 
             BigDecimal segExp = segFacs.stream().map(f -> BigDecimal.valueOf(f.getOutstandingBalance())).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -3153,7 +3153,7 @@ public class DashboardService {
                     .toList();
 
             List<CimsException> distExcs = ds.exceptions.stream()
-                    .filter(e -> e.getEntityId() != null && (distColIds.contains(e.getEntityId()) || distCusts.stream().anyMatch(c -> c.getId().equalsIgnoreCase(e.getEntityId()) || c.getCif().equalsIgnoreCase(e.getEntityId()))))
+                    .filter(e -> e.getEntityId() != null && (distColIds.contains(e.getEntityId()) || distCusts.stream().anyMatch(c -> (c.getId() != null && c.getId().equalsIgnoreCase(e.getEntityId())) || (c.getCif() != null && c.getCif().equalsIgnoreCase(e.getEntityId())))))
                     .toList();
 
             BigDecimal distExp = distFacs.stream().map(f -> BigDecimal.valueOf(f.getOutstandingBalance())).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -3291,7 +3291,7 @@ public class DashboardService {
                     .toList();
 
             List<CimsException> brExcs = ds.exceptions.stream()
-                    .filter(e -> e.getEntityId() != null && (brColIds.contains(e.getEntityId()) || brCusts.stream().anyMatch(c -> c.getId().equalsIgnoreCase(e.getEntityId()) || c.getCif().equalsIgnoreCase(e.getEntityId()))))
+                    .filter(e -> e.getEntityId() != null && (brColIds.contains(e.getEntityId()) || brCusts.stream().anyMatch(c -> (c.getId() != null && c.getId().equalsIgnoreCase(e.getEntityId())) || (c.getCif() != null && c.getCif().equalsIgnoreCase(e.getEntityId())))))
                     .toList();
 
             BigDecimal brExp = brFacs.stream().map(f -> BigDecimal.valueOf(f.getOutstandingBalance())).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -3424,7 +3424,7 @@ public class DashboardService {
                     .toList();
 
             List<CimsException> brExcs = areaDs.exceptions.stream()
-                    .filter(e -> e.getEntityId() != null && (brColIds.contains(e.getEntityId()) || brCusts.stream().anyMatch(c -> c.getId().equalsIgnoreCase(e.getEntityId()) || c.getCif().equalsIgnoreCase(e.getEntityId()))))
+                    .filter(e -> e.getEntityId() != null && (brColIds.contains(e.getEntityId()) || brCusts.stream().anyMatch(c -> (c.getId() != null && c.getId().equalsIgnoreCase(e.getEntityId())) || (c.getCif() != null && c.getCif().equalsIgnoreCase(e.getEntityId())))))
                     .toList();
 
             BigDecimal brExp = brFacs.stream().map(f -> BigDecimal.valueOf(f.getOutstandingBalance())).reduce(BigDecimal.ZERO, BigDecimal::add);
