@@ -75,6 +75,18 @@ public class EffectiveInsuranceService {
      * When an old policy is replaced/renewed by a valid policy, the old policy is NEVER treated as an active risk.
      */
     public PolicyCategorizationResult categorizePolicies(List<InsurancePolicy> policies, LocalDate asOfDate, int expiringDays) {
+        return categorizePoliciesWithAllocations(policies, null, asOfDate, expiringDays);
+    }
+
+    /**
+     * Categorizes policies while using explicit per-collateral allocated insured amounts when provided,
+     * preventing double-counting when one policy covers multiple collaterals.
+     */
+    public PolicyCategorizationResult categorizePoliciesWithAllocations(
+            List<InsurancePolicy> policies,
+            Map<String, Double> allocatedAmountByPolicyId,
+            LocalDate asOfDate,
+            int expiringDays) {
         PolicyCategorizationResult res = new PolicyCategorizationResult();
         if (policies == null || policies.isEmpty()) return res;
 
@@ -134,7 +146,10 @@ public class EffectiveInsuranceService {
                 }
 
                 res.activeValidPolicies.add(p);
-                res.totalActiveSumInsured += p.getInsuredAmount();
+                double effectiveAmt = (allocatedAmountByPolicyId != null && allocatedAmountByPolicyId.containsKey(p.getId()))
+                        ? allocatedAmountByPolicyId.get(p.getId())
+                        : p.getInsuredAmount();
+                res.totalActiveSumInsured += effectiveAmt;
 
                 if (expDate != null) {
                     long daysToExpiry = java.time.temporal.ChronoUnit.DAYS.between(effectiveAsOf, expDate);

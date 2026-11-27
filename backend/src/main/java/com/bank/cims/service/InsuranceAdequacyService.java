@@ -58,6 +58,9 @@ public class InsuranceAdequacyService {
     @Autowired
     private EffectiveInsuranceService effectiveInsuranceService;
 
+    @Autowired(required = false)
+    private PolicyCollateralAllocationService policyCollateralAllocationService;
+
     @Autowired
     private CimsService cimsService;
 
@@ -142,22 +145,37 @@ public class InsuranceAdequacyService {
         double requiredCoverageAmt = baseInsurable * (reqPct / 100.0);
         dto.setRequiredCoverageAmount(requiredCoverageAmt);
 
-        // 4. Aggregated Active Insured Amount from CIMS Policies
-        List<InsurancePolicy> policies = insurancePolicyRepository.findByCollateralId(collateral.getId());
-        if (policies.isEmpty() && collateral.getCode() != null) {
-            policies = insurancePolicyRepository.findByCollateralId(collateral.getCode());
+        // 4. Aggregated Active Insured Amount from CIMS Policies (explicit per-collateral allocation)
+        List<InsurancePolicy> policies;
+        Map<String, Double> allocatedByPolicyId = null;
+        if (policyCollateralAllocationService != null) {
+            PolicyCollateralAllocationService.ResolvedCollateralPolicies resolved =
+                    policyCollateralAllocationService.getPoliciesForCollateral(collateral.getId(), collateral.getCode());
+            policies = resolved.policies;
+            allocatedByPolicyId = resolved.allocatedAmountByPolicyId;
+        } else {
+            policies = insurancePolicyRepository.findByCollateralId(collateral.getId());
+            if (policies.isEmpty() && collateral.getCode() != null) {
+                policies = insurancePolicyRepository.findByCollateralId(collateral.getCode());
+            }
         }
 
-        EffectiveInsuranceService.PolicyCategorizationResult polCat = effectiveInsuranceService.categorizePolicies(policies, LocalDate.now(), 30);
+        EffectiveInsuranceService.PolicyCategorizationResult polCat =
+                effectiveInsuranceService.categorizePoliciesWithAllocations(policies, allocatedByPolicyId, LocalDate.now(), 30);
         double totalInsured = polCat.totalActiveSumInsured;
         dto.setTotalInsuredAmount(totalInsured);
 
         for (InsurancePolicy p : polCat.activeValidPolicies) {
+            double allocAmt = (allocatedByPolicyId != null && allocatedByPolicyId.containsKey(p.getId()))
+                    ? allocatedByPolicyId.get(p.getId())
+                    : p.getInsuredAmount();
             Map<String, Object> pMap = new HashMap<>();
             pMap.put("id", p.getId());
             pMap.put("policyNumber", p.getPolicyNumber());
             pMap.put("insurer", p.getInsurerName());
-            pMap.put("insuredAmount", p.getInsuredAmount());
+            pMap.put("insuredAmount", allocAmt);
+            pMap.put("totalPolicySumInsured", p.getInsuredAmount());
+            pMap.put("allocatedInsuredAmount", allocAmt);
             pMap.put("effectiveDate", p.getEffectiveDate());
             pMap.put("expiryDate", p.getExpiryDate());
             pMap.put("status", p.getStatus());

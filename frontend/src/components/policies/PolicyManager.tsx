@@ -359,6 +359,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [collateralSearchQuery, setCollateralSearchQuery] = useState('');
   const [wizardColId, setWizardColId] = useState('');
+  const [wizardCollateralAllocations, setWizardCollateralAllocations] = useState<Record<string, number>>({});
   const [wizardExposure, setWizardExposure] = useState<ExposureAdequacySummary | null>(null);
   const [wizardAdequacy, setWizardAdequacy] = useState<any | null>(null);
   const [loadingWizardExposure, setLoadingWizardExposure] = useState(false);
@@ -888,6 +889,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
     setCustomerSearchQuery('');
     setCollateralSearchQuery('');
     setWizardColId('');
+    setWizardCollateralAllocations({});
     setWizardExposure(null);
     setWizardCompliance(null);
     setUninsuredFilterOnly(false);
@@ -1138,11 +1140,32 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
         alert('Selected collateral asset was not found.');
         return;
       }
+      const selectedIds = Object.keys(wizardCollateralAllocations);
+      const effectiveIds = selectedIds.length > 0 ? selectedIds : [selectedCol.id];
+      const insAmtNum = Number(wizardPolicy.insuredAmount || 0);
+      const allocationsPayload = effectiveIds.map((cid) => {
+        const rawAlloc = wizardCollateralAllocations[cid];
+        const amt = rawAlloc && rawAlloc > 0 ? Number(rawAlloc) : (effectiveIds.length === 1 ? insAmtNum : 0);
+        return { collateralId: cid, allocatedInsuredAmount: amt };
+      });
+      const totalAlloc = allocationsPayload.reduce((s, a) => s + a.allocatedInsuredAmount, 0);
+      if (allocationsPayload.some((a) => a.allocatedInsuredAmount <= 0)) {
+        alert('Every selected collateral must have an explicit Allocated Insured Amount greater than zero.');
+        setWizardSubmitting(false);
+        return;
+      }
+      if (insAmtNum > 0 && totalAlloc > insAmtNum + 0.01) {
+        alert(`Total allocated insured amount (${totalAlloc.toLocaleString()}) exceeds policy Sum Insured (${insAmtNum.toLocaleString()}).`);
+        setWizardSubmitting(false);
+        return;
+      }
+
       const coverage = wizardPolicy.coverageType || getStandardCoverageForCategory(selectedCol.category) || 'Fire & Allied Perils';
       const policyData: Partial<InsurancePolicy> = {
         ...wizardPolicy,
         coverageType: coverage,
         collateralId: selectedCol.id,
+        collateralAllocations: allocationsPayload,
         customerId: selectedCol.customerId,
         status: 'Pending Approval',
       };
@@ -1233,7 +1256,14 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
             ) : (
               <div className="font-semibold text-[#00205B]">—</div>
             )}
-            <div className="text-[11px] text-[#5B6472]">{col?.category || 'Collateral'}</div>
+            <div className="text-[11px] text-[#5B6472] flex items-center gap-1.5 flex-wrap">
+              <span>{col?.category || 'Collateral'}</span>
+              {p.collateralAllocations && p.collateralAllocations.length > 1 && (
+                <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-semibold text-[10px]">
+                  +{p.collateralAllocations.length - 1} more ({p.collateralAllocations.length} assets)
+                </span>
+              )}
+            </div>
           </div>
         );
       },
@@ -2169,6 +2199,7 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                           onChange={(e) => {
                             setWizardCustomerId(e.target.value);
                             setWizardColId('');
+    setWizardCollateralAllocations({});
                             setWizardExposure(null);
                           }}
                           className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-slate-50 focus:bg-white focus:border-[#D48806] focus:ring-1 focus:ring-[#D48806] outline-none transition-colors"
@@ -2212,63 +2243,148 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                   {/* Collateral Selection List */}
                   <div className="space-y-2">
                     <label className="block font-semibold text-[#101828]">
-                      Select Pledged Collateral Asset <span className="text-red-500">*</span>
+                      Select Pledged Collateral Asset(s) <span className="text-red-500">*</span>
+                      <span className="ml-2 text-[10px] font-normal text-slate-500">
+                        (Single-branch rule: you can cover multiple collaterals in the same branch with explicit allocated amounts)
+                      </span>
                     </label>
 
                     {availableCollaterals.length > 0 ? (
-                      <div className="space-y-2 max-h-[36vh] overflow-y-auto pr-1">
-                        {availableCollaterals.map((c) => {
-                          const isSelected = wizardColId === c.id || wizardColId === c.code;
-                          const cust = customers.find(
-                            (cu) => (cu.id && cu.id === c.customerId) || (cu.cif && cu.cif === c.customerId)
-                          );
-                          return (
-                            <div
-                              key={c.id}
-                              onClick={() => {
-                                setWizardColId(c.id);
-                                setWizardCustomerId(c.customerId || '');
-                                loadWizardExposure(c.id);
-                              }}
-                              className={`p-3 rounded-lg border cursor-pointer transition-all ${isSelected
-                                ? 'bg-slate-50 border-[#00205B] border-l-4 border-l-[#D48806] shadow-sm ring-1 ring-[#00205B]/30'
-                                : 'bg-white border-slate-200 hover:bg-slate-50'
-                                }`}
-                            >
-                              <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-2.5">
-                                  <Building2 className={`w-4 h-4 ${isSelected ? 'text-[#00205B]' : 'text-slate-400'}`} />
-                                  <div>
-                                    <div className="font-bold text-[#101828] text-xs flex items-center gap-2">
-                                      <span>{c.code} — {c.category} ({c.type || c.category})</span>
-                                      {isSelected && (
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
-                                          <CheckCircle className="w-3 h-3 text-emerald-600" /> Selected Asset
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-[11px] text-[#5B6472] flex gap-3 mt-0.5">
-                                      <span>Borrower: <strong className="text-[#00205B]">{cust?.name || c.customerId} ({cust?.cif || c.customerId})</strong></span>
-                                      <span>Branch: <strong>{c.branch}</strong></span>
-                                      <span>Status: <strong className={c.insuranceStatus === 'Insured' ? 'text-emerald-700' : 'text-amber-700'}>{c.insuranceStatus || 'Uninsured'}</strong></span>
+                      <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1">
+                        {(() => {
+                          const selectedIds = Object.keys(wizardCollateralAllocations);
+                          const primarySelected = selectedIds.length > 0
+                            ? collaterals.find((col) => col.id === selectedIds[0])
+                            : (wizardColId ? collaterals.find((col) => col.id === wizardColId || col.code === wizardColId) : undefined);
+                          const lockedBranch = primarySelected?.branch?.trim().toLowerCase() || '';
+
+                          return availableCollaterals.map((c) => {
+                            const isSelected = Boolean(wizardCollateralAllocations[c.id] !== undefined || wizardColId === c.id || wizardColId === c.code);
+                            const colBranchLower = (c.branch || '').trim().toLowerCase();
+                            const isDifferentBranch = Boolean(lockedBranch && colBranchLower && colBranchLower !== lockedBranch && !isSelected);
+                            const cust = customers.find(
+                              (cu) => (cu.id && cu.id === c.customerId) || (cu.cif && cu.cif === c.customerId)
+                            );
+                            return (
+                              <div
+                                key={c.id}
+                                onClick={() => {
+                                  if (isDifferentBranch) return;
+                                  setWizardCollateralAllocations((prev) => {
+                                    const next = { ...prev };
+                                    if (next[c.id] !== undefined) {
+                                      delete next[c.id];
+                                      const remKeys = Object.keys(next);
+                                      if (remKeys.length > 0) {
+                                        setWizardColId(remKeys[0]);
+                                      } else {
+                                        setWizardColId('');
+                                      }
+                                    } else {
+                                      const defaultAmt = Object.keys(next).length === 0 ? (Number(wizardPolicy.insuredAmount) || c.valuationAmount || 0) : 0;
+                                      next[c.id] = defaultAmt;
+                                      if (!wizardColId || Object.keys(prev).length === 0) {
+                                        setWizardColId(c.id);
+                                        setWizardCustomerId(c.customerId || '');
+                                        loadWizardExposure(c.id);
+                                      }
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className={`p-3 rounded-lg border transition-all ${isDifferentBranch
+                                  ? 'bg-slate-100 border-slate-200 opacity-55 cursor-not-allowed'
+                                  : isSelected
+                                    ? 'bg-slate-50 border-[#00205B] border-l-4 border-l-[#D48806] shadow-sm ring-1 ring-[#00205B]/30 cursor-pointer'
+                                    : 'bg-white border-slate-200 hover:bg-slate-50 cursor-pointer'
+                                  }`}
+                              >
+                                <div className="flex justify-between items-center">
+                                  <div className="flex items-center gap-2.5">
+                                    <Building2 className={`w-4 h-4 ${isSelected ? 'text-[#00205B]' : 'text-slate-400'}`} />
+                                    <div>
+                                      <div className="font-bold text-[#101828] text-xs flex items-center gap-2">
+                                        <span>{c.code} — {c.category} ({c.type || c.category})</span>
+                                        {isSelected && (
+                                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                                            <CheckCircle className="w-3 h-3 text-emerald-600" /> Selected
+                                          </span>
+                                        )}
+                                        {isDifferentBranch && (
+                                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-slate-600">
+                                            Different Branch
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] text-[#5B6472] flex gap-3 mt-0.5">
+                                        <span>Borrower: <strong className="text-[#00205B]">{cust?.name || c.customerId} ({cust?.cif || c.customerId})</strong></span>
+                                        <span>Branch: <strong>{c.branch}</strong></span>
+                                        <span>Status: <strong className={c.insuranceStatus === 'Insured' ? 'text-emerald-700' : 'text-amber-700'}>{c.insuranceStatus || 'Uninsured'}</strong></span>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                                <div className="text-right">
-                                  <div className="text-[10px] text-[#5B6472]">Market Valuation</div>
-                                  <div className="text-xs font-bold text-[#00205B]">
-                                    ETB {formatEtbNumber(c.valuationAmount)}
+                                  <div className="text-right">
+                                    <div className="text-[10px] text-[#5B6472]">Market Valuation</div>
+                                    <div className="text-xs font-bold text-[#00205B]">
+                                      ETB {formatEtbNumber(c.valuationAmount)}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          });
+                        })()}
                       </div>
                     ) : (
                       <div className="p-4 bg-amber-50 border border-amber-200 rounded text-amber-800 text-xs flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
                         <span>No eligible pledged collateral assets found. Please adjust search filters or ensure collateral assets are authorized.</span>
+                      </div>
+                    )}
+
+                    {/* Explicit Per-Collateral Insured Amount Allocation Panel */}
+                    {Object.keys(wizardCollateralAllocations).length > 0 && (
+                      <div className="mt-3 p-3 bg-blue-50/60 border border-blue-200 rounded-lg space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-[#00205B] uppercase tracking-wider">
+                            Explicit Insured Amount Allocation ({Object.keys(wizardCollateralAllocations).length} {Object.keys(wizardCollateralAllocations).length === 1 ? 'Asset' : 'Assets'})
+                          </span>
+                          <span className="text-[11px] text-slate-600">
+                            Total Allocated:{' '}
+                            <strong className="text-[#00205B]">
+                              ETB {formatEtbNumber(Object.values(wizardCollateralAllocations).reduce((s, v) => s + (Number(v) || 0), 0))}
+                            </strong>
+                            {Number(wizardPolicy.insuredAmount || 0) > 0 && (
+                              <> / ETB {formatEtbNumber(Number(wizardPolicy.insuredAmount || 0))}</>
+                            )}
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {Object.entries(wizardCollateralAllocations).map(([cid, amt]) => {
+                            const cObj = collaterals.find((col) => col.id === cid);
+                            return (
+                              <div key={cid} className="flex items-center justify-between gap-3 bg-white px-2.5 py-1.5 rounded border border-slate-200">
+                                <div className="text-xs font-semibold text-slate-800 truncate">
+                                  {cObj?.code || cid} <span className="text-slate-400 font-normal">({cObj?.branch || '—'})</span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-[10px] text-slate-500">Allocated (ETB):</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={amt || ''}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value) || 0;
+                                      setWizardCollateralAllocations((prev) => ({ ...prev, [cid]: val }));
+                                    }}
+                                    className="w-36 px-2 py-1 text-right text-xs font-semibold border border-slate-300 rounded focus:outline-none focus:border-[#00205B]"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>

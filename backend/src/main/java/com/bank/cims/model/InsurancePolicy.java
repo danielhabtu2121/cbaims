@@ -186,6 +186,12 @@ public class InsurancePolicy {
     @Transient
     private java.util.List<OwnershipDocument> documents = new java.util.ArrayList<>();
 
+    @Transient
+    private java.util.List<PolicyCollateralLink> collateralAllocations = new java.util.ArrayList<>();
+
     public java.util.List<OwnershipDocument> getDocuments() { return documents; }
     public void setDocuments(java.util.List<OwnershipDocument> documents) { this.documents = documents; }
+
+    public java.util.List<PolicyCollateralLink> getCollateralAllocations() { return collateralAllocations; }
+    public void setCollateralAllocations(java.util.List<PolicyCollateralLink> collateralAllocations) { this.collateralAllocations = collateralAllocations; }
 }

@@ -191,6 +191,9 @@ public class CimsService {
     @Autowired
     private PolicyHistoryRepository policyHistoryRepository;
 
+    @Autowired(required = false)
+    private PolicyCollateralAllocationService policyCollateralAllocationService;
+
     @Autowired
     private InsuranceRequirementService insuranceRequirementService;
 
@@ -472,7 +475,11 @@ public class CimsService {
         state.put("totalFacilitiesCount", loanAccountRepository.count());
         state.put("totalCollateralsCount", collateralRepository.count());
         state.put("totalLinksCount", loanCollateralLinkRepository.count());
-        state.put("policies", insurancePolicyRepository.findAll());
+        List<InsurancePolicy> allPolicies = insurancePolicyRepository.findAll();
+        if (policyCollateralAllocationService != null) {
+            policyCollateralAllocationService.populateAllocations(allPolicies);
+        }
+        state.put("policies", allPolicies);
         state.put("endorsements", policyEndorsementRepository.findAll());
         state.put("documents", ownershipDocumentRepository.findAll().stream().map(this::stripDocumentContent).toList());
         state.put("templates", notificationTemplateRepository.findAll());
@@ -568,6 +575,9 @@ public class CimsService {
                 .filter(p -> (p.getCollateralId() != null && collateralIds.contains(p.getCollateralId()))
                         || (p.getCustomerId() != null && customerIds.contains(p.getCustomerId())))
                 .toList();
+        if (policyCollateralAllocationService != null) {
+            policyCollateralAllocationService.populateAllocations(policies);
+        }
         Set<String> policyIds = policies.stream().map(InsurancePolicy::getId).filter(Objects::nonNull)
                 .collect(java.util.stream.Collectors.toSet());
 
@@ -1854,6 +1864,9 @@ public class CimsService {
         policy.setVersion(1);
         policy.setHistoryJson("[{\"version\":1,\"changedAt\":\"" + LocalDateTime.now() + "\",\"changedBy\":\"" + userId + "\",\"description\":\"Policy Created (" + policy.getStatus() + ")\",\"dataSnapshot\":\"{}\"}]");
         insurancePolicyRepository.save(policy);
+        if (policyCollateralAllocationService != null) {
+            policyCollateralAllocationService.validateAndSaveAllocations(policy);
+        }
 
         if (!isDraft) {
             WorkflowActionResultDto wf = workflowExecutionService.submitToWorkflow(
@@ -5321,6 +5334,9 @@ public class CimsService {
         );
         policy.setHistoryJson(initialHistory);
         insurancePolicyRepository.save(policy);
+        if (policyCollateralAllocationService != null) {
+            policyCollateralAllocationService.validateAndSaveAllocations(policy);
+        }
 
         logAudit(userId, "CRO", "POLICY_REGISTRATION", "Insurance Policy", policy.getId(), "Status", "None", "Pending Approval",
                 "Policy registration submitted for checker approval: " + policy.getPolicyNumber());

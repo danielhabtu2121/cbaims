@@ -1032,10 +1032,21 @@ export interface PolicyEndorsement {
   recordStat?: string;
 }
 
+export interface PolicyCollateralAllocation {
+  id?: string;
+  policyId?: string;
+  collateralId: string;
+  allocatedInsuredAmount: number;
+  allocationPct?: number;
+  branch?: string;
+  status?: string;
+}
+
 export interface InsurancePolicy {
   id: string;
   policyNumber: string;
   collateralId: string;
+  collateralAllocations?: PolicyCollateralAllocation[];
   customerId?: string;
   insurerId?: string;
   insurerName: string;
