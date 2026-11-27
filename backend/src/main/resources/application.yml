@@ -11,7 +11,13 @@ spring:
     username: cims_user
     password: cims_password
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 5
+      connection-timeout: 15000
+      leak-detection-threshold: 60000
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: none
     show-sql: false

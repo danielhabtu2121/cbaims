@@ -26,7 +26,7 @@ public class CimsSchedulerService {
      * Runs frequently but uses Admin-configured intervals to decide whether work is due.
      * This means configuration changes take effect without changing application code or restart.
      */
-    @Scheduled(fixedDelay = 60_000L, initialDelay = 30_000L)
+    @Scheduled(fixedDelay = 60_000L, initialDelay = 300_000L)
     public void scheduledProcessing() {
         long now=Instant.now().toEpochMilli();
         if(configurationService.isReminderSchedulerEnabled()){

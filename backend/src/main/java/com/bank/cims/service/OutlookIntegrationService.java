@@ -233,6 +233,10 @@ public class OutlookIntegrationService {
         if (recipient == null || recipient.trim().isEmpty()) {
             return NotificationDispatchResult.failure(provider, "Recipient email address cannot be empty.");
         }
+        String trimmedRecipient = recipient.trim();
+        if (trimmedRecipient.toLowerCase(Locale.ROOT).endsWith("@cims-bank.et")) {
+            return NotificationDispatchResult.failure(provider, "Skipped placeholder recipient domain (@cims-bank.et).");
+        }
 
         try {
             // Include email disclaimer if not already present
