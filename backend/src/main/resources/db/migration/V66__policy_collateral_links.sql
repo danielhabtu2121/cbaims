@@ -29,7 +29,8 @@ SELECT 'pcl-' || p.id || '-' || LEFT(MD5(p.collateral_id), 8),
        c.branch,
        CASE WHEN UPPER(COALESCE(p.status, '')) IN ('CANCELLED', 'CLOSED') THEN p.status ELSE 'Active' END,
        COALESCE(p.effective_date, '')
-FROM cims_policies p
+FROM cims_insurance_policies p
 LEFT JOIN cims_collaterals c ON c.id = p.collateral_id OR c.code = p.collateral_id
 WHERE p.collateral_id IS NOT NULL AND TRIM(p.collateral_id) <> ''
 ON CONFLICT (id) DO NOTHING;
+
