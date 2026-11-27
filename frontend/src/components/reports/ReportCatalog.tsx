@@ -1268,7 +1268,7 @@ export const ReportCatalog: React.FC<ReportCatalogProps> = ({
               <span className="font-semibold">
                 Showing <strong className="text-[#00205B]">{currentReportResult.rows.length}</strong> records in scope
               </span>
-              <span className="text-[11px] text-slate-500 font-medium">Live Database Stream — Dashen Bank CBAIMS</span>
+              <span className="text-[11px] text-slate-500 font-medium">Live Portfolio Report — Dashen Bank CBAIMS</span>
             </div>
 
             <div className="overflow-x-auto">

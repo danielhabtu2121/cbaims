@@ -695,7 +695,7 @@ export const HierarchicalDashboard: React.FC<HierarchicalDashboardProps> = ({
         <div className="p-12 bg-white border border-[#E2E8F0] rounded-xl text-center space-y-3 shadow-xs">
           <RefreshCw className="w-8 h-8 text-[#2C6295] animate-spin mx-auto" />
           <div className="text-sm font-bold text-[#101828]">Loading {currentLevel.toLowerCase()} analytics...</div>
-          <div className="text-xs text-[#5B6472]">Aggregating real database records across organizational hierarchy</div>
+          <div className="text-xs text-[#5B6472]">Portfolio summary across organizational hierarchy</div>
         </div>
       )}
 

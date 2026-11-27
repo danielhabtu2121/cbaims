@@ -782,7 +782,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           <div className="flex items-center justify-between bg-white p-5 rounded-lg border border-[#E2E8F0]">
             <div>
               <h3 className="text-sm font-bold text-[#00205B]">Effective Runtime Configuration</h3>
-              <p className="text-xs text-[#5B6472] mt-1">These are the values currently consumed by the backend business services, not merely values stored in Admin.</p>
+              <p className="text-xs text-[#5B6472] mt-1">Active configuration values currently applied across the system.</p>
             </div>
             <button onClick={loadRuntimeData} disabled={runtimeLoading} className="btn-secondary text-xs">
               {runtimeLoading ? 'Refreshing…' : 'Refresh Runtime State'}
@@ -2648,7 +2648,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-lg border border-[#E2E8F0] gap-4">
             <div>
               <h3 className="text-sm font-bold text-[#101828]">System Global Configuration Parameters</h3>
-              <p className="text-xs text-[#5B6472]">Values are validated by the backend and immediately loaded into the runtime configuration service.</p>
+              <p className="text-xs text-[#5B6472]">Values are validated and applied immediately.</p>
             </div>
             <div className="relative w-full sm:w-72">
               <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#5B6472]" />

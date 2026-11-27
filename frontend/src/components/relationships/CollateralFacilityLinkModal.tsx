@@ -1054,7 +1054,7 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
       case 4: return 'Senior Charge Details';
       case 5: return 'Financial Allocation & Limits';
       case 6: return 'Documents & DMS Evidence';
-      case 7: return 'Backend Pre-Validation';
+      case 7: return 'Pre-Validation';
       case 8: return 'Final Review & Submit';
       default: return 'Linkage Wizard';
     }
@@ -1077,10 +1077,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                   {mode === 'edit'
                     ? 'Maintain Loan–Collateral Relationship'
                     : isPreselectedFacility
-                    ? 'Link Collateral Asset to Credit Facility'
-                    : isPreselectedCollateral
-                    ? 'Link Credit Facility to Collateral Asset'
-                    : 'Create Loan–Collateral Relationship'}
+                      ? 'Link Collateral Asset to Credit Facility'
+                      : isPreselectedCollateral
+                        ? 'Link Credit Facility to Collateral Asset'
+                        : 'Create Loan–Collateral Relationship'}
                 </h3>
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-500/20 text-blue-200 border border-blue-400/30">
                   {isPreselectedFacility ? 'Direction 2: Facility → Collateral' : 'Direction 1: Collateral → Facility'}
@@ -1090,8 +1090,8 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                 {isPreselectedFacility && selectedFacility
                   ? `Pledging security for ${selectedFacility.facilityType} (${selectedFacility.loanReference}) belonging to ${selectedCustomer?.name || selectedFacility.customerId}`
                   : selectedCollateral
-                  ? `Linking collateral ${selectedCollateral.code} (${selectedCollateral.type || selectedCollateral.category}) to authorized credit facilities`
-                  : 'Establish authoritative security pledge with real-time exposure & DMS compliance verification'}
+                    ? `Linking collateral ${selectedCollateral.code} (${selectedCollateral.type || selectedCollateral.category}) to authorized credit facilities`
+                    : 'Establish authoritative security pledge with real-time exposure & DMS compliance verification'}
               </p>
             </div>
           </div>
@@ -1260,44 +1260,40 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                       <button
                         type="button"
                         onClick={() => setCollateralStatusFilter('ALL')}
-                        className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                          collateralStatusFilter === 'ALL'
+                        className={`px-2 py-0.5 rounded font-medium transition-colors ${collateralStatusFilter === 'ALL'
                             ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
                             : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
+                          }`}
                       >
                         All ({candidateCollaterals.length})
                       </button>
                       <button
                         type="button"
                         onClick={() => setCollateralStatusFilter('ELIGIBLE')}
-                        className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                          collateralStatusFilter === 'ELIGIBLE'
+                        className={`px-2 py-0.5 rounded font-medium transition-colors ${collateralStatusFilter === 'ELIGIBLE'
                             ? 'bg-emerald-600 text-white shadow-xs font-bold'
                             : 'text-emerald-700 dark:text-emerald-400 hover:text-emerald-800'
-                        }`}
+                          }`}
                       >
                         Borrower-Owned ({candidateCollaterals.filter((c) => c.eligible && !c.thirdParty).length})
                       </button>
                       <button
                         type="button"
                         onClick={() => setCollateralStatusFilter('REQUIRES_THIRD_PARTY_INFO')}
-                        className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                          collateralStatusFilter === 'REQUIRES_THIRD_PARTY_INFO'
+                        className={`px-2 py-0.5 rounded font-medium transition-colors ${collateralStatusFilter === 'REQUIRES_THIRD_PARTY_INFO'
                             ? 'bg-amber-600 text-white shadow-xs font-bold'
                             : 'text-amber-700 dark:text-amber-400 hover:text-amber-800'
-                        }`}
+                          }`}
                       >
                         Third-Party ({candidateCollaterals.filter((c) => c.thirdParty || c.candidateStatus === 'REQUIRES_THIRD_PARTY_INFO').length})
                       </button>
                       <button
                         type="button"
                         onClick={() => setCollateralStatusFilter('DUPLICATE')}
-                        className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                          collateralStatusFilter === 'DUPLICATE'
+                        className={`px-2 py-0.5 rounded font-medium transition-colors ${collateralStatusFilter === 'DUPLICATE'
                             ? 'bg-slate-700 text-white shadow-xs font-bold'
                             : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
+                          }`}
                       >
                         Already Linked / Ineligible ({candidateCollaterals.filter((c) => c.alreadyLinked || !c.eligible).length})
                       </button>
@@ -1435,13 +1431,12 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               return (
                                 <tr
                                   key={cand.id}
-                                  className={`transition-colors ${
-                                    isSelected
+                                  className={`transition-colors ${isSelected
                                       ? 'bg-blue-50 dark:bg-blue-950/40 border-l-4 border-blue-600'
                                       : cand.eligible
-                                      ? 'hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer'
-                                      : 'opacity-70 bg-slate-50/50 dark:bg-slate-900/50'
-                                  }`}
+                                        ? 'hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer'
+                                        : 'opacity-70 bg-slate-50/50 dark:bg-slate-900/50'
+                                    }`}
                                   onClick={() => {
                                     if (cand.eligible) handleSelectCollateral(cand.id);
                                   }}
@@ -1463,11 +1458,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                     </div>
                                     <div className="flex items-center gap-1 mt-0.5">
                                       <span
-                                        className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
-                                          cand.thirdParty
+                                        className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${cand.thirdParty
                                             ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300'
                                             : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300'
-                                        }`}
+                                          }`}
                                       >
                                         {cand.thirdParty
                                           ? `Third-Party: ${cand.ownerRelationship || 'Guarantor'}`
@@ -1507,13 +1501,12 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                         handleSelectCollateral(cand.id);
                                       }}
                                       disabled={!cand.eligible}
-                                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${
-                                        isSelected
+                                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${isSelected
                                           ? 'bg-emerald-600 text-white shadow-xs'
                                           : cand.eligible
-                                          ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
-                                          : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                                      }`}
+                                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+                                            : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                                        }`}
                                     >
                                       {isSelected ? '✓ Selected' : cand.eligible ? 'Select' : 'Ineligible'}
                                     </button>
@@ -1591,11 +1584,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             Collateral Master Record Details
                           </span>
                           <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                              selectedCollateral.ownerType === 'Third-party-owned'
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${selectedCollateral.ownerType === 'Third-party-owned'
                                 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300'
                                 : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300'
-                            }`}
+                              }`}
                           >
                             {selectedCollateral.ownerType || 'Borrower-owned'}
                           </span>
@@ -1695,11 +1687,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               setTargetCustomerId('');
                               setSelectedLoanAccountId('');
                             }}
-                            className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                              facilityScope === 'owner_only'
+                            className={`px-2 py-0.5 rounded font-medium transition-colors ${facilityScope === 'owner_only'
                                 ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
                                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                            }`}
+                              }`}
                           >
                             Owner's Loans
                           </button>
@@ -1710,11 +1701,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               setAllocationMode('cross_customer');
                               setSelectedLoanAccountId('');
                             }}
-                            className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                              facilityScope === 'all_bank'
+                            className={`px-2 py-0.5 rounded font-medium transition-colors ${facilityScope === 'all_bank'
                                 ? 'bg-blue-600 text-white shadow-xs font-bold'
                                 : 'text-slate-600 dark:text-slate-400 hover:text-blue-600'
-                            }`}
+                              }`}
                           >
                             ★ All Bank Facilities (Third-Party Pledge)
                           </button>
@@ -1725,44 +1715,40 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           <button
                             type="button"
                             onClick={() => setFacilityStatusFilter('ALL')}
-                            className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                              facilityStatusFilter === 'ALL'
+                            className={`px-2 py-0.5 rounded font-medium transition-colors ${facilityStatusFilter === 'ALL'
                                 ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
                                 : 'text-slate-600 dark:text-slate-400'
-                            }`}
+                              }`}
                           >
                             All ({candidateFacilities.length})
                           </button>
                           <button
                             type="button"
                             onClick={() => setFacilityStatusFilter('ELIGIBLE')}
-                            className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                              facilityStatusFilter === 'ELIGIBLE'
+                            className={`px-2 py-0.5 rounded font-medium transition-colors ${facilityStatusFilter === 'ELIGIBLE'
                                 ? 'bg-emerald-600 text-white shadow-xs font-bold'
                                 : 'text-emerald-700 dark:text-emerald-400 hover:text-emerald-800'
-                            }`}
+                              }`}
                           >
                             Eligible ({candidateFacilities.filter((f) => f.candidateStatus === 'ELIGIBLE').length})
                           </button>
                           <button
                             type="button"
                             onClick={() => setFacilityStatusFilter('REQUIRES_THIRD_PARTY_INFO')}
-                            className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                              facilityStatusFilter === 'REQUIRES_THIRD_PARTY_INFO'
+                            className={`px-2 py-0.5 rounded font-medium transition-colors ${facilityStatusFilter === 'REQUIRES_THIRD_PARTY_INFO'
                                 ? 'bg-amber-600 text-white shadow-xs font-bold'
                                 : 'text-amber-700 dark:text-amber-400 hover:text-amber-800'
-                            }`}
+                              }`}
                           >
                             Requires 3rd-Party ({candidateFacilities.filter((f) => f.candidateStatus === 'REQUIRES_THIRD_PARTY_INFO').length})
                           </button>
                           <button
                             type="button"
                             onClick={() => setFacilityStatusFilter('DUPLICATE')}
-                            className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                              facilityStatusFilter === 'DUPLICATE'
+                            className={`px-2 py-0.5 rounded font-medium transition-colors ${facilityStatusFilter === 'DUPLICATE'
                                 ? 'bg-slate-700 text-white shadow-xs font-bold'
                                 : 'text-slate-600 dark:text-slate-400'
-                            }`}
+                              }`}
                           >
                             Duplicate/Ineligible ({candidateFacilities.filter((f) => f.candidateStatus === 'DUPLICATE' || !f.eligible).length})
                           </button>
@@ -1901,13 +1887,12 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                 return (
                                   <tr
                                     key={cand.id}
-                                    className={`transition-colors ${
-                                      isSelected
+                                    className={`transition-colors ${isSelected
                                         ? 'bg-blue-50 dark:bg-blue-950/40 border-l-4 border-blue-600'
                                         : isEligible
-                                        ? 'hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer'
-                                        : 'opacity-70 bg-slate-50/50 dark:bg-slate-900/50'
-                                    }`}
+                                          ? 'hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer'
+                                          : 'opacity-70 bg-slate-50/50 dark:bg-slate-900/50'
+                                      }`}
                                     onClick={() => {
                                       if (isEligible) handleSelectFacility(cand.id);
                                     }}
@@ -1994,13 +1979,12 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                           handleSelectFacility(cand.id);
                                         }}
                                         disabled={!isEligible}
-                                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${
-                                          isSelected
+                                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${isSelected
                                             ? 'bg-emerald-600 text-white shadow-xs'
                                             : isEligible
-                                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
-                                            : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                                        }`}
+                                              ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+                                              : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                                          }`}
                                       >
                                         {isSelected ? '✓ Selected' : isEligible ? 'Select' : 'Ineligible'}
                                       </button>
@@ -2043,18 +2027,16 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           <button
                             type="button"
                             onClick={() => setWizardViewMode('guided')}
-                            className={`px-2 py-0.5 rounded font-semibold transition-colors ${
-                              wizardViewMode === 'guided' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
-                            }`}
+                            className={`px-2 py-0.5 rounded font-semibold transition-colors ${wizardViewMode === 'guided' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
+                              }`}
                           >
                             Guided 8-Step
                           </button>
                           <button
                             type="button"
                             onClick={() => setWizardViewMode('full')}
-                            className={`px-2 py-0.5 rounded font-semibold transition-colors ${
-                              wizardViewMode === 'full' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
-                            }`}
+                            className={`px-2 py-0.5 rounded font-semibold transition-colors ${wizardViewMode === 'full' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
+                              }`}
                           >
                             Full View
                           </button>
@@ -2081,13 +2063,12 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             key={s.num}
                             type="button"
                             onClick={() => setWizardStep(s.num)}
-                            className={`p-1.5 rounded-lg border text-left transition-all ${
-                              isActive
+                            className={`p-1.5 rounded-lg border text-left transition-all ${isActive
                                 ? 'bg-blue-600 text-white border-blue-400 ring-2 ring-blue-400/30 font-bold shadow-xs'
                                 : isPast
-                                ? 'bg-white/15 text-blue-100 border-white/20 hover:bg-white/25'
-                                : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'
-                            }`}
+                                  ? 'bg-white/15 text-blue-100 border-white/20 hover:bg-white/25'
+                                  : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'
+                              }`}
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-mono text-[9px] opacity-75">{s.num}.</span>
@@ -2114,11 +2095,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
 
                       {/* Arrangement Classification Banner */}
                       <div
-                        className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs ${
-                          isThirdParty
+                        className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs ${isThirdParty
                             ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200'
                             : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2.5">
                           {isThirdParty ? (
@@ -2136,11 +2116,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                 ? 'Third-Party Collateral Pledge Arrangement'
                                 : 'Direct Borrower-Owned Security'}
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                                  isThirdParty
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isThirdParty
                                     ? 'bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100'
                                     : 'bg-emerald-200 text-emerald-900 dark:bg-emerald-800 dark:text-emerald-100'
-                                }`}
+                                  }`}
                               >
                                 {isThirdParty ? 'THIRD-PARTY PLEDGE' : 'BORROWER ASSET'}
                               </span>
@@ -2170,11 +2149,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               Collateral Legal Ownership
                             </span>
                             <span
-                              className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                                isThirdParty
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isThirdParty
                                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200'
                                   : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200'
-                              }`}
+                                }`}
                             >
                               {selectedCollateral.ownerType || 'Borrower-owned'}
                             </span>
@@ -2287,11 +2265,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           <Layers className="w-4 h-4 text-indigo-600" />
                           Step 2: Security Arrangement (Charge Priority &amp; Collateral Degree)
                         </span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                          collateralRank === '2nd'
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${collateralRank === '2nd'
                             ? 'bg-purple-100 text-purple-900 border-purple-300 dark:bg-purple-900/60 dark:text-purple-200'
                             : 'bg-blue-100 text-blue-900 border-blue-300 dark:bg-blue-900/60 dark:text-blue-200'
-                        }`}>
+                          }`}>
                           {collateralRank === '2nd' ? 'Subordinate 2nd-Degree' : 'Senior 1st-Degree'}
                         </span>
                       </div>
@@ -2301,11 +2278,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                         <button
                           type="button"
                           onClick={() => setCollateralRank('1st')}
-                          className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
-                            collateralRank !== '2nd'
+                          className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 ${collateralRank !== '2nd'
                               ? 'bg-white dark:bg-slate-800 border-blue-600 ring-2 ring-blue-500/20 shadow-xs'
                               : 'bg-white/60 dark:bg-slate-850 border-slate-200 dark:border-slate-700 hover:bg-white'
-                          }`}
+                            }`}
                         >
                           <input
                             type="radio"
@@ -2323,11 +2299,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                         <button
                           type="button"
                           onClick={() => setCollateralRank('2nd')}
-                          className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
-                            collateralRank === '2nd'
+                          className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 ${collateralRank === '2nd'
                               ? 'bg-white dark:bg-slate-800 border-purple-600 ring-2 ring-purple-500/20 shadow-xs'
                               : 'bg-white/60 dark:bg-slate-850 border-slate-200 dark:border-slate-700 hover:bg-white'
-                          }`}
+                            }`}
                         >
                           <input
                             type="radio"
@@ -2354,11 +2329,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           Step 3: Third-Party Collateral Context &amp; Legal Relationship
                         </span>
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                            isThirdParty
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isThirdParty
                               ? 'bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100'
                               : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
-                          }`}
+                            }`}
                         >
                           {isThirdParty ? 'THIRD-PARTY PLEDGE' : 'BORROWER-OWNED (N/A)'}
                         </span>
@@ -2466,11 +2440,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           Step 4: Prior 1st-Degree Senior Charge Information
                         </span>
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                            collateralRank === '2nd'
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${collateralRank === '2nd'
                               ? 'bg-purple-200 text-purple-900 dark:bg-purple-800 dark:text-purple-100'
                               : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                          }`}
+                            }`}
                         >
                           {collateralRank === '2nd' ? '2ND-DEGREE CHARGE' : '1ST-DEGREE (N/A)'}
                         </span>
@@ -2656,11 +2629,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           )}
 
                           {/* Rule 2.5 Ceiling Banner */}
-                          <div className={`p-2.5 rounded-lg border text-xs ${
-                            isSecondDegreeCeilingExceeded
+                          <div className={`p-2.5 rounded-lg border text-xs ${isSecondDegreeCeilingExceeded
                               ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200'
                               : 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 text-purple-900 dark:text-purple-200'
-                          }`}>
+                            }`}>
                             <div className="flex items-center justify-between font-bold pb-1 border-b border-black/10">
                               <span>Rule 2.5: 2nd-Degree Available Security Assessment</span>
                               <span className="font-mono">
@@ -2743,9 +2715,8 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                             Projected Remaining
                           </span>
                           <strong
-                            className={`text-sm font-bold tabular-nums block ${
-                              remainingCapacity > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-600'
-                            }`}
+                            className={`text-sm font-bold tabular-nums block ${remainingCapacity > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-600'
+                              }`}
                           >
                             ETB {formatEtbNumber(remainingCapacity)}
                           </strong>
@@ -2841,13 +2812,12 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               </div>
                               <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
                                 <div
-                                  className={`h-full transition-all duration-300 ${
-                                    collateralAllocationPct > 100
+                                  className={`h-full transition-all duration-300 ${collateralAllocationPct > 100
                                       ? 'bg-red-600'
                                       : collateralAllocationPct > 80
-                                      ? 'bg-amber-500'
-                                      : 'bg-blue-600'
-                                  }`}
+                                        ? 'bg-amber-500'
+                                        : 'bg-blue-600'
+                                    }`}
                                   style={{ width: `${Math.min(100, collateralAllocationPct)}%` }}
                                 />
                               </div>
@@ -2861,22 +2831,20 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               <div className="flex items-center justify-between">
                                 <span className="text-slate-500 font-medium">Loan Coverage:</span>
                                 <strong
-                                  className={`font-mono ${
-                                    totalFacilityCoveragePct >= 100
+                                  className={`font-mono ${totalFacilityCoveragePct >= 100
                                       ? 'text-emerald-700 dark:text-emerald-400'
                                       : 'text-amber-600'
-                                  }`}
+                                    }`}
                                 >
                                   {totalFacilityCoveragePct.toFixed(1)}% of Balance
                                 </strong>
                               </div>
                               <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
                                 <div
-                                  className={`h-full transition-all duration-300 ${
-                                    totalFacilityCoveragePct >= 100
+                                  className={`h-full transition-all duration-300 ${totalFacilityCoveragePct >= 100
                                       ? 'bg-emerald-500'
                                       : 'bg-amber-500'
-                                  }`}
+                                    }`}
                                   style={{ width: `${Math.min(100, totalFacilityCoveragePct)}%` }}
                                 />
                               </div>
@@ -3057,11 +3025,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                     {pledgeAgreementRef || 'PLG-AGR-CIMS-VERIFIED'}
                                   </td>
                                   <td className="p-2.5 text-center">
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                      pledgeAgreementRef
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${pledgeAgreementRef
                                         ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
                                         : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
-                                    }`}>
+                                      }`}>
                                       {pledgeAgreementRef ? '✓ Documented' : 'Pending in Step 3'}
                                     </span>
                                   </td>
@@ -3099,9 +3066,8 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                     {firstDegreeConfirmationDocId || (firstDegreeFacilityRef ? `CONF-${firstDegreeFacilityRef}` : 'CONF-PENDING')}
                                   </td>
                                   <td className="p-2.5 text-center">
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                      firstDegreeOutstandingBalance ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-purple-800'
-                                    }`}>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${firstDegreeOutstandingBalance ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-purple-800'
+                                      }`}>
                                       {firstDegreeOutstandingBalance ? '✓ Balance Confirmed' : 'Required in Step 4'}
                                     </span>
                                   </td>
@@ -3118,9 +3084,8 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                                     {mortgageRegistrationNumber || 'CAD-MORT-PENDING'}
                                   </td>
                                   <td className="p-2.5 text-center">
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                      mortgageRegistrationNumber ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-purple-800'
-                                    }`}>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${mortgageRegistrationNumber ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-purple-800'
+                                      }`}>
                                       {mortgageRegistrationNumber ? '✓ Cadastral Recorded' : 'Required in Step 4'}
                                     </span>
                                   </td>
@@ -3139,18 +3104,17 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700/60 pb-2">
                         <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
                           <ShieldCheck className="w-4 h-4 text-blue-600" />
-                          Step 7: Authoritative Backend Pre-Validation Diagnostics
+                          Step 7: Pre-Validation Check
                           {validating && <span className="text-[10px] text-blue-500 animate-pulse">(re-checking...)</span>}
                         </span>
                         <div className="flex items-center gap-2">
                           <span
-                            className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 ${
-                              validationResult.overallDecision === 'CAN_PROCEED' || validationResult.canProceed
+                            className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 ${validationResult.overallDecision === 'CAN_PROCEED' || validationResult.canProceed
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
                                 : validationResult.overallDecision === 'REQUIRES_CORRECTION'
-                                ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                                : 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
-                            }`}
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                  : 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800'
+                              }`}
                           >
                             {validationResult.overallDecision === 'CAN_PROCEED' || validationResult.canProceed ? (
                               <>
@@ -3171,11 +3135,10 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
 
                       {validationResult.summaryMessage && (
                         <div
-                          className={`p-2.5 rounded-lg text-xs font-medium flex items-center gap-2 ${
-                            validationResult.canProceed
+                          className={`p-2.5 rounded-lg text-xs font-medium flex items-center gap-2 ${validationResult.canProceed
                               ? 'bg-emerald-50/60 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
                               : 'bg-red-50/60 text-red-800 dark:bg-red-950/30 dark:text-red-300'
-                          }`}
+                            }`}
                         >
                           <Info className="w-4 h-4 shrink-0" />
                           <span>{validationResult.summaryMessage}</span>
@@ -3189,13 +3152,12 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                           return (
                             <div
                               key={i}
-                              className={`p-2.5 rounded-lg text-xs flex flex-wrap items-center justify-between gap-2 ${
-                                c.passed
+                              className={`p-2.5 rounded-lg text-xs flex flex-wrap items-center justify-between gap-2 ${c.passed
                                   ? 'bg-emerald-50/40 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/40'
                                   : severity === 'HARD_STOP'
-                                  ? 'bg-red-50/70 dark:bg-red-950/40 text-red-900 dark:text-red-200 border border-red-200 dark:border-red-900/60'
-                                  : 'bg-amber-50/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-900/60'
-                              }`}
+                                    ? 'bg-red-50/70 dark:bg-red-950/40 text-red-900 dark:text-red-200 border border-red-200 dark:border-red-900/60'
+                                    : 'bg-amber-50/70 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-900/60'
+                                }`}
                             >
                               <div className="flex items-center gap-2.5">
                                 <span className="font-bold text-sm shrink-0">{c.passed ? '✓' : '✕'}</span>
@@ -3213,13 +3175,12 @@ export const CollateralFacilityLinkModal: React.FC<CollateralFacilityLinkModalPr
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <span
-                                  className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase ${
-                                    severity === 'HARD_STOP'
+                                  className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase ${severity === 'HARD_STOP'
                                       ? 'bg-red-200 text-red-900 dark:bg-red-900 dark:text-red-100'
                                       : severity === 'WARNING'
-                                      ? 'bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-100'
-                                      : 'bg-blue-100 text-blue-900 dark:bg-blue-900 dark:text-blue-100'
-                                  }`}
+                                        ? 'bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-100'
+                                        : 'bg-blue-100 text-blue-900 dark:bg-blue-900 dark:text-blue-100'
+                                    }`}
                                 >
                                   {severity === 'HARD_STOP' ? 'HARD STOP' : severity}
                                 </span>

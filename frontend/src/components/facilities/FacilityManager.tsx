@@ -300,7 +300,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
   return (
     <div className="p-6 space-y-6">
       <DataGrid
-        title="Credit Facilities & Loans (GETM_FACILITY)"
+        title="Credit Facilities & Loans"
         subtitle="Core Banking Credit Lines, Pledged Securities, and Insurance Adequacy"
         data={pagedFacilities}
         columns={facilityColumns}
@@ -537,7 +537,7 @@ export const FacilityManager: React.FC<FacilityManagerProps> = ({
                           <strong className="text-amber-800 font-semibold">{selectedFacility.nextReviewDueDate || '—'}</strong>
                         </div>
                         <div className="pt-2 text-[11px] text-gray-500">
-                          Data ingested via CBS interface table GETM_FACILITY. Maintenance and changes are initiated from Core Banking.
+                          Synchronized from Core Banking. Maintenance and changes are initiated in Core Banking.
                         </div>
                       </div>
                     </div>

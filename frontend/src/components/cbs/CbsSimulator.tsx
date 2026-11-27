@@ -213,8 +213,8 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
           title: res.errorCategory === 'CBS_QUERY_TIMEOUT'
             ? 'CBS Oracle Query Timeout'
             : res.errorCategory === 'CBS_UNAVAILABLE'
-            ? 'CBS Server Unreachable'
-            : 'CBS Entity Sync Failed',
+              ? 'CBS Server Unreachable'
+              : 'CBS Entity Sync Failed',
           message: res.message,
           failingView: res.failingView,
         });
@@ -242,8 +242,8 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
           title: res.errorCategory === 'CBS_QUERY_TIMEOUT'
             ? 'CBS Oracle Query Timeout'
             : res.errorCategory === 'CBS_UNAVAILABLE'
-            ? 'CBS Database Unreachable'
-            : 'CBS Synchronization Failed',
+              ? 'CBS Database Unreachable'
+              : 'CBS Synchronization Failed',
           message: res.message,
           failingView: res.failingView,
         });
@@ -270,7 +270,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
       setSyncBanner({
         type: 'error',
         title: 'CBS Synchronization Failed',
-        message: err?.message || 'Network error communicating with CBAIMS backend.',
+        message: err?.message || 'Network error communicating with the server.',
       });
     } finally {
       setBatchSyncing(false);
@@ -617,13 +617,12 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
       {/* Sync Banner Notification */}
       {syncBanner && (
         <div
-          className={`p-4 rounded-lg border flex items-start gap-3 transition-all ${
-            syncBanner.type === 'error'
+          className={`p-4 rounded-lg border flex items-start gap-3 transition-all ${syncBanner.type === 'error'
               ? 'bg-rose-50 border-rose-300 text-rose-900'
               : syncBanner.type === 'info'
-              ? 'bg-blue-50 border-blue-300 text-blue-900'
-              : 'bg-emerald-50 border-emerald-300 text-emerald-900'
-          }`}
+                ? 'bg-blue-50 border-blue-300 text-blue-900'
+                : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+            }`}
         >
           {syncBanner.type === 'error' ? (
             <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
@@ -668,17 +667,15 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
                 type="button"
                 onClick={handleToggleMode}
                 disabled={switchingMode}
-                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${
-                  (liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL'
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-bold transition-all cursor-pointer ${(liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL'
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
                     : 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE] hover:bg-blue-100'
-                }`}
+                  }`}
                 title="Click to toggle between SIMULATOR and REAL CBS mode"
               >
                 <span
-                  className={`w-2 h-2 rounded-full ${
-                    (liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL' ? 'bg-emerald-500' : 'bg-[#2563EB]'
-                  }`}
+                  className={`w-2 h-2 rounded-full ${(liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL' ? 'bg-emerald-500' : 'bg-[#2563EB]'
+                    }`}
                 />
                 {switchingMode ? '...' : (liveStatus?.cbsMode || cbsConfig?.mode || 'SIMULATOR')}
               </button>
@@ -686,13 +683,12 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
             <div className="mt-2">
               <div className="flex items-center gap-2">
                 <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    liveStatus?.connectionStatus === 'AVAILABLE'
+                  className={`w-2.5 h-2.5 rounded-full ${liveStatus?.connectionStatus === 'AVAILABLE'
                       ? 'bg-emerald-500'
                       : liveStatus?.connectionStatus === 'NOT_CONFIGURED'
                         ? 'bg-amber-500'
                         : 'bg-rose-500'
-                  }`}
+                    }`}
                 />
                 <span className="text-xs font-bold text-[#101828]">
                   {liveStatus?.connectionStatus || 'AVAILABLE'}
@@ -881,7 +877,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
 
       {activeTab === 'facilities' && (
         <DataGrid
-          title="Simulated Credit Facility Master (GETM_FACILITY)"
+          title="Simulated Credit Facilities"
           subtitle="Core Banking Line & Credit Facilities"
           data={facilities}
           columns={facilityColumns}
@@ -925,7 +921,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
 
       {activeTab === 'collaterals' && (
         <DataGrid
-          title="Simulated Collateral Master (GETM_COLLAT / CLTB_ACC_COLL_LINK_DTLS)"
+          title="Simulated Collaterals & Linkages"
           subtitle="Core Banking Pledged Collateral Records"
           data={collaterals}
           columns={collateralColumns}
@@ -1264,7 +1260,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
           <div className="bg-white rounded-2xl border border-slate-300 shadow-2xl max-w-xl w-full overflow-hidden">
             <div className="p-4 bg-[#00205B] text-white flex justify-between items-center">
               <div>
-                <h3 className="text-sm font-bold">Create/Edit Simulated Facility (GETM_FACILITY)</h3>
+                <h3 className="text-sm font-bold">Create/Edit Simulated Facility</h3>
                 <p className="text-[11px] text-blue-200">Core Banking Facility Master Data</p>
               </div>
               <button onClick={() => setShowFacModal(false)} className="text-white/80 hover:text-white cursor-pointer">✕</button>
@@ -1554,7 +1550,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
           <div className="bg-white rounded-2xl border border-slate-300 shadow-2xl max-w-xl w-full overflow-hidden">
             <div className="p-4 bg-[#00205B] text-white flex justify-between items-center">
               <div>
-                <h3 className="text-sm font-bold">Create/Edit Simulated Collateral (GETM_COLLAT)</h3>
+                <h3 className="text-sm font-bold">Create/Edit Simulated Collateral</h3>
                 <p className="text-[11px] text-blue-200">Core Banking Collateral Master Data</p>
               </div>
               <button onClick={() => setShowColModal(false)} className="text-white/80 hover:text-white cursor-pointer">✕</button>
@@ -1977,7 +1973,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
                 <div>
                   <p className="font-semibold text-slate-800">Bank Security &amp; Architectural Safeguards</p>
                   <p className="mt-0.5 leading-relaxed text-slate-600">
-                    CBAIMS connects with strict <strong>read-only</strong> access (autoCommit=false) to CBS Oracle 3-views (<code>STVWCBS_CBAIMS_*</code>). Zero write-back is executed on CBS.
+                    CBAIMS connects with strict <strong>read-only</strong> access to Core Banking. Zero write-back is executed on CBS.
                     Permitted deployment server egress: <code>172.22.10.55</code>.
                   </p>
                 </div>
@@ -1994,11 +1990,10 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
                         await handleToggleMode();
                       }
                     }}
-                    className={`p-3 rounded-lg border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
-                      (liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL'
+                    className={`p-3 rounded-lg border text-left flex items-start gap-2.5 transition-all cursor-pointer ${(liveStatus?.cbsMode || cbsConfig?.mode) === 'REAL'
                         ? 'border-emerald-500 bg-emerald-50/50 text-emerald-950 font-semibold'
                         : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                    }`}
+                      }`}
                   >
                     <Server className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />
                     <div>
@@ -2008,7 +2003,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
                           <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1 rounded">Active</span>
                         )}
                       </div>
-                      <div className="text-[11px] font-normal text-slate-500">Live 3-view Oracle JDBC connection</div>
+                      <div className="text-[11px] font-normal text-slate-500">Live Core Banking connection</div>
                     </div>
                   </button>
 
@@ -2019,11 +2014,10 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
                         await handleToggleMode();
                       }
                     }}
-                    className={`p-3 rounded-lg border text-left flex items-start gap-2.5 transition-all cursor-pointer ${
-                      (liveStatus?.cbsMode || cbsConfig?.mode) === 'SIMULATOR'
+                    className={`p-3 rounded-lg border text-left flex items-start gap-2.5 transition-all cursor-pointer ${(liveStatus?.cbsMode || cbsConfig?.mode) === 'SIMULATOR'
                         ? 'border-amber-500 bg-amber-50/50 text-amber-950 font-semibold'
                         : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                    }`}
+                      }`}
                   >
                     <Database className="w-4 h-4 mt-0.5 text-amber-600 shrink-0" />
                     <div>
@@ -2107,7 +2101,7 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
               </div>
 
               <div className="space-y-2 pt-2 border-t border-slate-200">
-                <span className="text-xs font-bold text-slate-700 block">Production Oracle 3-View Mapping (62 Columns Total)</span>
+                <span className="text-xs font-bold text-slate-700 block">Core Banking Source Mapping</span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <div>
                     <label className="text-[10px] text-slate-500 font-semibold block">Customer View (16 cols)</label>
@@ -2142,13 +2136,12 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
               {/* Diagnostic Test Feedback */}
               {testResult && (
                 <div
-                  className={`p-3 rounded-lg border text-xs ${
-                    testResult.status === 'AVAILABLE'
+                  className={`p-3 rounded-lg border text-xs ${testResult.status === 'AVAILABLE'
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                       : testResult.status === 'NOT_CONFIGURED'
                         ? 'bg-amber-50 border-amber-200 text-amber-800'
                         : 'bg-rose-50 border-rose-200 text-rose-800'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-1.5 font-bold mb-0.5">
                     {testResult.status === 'AVAILABLE' ? (
@@ -2171,11 +2164,10 @@ export const CbsSimulator: React.FC<CbsSimulatorProps> = ({
               {/* Schema Validation Feedback */}
               {schemaResult && (
                 <div
-                  className={`p-3 rounded-lg border text-xs ${
-                    schemaResult.status === 'AVAILABLE'
+                  className={`p-3 rounded-lg border text-xs ${schemaResult.status === 'AVAILABLE'
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                       : 'bg-amber-50 border-amber-200 text-amber-800'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-1.5 font-bold mb-0.5">
                     {schemaResult.status === 'AVAILABLE' ? (

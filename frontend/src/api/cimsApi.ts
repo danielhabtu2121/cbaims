@@ -226,7 +226,7 @@ export const cimsApi = {
           success: false,
           message: res.status === 401
             ? 'Invalid username or password.'
-            : `Server returned HTTP ${res.status}. Please ensure the backend is running at ${API_BASE}.`
+            : `Service returned HTTP ${res.status}. Please try again shortly.`
         };
       }
       if (!res.ok) {
@@ -245,7 +245,7 @@ export const cimsApi = {
         success: false,
         message: e.message && !e.message.includes('fetch')
           ? e.message
-          : 'Unable to connect to CIMS backend server. Please make sure the backend is running on port 8080.'
+          : 'Unable to connect to the CIMS service. Please try again shortly.'
       };
     }
   },

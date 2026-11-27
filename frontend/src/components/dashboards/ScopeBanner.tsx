@@ -110,7 +110,7 @@ export const ScopeBanner: React.FC<ScopeBannerProps> = ({
               </span>
               {(scopeData.lockedSegment || scopeData.lockedDistrict || scopeData.lockedBranch) && (
                 <span
-                  title="Organizational scope enforced by backend security policy (§2)"
+                  title="Organizational access scope"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -160,7 +160,7 @@ export const ScopeBanner: React.FC<ScopeBannerProps> = ({
               color: '#0F172A',
               cursor: isLoading ? 'not-allowed' : 'pointer',
             }}
-            title="Refresh dashboard metrics (Backend scoped API)"
+            title="Refresh dashboard metrics"
           >
             <RefreshCw style={{ width: '13px', height: '13px', animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
             <span>{isLoading ? 'Refreshing...' : 'Refresh'}</span>

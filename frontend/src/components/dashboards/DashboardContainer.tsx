@@ -123,13 +123,13 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({
       setWorkQueue(wqRes || []);
     } catch (err: any) {
       console.error('Failed to load dashboard data:', err);
-      const msg = err?.message || 'Unable to connect to CBAIMS Dashboard Backend Service.';
+      const msg = err?.message || 'Unable to load dashboard data.';
       if (msg.includes('403') || msg.toLowerCase().includes('authorized') || msg.toLowerCase().includes('permission')) {
         setErrorStatus('UNAUTHORIZED');
         setErrorMessage('You are not authorized to view the requested dashboard scope.');
       } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
         setErrorStatus('BACKEND_UNAVAILABLE');
-        setErrorMessage('The CBAIMS Backend Server on :8001 is unreachable. Please verify the service is running.');
+        setErrorMessage('The service is temporarily unreachable. Please try again in a moment.');
       } else {
         setErrorStatus('API_ERROR');
         setErrorMessage(msg);
@@ -194,7 +194,7 @@ export const DashboardContainer: React.FC<DashboardContainerProps> = ({
               {errorStatus === 'UNAUTHORIZED'
                 ? 'Access Denied by Security Policy'
                 : errorStatus === 'BACKEND_UNAVAILABLE'
-                ? 'CBAIMS Backend Service Unavailable'
+                ? 'Service Temporarily Unavailable'
                 : 'Dashboard Data Load Error'}
             </h3>
             <p style={{ fontSize: '13px', margin: '6px 0 16px 0', color: '#7F1D1D' }}>
