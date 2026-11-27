@@ -152,3 +152,4 @@ class PolicyCollateralAllocationServiceTest {
         assertEquals(1, res.activeValidPolicies.size());
     }
 }
+

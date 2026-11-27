@@ -98,6 +98,25 @@ public class CimsController {
                     && !scope.user.getSegment().isBlank() && !"ALL".equalsIgnoreCase(scope.user.getSegment().trim())) {
                 effSeg = scope.user.getSegment().trim();
             }
+            if (effSeg != null && !effSeg.isBlank()) {
+                effSeg = com.bank.cims.service.cbs.CbsMapper.resolveBusinessSegment(effSeg);
+            }
+            if (authorizationScopeService != null) {
+                com.bank.cims.service.AuthorizationScopeService.Scope authScope = authorizationScopeService.resolve(userId);
+                if (authScope.isBankWide()) {
+                    return new PagedScope(effSeg, false, List.of("__NONE__"));
+                }
+                if (authScope.getAllowedBranches() != null && !authScope.getAllowedBranches().isEmpty()) {
+                    List<String> upperBranches = authScope.getAllowedBranches().stream()
+                            .filter(b -> b != null && !b.isBlank())
+                            .map(b -> b.trim().toUpperCase(java.util.Locale.ROOT))
+                            .distinct()
+                            .toList();
+                    if (!upperBranches.isEmpty()) {
+                        return new PagedScope(effSeg, true, upperBranches);
+                    }
+                }
+            }
             if (scope.isBankWide()) {
                 return new PagedScope(effSeg, false, List.of("__NONE__"));
             }

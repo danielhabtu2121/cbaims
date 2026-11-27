@@ -141,10 +141,25 @@ public class CbsMapper {
             Map.entry("SMAD", "DBE SME- ADELE")
     );
 
-    private static final Map<String, String> BUSINESS_SEGMENT_MAP = Map.of(
-            "0", "Corporate Banking",
-            "1", "MSME Banking",
-            "2", "Retail Banking"
+    private static final Map<String, String> BUSINESS_SEGMENT_MAP = Map.ofEntries(
+            Map.entry("0", "Corporate Banking"),
+            Map.entry("CORPORATE", "Corporate Banking"),
+            Map.entry("CORPORATE BANKING", "Corporate Banking"),
+            Map.entry("CORPORATE BANKING CUSTOMERS", "Corporate Banking"),
+            Map.entry("1", "MSME Banking"),
+            Map.entry("MSME", "MSME Banking"),
+            Map.entry("MSME BANKING", "MSME Banking"),
+            Map.entry("MSME BANKING CUSTOMERS", "MSME Banking"),
+            Map.entry("2", "Retail Banking"),
+            Map.entry("MRETAIL", "Retail Banking"),
+            Map.entry("RETAIL", "Retail Banking"),
+            Map.entry("RETAIL BANKING", "Retail Banking"),
+            Map.entry("2RETAIL BANKING CUSTOMERS", "Retail Banking"),
+            Map.entry("RETAIL BANKING CUSTOMERS", "Retail Banking"),
+            Map.entry("IFB", "Interest-Free Banking (IFB)"),
+            Map.entry("INTEREST-FREE BANKING", "Interest-Free Banking (IFB)"),
+            Map.entry("INTEREST FREE BANKING", "Interest-Free Banking (IFB)"),
+            Map.entry("INTEREST-FREE BANKING (IFB)", "Interest-Free Banking (IFB)")
     );
 
     @Autowired(required = false)
@@ -207,8 +222,15 @@ public class CbsMapper {
 
     public static String resolveBusinessSegment(String rawSegment) {
         if (rawSegment == null || rawSegment.isBlank()) return null;
-        String key = normalizeNumericCode(rawSegment);
+        String key = normalizeNumericCode(rawSegment).toUpperCase(java.util.Locale.ROOT);
         return BUSINESS_SEGMENT_MAP.getOrDefault(key, rawSegment.trim());
+    }
+
+    public static boolean isPlaceholderSegment(String segment) {
+        if (segment == null || segment.isBlank()) return true;
+        String upper = segment.trim().toUpperCase(java.util.Locale.ROOT);
+        return upper.equals("GENERAL") || upper.equals("UNSEGMENTED")
+                || upper.equals("SHORT") || upper.equals("MEDIUM") || upper.equals("LONG");
     }
 
     private static String normalizeNumericCode(String raw) {
@@ -256,10 +278,11 @@ public class CbsMapper {
         cust.setAddress(cc.getAddress());
 
         String segment = resolveBusinessSegment(cc.getBusinessSegment());
-        if (segment != null && !segment.isBlank()) {
+        String existingSeg = existing != null ? resolveBusinessSegment(existing.getSegment()) : null;
+        if (!isPlaceholderSegment(segment)) {
             cust.setSegment(segment);
-        } else if (existing != null && existing.getSegment() != null && !existing.getSegment().isBlank()) {
-            cust.setSegment(resolveBusinessSegment(existing.getSegment()));
+        } else if (!isPlaceholderSegment(existingSeg)) {
+            cust.setSegment(existingSeg);
         } else {
             cust.setSegment("General");
         }
@@ -309,12 +332,14 @@ public class CbsMapper {
         la.setCollateralContribution(cf.getCollateralContribution());
         la.setCollateralPct(cf.getCollateralPct());
         String segment = resolveBusinessSegment(cf.getBusinessSegment());
-        if (segment != null && !segment.isBlank()) {
+        String existingSeg = existing != null ? resolveBusinessSegment(existing.getSegment()) : null;
+        String custSeg = matchedCustomer != null ? resolveBusinessSegment(matchedCustomer.getSegment()) : null;
+        if (!isPlaceholderSegment(segment)) {
             la.setSegment(segment);
-        } else if (existing != null && existing.getSegment() != null && !existing.getSegment().isBlank()) {
-            la.setSegment(resolveBusinessSegment(existing.getSegment()));
-        } else if (matchedCustomer != null && matchedCustomer.getSegment() != null && !matchedCustomer.getSegment().isBlank()) {
-            la.setSegment(resolveBusinessSegment(matchedCustomer.getSegment()));
+        } else if (!isPlaceholderSegment(existingSeg)) {
+            la.setSegment(existingSeg);
+        } else if (!isPlaceholderSegment(custSeg)) {
+            la.setSegment(custSeg);
         } else {
             la.setSegment("Corporate Banking");
         }
@@ -405,12 +430,14 @@ public class CbsMapper {
 
         // Safe non-null fallback for PostgreSQL NOT NULL constraint on owning_segment
         String colSegment = resolveBusinessSegment(ccol.getBusinessSegment());
-        if (colSegment != null && !colSegment.isBlank()) {
+        String existingSeg = existing != null ? resolveBusinessSegment(existing.getOwningSegment()) : null;
+        String custSeg = matchedCustomer != null ? resolveBusinessSegment(matchedCustomer.getSegment()) : null;
+        if (!isPlaceholderSegment(colSegment)) {
             col.setOwningSegment(colSegment);
-        } else if (existing != null && existing.getOwningSegment() != null && !existing.getOwningSegment().isBlank()) {
-            col.setOwningSegment(resolveBusinessSegment(existing.getOwningSegment()));
-        } else if (matchedCustomer != null && matchedCustomer.getSegment() != null && !matchedCustomer.getSegment().isBlank()) {
-            col.setOwningSegment(resolveBusinessSegment(matchedCustomer.getSegment()));
+        } else if (!isPlaceholderSegment(existingSeg)) {
+            col.setOwningSegment(existingSeg);
+        } else if (!isPlaceholderSegment(custSeg)) {
+            col.setOwningSegment(custSeg);
         } else {
             col.setOwningSegment("Corporate Banking");
         }

@@ -413,6 +413,16 @@ public class CbsModule1IntegrationTest {
         assertEquals("Corporate Banking", CbsMapper.resolveBusinessSegment("0"));
         assertEquals("MSME Banking", CbsMapper.resolveBusinessSegment("1"));
         assertEquals("Retail Banking", CbsMapper.resolveBusinessSegment("2"));
+        assertEquals("Retail Banking", CbsMapper.resolveBusinessSegment("MRETAIL"));
+        assertEquals("Retail Banking", CbsMapper.resolveBusinessSegment("2Retail Banking Customers"));
+        assertEquals("MSME Banking", CbsMapper.resolveBusinessSegment("MSME"));
+        assertEquals("MSME Banking", CbsMapper.resolveBusinessSegment("MSME Banking Customers"));
+        assertEquals("Corporate Banking", CbsMapper.resolveBusinessSegment("CORPORATE"));
+        assertEquals("Interest-Free Banking (IFB)", CbsMapper.resolveBusinessSegment("IFB"));
+        assertTrue(CbsMapper.isPlaceholderSegment("General"));
+        assertTrue(CbsMapper.isPlaceholderSegment("UNSEGMENTED"));
+        assertTrue(CbsMapper.isPlaceholderSegment("MEDIUM"));
+        assertFalse(CbsMapper.isPlaceholderSegment("Retail Banking"));
 
         CbsFacility cf = new CbsFacility();
         cf.setId("LN-MAP-01");

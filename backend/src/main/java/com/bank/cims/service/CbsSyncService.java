@@ -315,6 +315,20 @@ public class CbsSyncService {
                     } else {
                         mapped = loanAccountRepository.save(mapped);
                     }
+                    String rawFacSeg = CbsMapper.resolveBusinessSegment(cf.getBusinessSegment());
+                    if (matchedCust != null
+                            && CbsMapper.isPlaceholderSegment(matchedCust.getSegment())
+                            && !CbsMapper.isPlaceholderSegment(rawFacSeg)) {
+                        matchedCust.setSegment(rawFacSeg);
+                        if (entityManager != null) {
+                            matchedCust = entityManager.merge(matchedCust);
+                        } else {
+                            matchedCust = customerRepository.save(matchedCust);
+                        }
+                        if (matchedCust.getCif() != null) {
+                            cimsCustByCif.put(matchedCust.getCif().trim().toUpperCase(), matchedCust);
+                        }
+                    }
                     if (mapped.getLoanReference() != null) {
                         cimsLoanByRef.put(mapped.getLoanReference().trim().toUpperCase(), mapped);
                     }
@@ -373,13 +387,15 @@ public class CbsSyncService {
                             : null;
 
                     Collateral mapped = cbsMapper.mapCollateral(ccol, existing, matchedCust, sourceSystem);
-                    if (mapped.getOwningSegment() == null || mapped.getOwningSegment().isBlank()) {
-                        String fallbackSeg = (matchedCust != null && matchedCust.getSegment() != null && !matchedCust.getSegment().isBlank())
-                                ? matchedCust.getSegment()
-                                : (linkedLoan != null && linkedLoan.getSegment() != null && !linkedLoan.getSegment().isBlank()
-                                        ? linkedLoan.getSegment()
-                                        : "Corporate Banking");
-                        mapped.setOwningSegment(fallbackSeg);
+                    String rawColSeg = CbsMapper.resolveBusinessSegment(ccol.getBusinessSegment());
+                    if (CbsMapper.isPlaceholderSegment(rawColSeg) || CbsMapper.isPlaceholderSegment(mapped.getOwningSegment())) {
+                        if (linkedLoan != null && !CbsMapper.isPlaceholderSegment(linkedLoan.getSegment())) {
+                            mapped.setOwningSegment(linkedLoan.getSegment());
+                        } else if (matchedCust != null && !CbsMapper.isPlaceholderSegment(matchedCust.getSegment())) {
+                            mapped.setOwningSegment(matchedCust.getSegment());
+                        } else if (CbsMapper.isPlaceholderSegment(mapped.getOwningSegment())) {
+                            mapped.setOwningSegment("Corporate Banking");
+                        }
                     }
                     if (mapped.getBranch() == null || mapped.getBranch().isBlank()) {
                         String fallbackBranch = (linkedLoan != null && linkedLoan.getBranch() != null && !linkedLoan.getBranch().isBlank())

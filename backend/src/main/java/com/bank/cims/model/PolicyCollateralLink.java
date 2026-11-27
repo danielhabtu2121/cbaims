@@ -61,3 +61,4 @@ public class PolicyCollateralLink {
     public String getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
 }
+

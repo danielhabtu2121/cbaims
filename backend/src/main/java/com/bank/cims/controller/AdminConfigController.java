@@ -276,9 +276,16 @@ public class AdminConfigController {
         }
         if (user.getBranch() == null || user.getBranch().isBlank()) {
             user.setBranch("Bole Special Branch");
+        } else {
+            user.setBranch(user.getBranch().trim());
+        }
+        if (user.getDistrict() != null && !user.getDistrict().isBlank()) {
+            user.setDistrict(user.getDistrict().trim());
         }
         if (user.getSegment() == null || user.getSegment().isBlank()) {
             user.setSegment("Corporate Banking");
+        } else {
+            user.setSegment(com.bank.cims.service.cbs.CbsMapper.resolveBusinessSegment(user.getSegment()));
         }
         if (user.getSegmentIds() == null || user.getSegmentIds().isBlank()) {
             user.setSegmentIds(user.getSegment());

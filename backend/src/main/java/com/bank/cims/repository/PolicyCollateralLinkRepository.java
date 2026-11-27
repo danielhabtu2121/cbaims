@@ -16,3 +16,4 @@ public interface PolicyCollateralLinkRepository extends JpaRepository<PolicyColl
     List<PolicyCollateralLink> findByCollateralIdIn(Collection<String> collateralIds);
     void deleteByPolicyId(String policyId);
 }
+
