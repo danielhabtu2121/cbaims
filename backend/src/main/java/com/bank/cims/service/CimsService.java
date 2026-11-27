@@ -1888,6 +1888,63 @@ public class CimsService {
     }
 
     @Transactional
+    public Map<String, Object> updatePolicyAllocations(String policyId, List<PolicyCollateralLink> requestedAllocations, String userId) {
+        if (policyId == null || policyId.isBlank()) {
+            throw new IllegalArgumentException("Policy ID is required.");
+        }
+        assertUserPermission(userId, "Insurance Policies", "EDIT");
+        InsurancePolicy policy = insurancePolicyRepository.findById(policyId)
+                .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
+                .orElseThrow(() -> new IllegalArgumentException("Insurance policy not found: " + policyId));
+
+        if ("Cancelled".equalsIgnoreCase(policy.getStatus()) || "Closed".equalsIgnoreCase(policy.getStatus())) {
+            throw new IllegalArgumentException("Cannot modify collateral allocations on a " + policy.getStatus() + " policy.");
+        }
+
+        Set<String> affectedCollateralIds = new LinkedHashSet<>();
+        if (policy.getCollateralId() != null && !policy.getCollateralId().isBlank()) {
+            affectedCollateralIds.add(policy.getCollateralId());
+        }
+        if (policyCollateralAllocationService != null) {
+            policyCollateralAllocationService.populateAllocations(List.of(policy));
+            if (policy.getCollateralAllocations() != null) {
+                for (PolicyCollateralLink existing : policy.getCollateralAllocations()) {
+                    if (existing.getCollateralId() != null) {
+                        affectedCollateralIds.add(existing.getCollateralId());
+                    }
+                }
+            }
+        }
+
+        policy.setCollateralAllocations(requestedAllocations != null ? requestedAllocations : new ArrayList<>());
+        List<PolicyCollateralLink> savedLinks = policyCollateralAllocationService != null
+                ? policyCollateralAllocationService.validateAndSaveAllocations(policy)
+                : Collections.emptyList();
+        insurancePolicyRepository.save(policy);
+
+        for (PolicyCollateralLink link : savedLinks) {
+            if (link.getCollateralId() != null) {
+                affectedCollateralIds.add(link.getCollateralId());
+            }
+        }
+        for (String colId : affectedCollateralIds) {
+            try {
+                exposureCalculationService.calculateExposureAndAdequacy(colId);
+            } catch (Exception ignored) { }
+        }
+
+        logAudit(userId, "CRO", "UPDATE_POLICY_ALLOCATIONS", "Insurance Policy", policy.getId(),
+                "CollateralAllocations", "", String.valueOf(savedLinks.size()) + " assets",
+                "Updated covered collaterals & allocated insured amounts on policy " + policy.getPolicyNumber());
+
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("success", true);
+        res.put("policy", policy);
+        res.put("allocations", savedLinks);
+        return res;
+    }
+
+    @Transactional
     public void submitPolicyForApproval(String policyId, String userId) {
         if (policyId == null || policyId.isBlank()) {
             throw new IllegalArgumentException("Policy ID is required for submission.");

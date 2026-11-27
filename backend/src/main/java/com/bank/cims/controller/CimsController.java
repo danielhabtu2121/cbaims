@@ -1188,6 +1188,36 @@ public class CimsController {
         }
     }
 
+    @PostMapping("/policies/{id}/allocations")
+    public ResponseEntity<Map<String, Object>> updatePolicyAllocations(
+            @PathVariable String id,
+            @RequestBody Map<String, Object> payload) {
+        try {
+            String userId = currentActorUsername();
+            List<PolicyCollateralLink> links = new java.util.ArrayList<>();
+            Object raw = payload != null ? payload.get("collateralAllocations") : null;
+            if (raw instanceof List<?> items) {
+                for (Object item : items) {
+                    if (item instanceof Map<?, ?> m) {
+                        PolicyCollateralLink link = new PolicyCollateralLink();
+                        Object cid = m.get("collateralId");
+                        Object amt = m.get("allocatedInsuredAmount");
+                        link.setCollateralId(cid != null ? cid.toString() : null);
+                        if (amt instanceof Number n) {
+                            link.setAllocatedInsuredAmount(n.doubleValue());
+                        } else if (amt != null) {
+                            link.setAllocatedInsuredAmount(Double.parseDouble(amt.toString()));
+                        }
+                        links.add(link);
+                    }
+                }
+            }
+            return ResponseEntity.ok(cimsService.updatePolicyAllocations(id, links, userId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+        }
+    }
+
     // --- Cron / Scanning ---
     @PostMapping("/cron/run")
     public ResponseEntity<Map<String, Object>> runCron(

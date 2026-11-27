@@ -426,57 +426,86 @@ public class DashboardService {
         return res.authScope;
     }
 
+    private volatile long orgCacheLoadedAtMs = 0L;
+    private volatile Map<String, Set<String>> cachedDistrictBranchesUpper = Collections.emptyMap();
+    private volatile Map<String, String> cachedBranchToDistrict = Collections.emptyMap();
+
+    private synchronized void ensureOrgHierarchyCache() {
+        long now = System.currentTimeMillis();
+        if (now - orgCacheLoadedAtMs < 30_000L && !cachedBranchToDistrict.isEmpty()) {
+            return;
+        }
+        Map<String, Set<String>> distToBranches = new HashMap<>();
+        Map<String, String> branchToDist = new HashMap<>();
+        List<DistrictHierarchy> hierarchies = districtHierarchyRepository.findAll();
+        List<Branch> allBranches = branchRepository.findAll();
+        Map<String, Branch> branchById = new HashMap<>();
+        for (Branch b : allBranches) {
+            if (b.getId() != null) branchById.put(b.getId().toUpperCase(Locale.ROOT), b);
+        }
+        for (DistrictHierarchy dh : hierarchies) {
+            if (dh.getDistrictName() == null || dh.getDistrictName().isBlank()) continue;
+            String dName = dh.getDistrictName().trim();
+            String dUpper = dName.toUpperCase(Locale.ROOT);
+            if (dh.getBranchName() != null && !dh.getBranchName().isBlank()) {
+                String bUpper = dh.getBranchName().trim().toUpperCase(Locale.ROOT);
+                distToBranches.computeIfAbsent(dUpper, k -> new HashSet<>()).add(bUpper);
+                branchToDist.putIfAbsent(bUpper, dName);
+            }
+            branchToDist.putIfAbsent(dUpper, dName);
+        }
+        for (Branch b : allBranches) {
+            if (b.getName() == null || b.getName().isBlank()) continue;
+            String bName = b.getName().trim();
+            String bUpper = bName.toUpperCase(Locale.ROOT);
+            if ("DistrictOffice".equalsIgnoreCase(b.getType()) || (b.getCode() != null && b.getCode().startsWith("DIST-"))) {
+                distToBranches.computeIfAbsent(bUpper, k -> new HashSet<>()).add(bUpper);
+                branchToDist.putIfAbsent(bUpper, bName);
+            }
+            String parentId = b.getParentDistrictId() != null ? b.getParentDistrictId() : b.getCanonicalDistrictId();
+            if (parentId != null) {
+                Branch dist = branchById.get(parentId.toUpperCase(Locale.ROOT));
+                if (dist != null && dist.getName() != null && !dist.getName().isBlank()) {
+                    String dUpper = dist.getName().trim().toUpperCase(Locale.ROOT);
+                    distToBranches.computeIfAbsent(dUpper, k -> new HashSet<>()).add(bUpper);
+                    branchToDist.putIfAbsent(bUpper, dist.getName().trim());
+                }
+            }
+        }
+        cachedDistrictBranchesUpper = distToBranches;
+        cachedBranchToDistrict = branchToDist;
+        orgCacheLoadedAtMs = now;
+    }
+
     private boolean isBranchInDistrict(String branchName, String districtName) {
         if (branchName == null || districtName == null || branchName.isBlank() || districtName.isBlank()) return false;
-        String cleanBranch = branchName.trim();
-        String cleanDist = districtName.trim();
-
-        if (cleanBranch.equalsIgnoreCase(cleanDist)) return true;
-
-        boolean matchInHierarchy = districtHierarchyRepository.findAll().stream()
-                .anyMatch(dh -> dh.getDistrictName() != null && dh.getDistrictName().equalsIgnoreCase(cleanDist)
-                        && dh.getBranchName() != null && dh.getBranchName().equalsIgnoreCase(cleanBranch));
-        if (matchInHierarchy) return true;
-
-        Optional<Branch> distOpt = branchRepository.findAll().stream()
-                .filter(b -> b.getName().equalsIgnoreCase(cleanDist) || (b.getType() != null && b.getType().equalsIgnoreCase("DistrictOffice") && cleanDist.toLowerCase().contains(b.getName().toLowerCase())))
-                .findFirst();
-        if (distOpt.isPresent()) {
-            String distId = distOpt.get().getId();
-            return branchRepository.findAll().stream()
-                    .anyMatch(b -> b.getName().equalsIgnoreCase(cleanBranch) && (distId.equalsIgnoreCase(b.getParentDistrictId()) || distId.equalsIgnoreCase(b.getCanonicalDistrictId()) || b.getName().equalsIgnoreCase(cleanDist)));
+        String cleanBranch = branchName.trim().toUpperCase(Locale.ROOT);
+        String cleanDist = districtName.trim().toUpperCase(Locale.ROOT);
+        if (cleanBranch.equals(cleanDist)) return true;
+        ensureOrgHierarchyCache();
+        Set<String> branches = cachedDistrictBranchesUpper.get(cleanDist);
+        if (branches != null && branches.contains(cleanBranch)) return true;
+        for (Map.Entry<String, Set<String>> entry : cachedDistrictBranchesUpper.entrySet()) {
+            if ((entry.getKey().contains(cleanDist) || cleanDist.contains(entry.getKey())) && entry.getValue().contains(cleanBranch)) {
+                return true;
+            }
         }
-
         return false;
     }
 
     private String resolveDistrictForBranch(String branchName) {
         if (branchName == null || branchName.isBlank()) return null;
-        Optional<DistrictHierarchy> dh = districtHierarchyRepository.findAll().stream()
-                .filter(d -> d.getDistrictName() != null && d.getDistrictName().equalsIgnoreCase(branchName))
-                .findFirst();
-        if (dh.isPresent()) {
-            return dh.get().getDistrictName();
+        ensureOrgHierarchyCache();
+        return cachedBranchToDistrict.get(branchName.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private static Set<String> buildCustomerIdSet(List<Customer> customers) {
+        Set<String> ids = new HashSet<>(customers.size() * 2);
+        for (Customer c : customers) {
+            if (c.getId() != null) ids.add(c.getId().toUpperCase(Locale.ROOT));
+            if (c.getCif() != null) ids.add(c.getCif().toUpperCase(Locale.ROOT));
         }
-        Optional<Branch> brnOpt = branchRepository.findAll().stream()
-                .filter(b -> b.getName().equalsIgnoreCase(branchName))
-                .findFirst();
-        if (brnOpt.isPresent()) {
-            Branch b = brnOpt.get();
-            if ("DistrictOffice".equalsIgnoreCase(b.getType()) || (b.getCode() != null && b.getCode().startsWith("DIST-"))) {
-                return b.getName();
-            }
-            if (b.getParentDistrictId() != null) {
-                return branchRepository.findById(b.getParentDistrictId()).map(Branch::getName).orElse(null);
-            }
-        }
-        Optional<DistrictHierarchy> dhBranch = districtHierarchyRepository.findAll().stream()
-                .filter(d -> d.getBranchName() != null && d.getBranchName().equalsIgnoreCase(branchName))
-                .findFirst();
-        if (dhBranch.isPresent()) {
-            return dhBranch.get().getDistrictName();
-        }
-        return null;
+        return ids;
     }
 
     public static String normalizeSegmentName(String segment) {
@@ -3022,8 +3051,9 @@ public class DashboardService {
                     .filter(p -> p.getCollateralId() != null && segColIds.contains(p.getCollateralId()))
                     .toList();
 
+            Set<String> segCustIds = buildCustomerIdSet(segCusts);
             List<CimsException> segExcs = ds.exceptions.stream()
-                    .filter(e -> e.getEntityId() != null && (segColIds.contains(e.getEntityId()) || segCusts.stream().anyMatch(c -> (c.getId() != null && c.getId().equalsIgnoreCase(e.getEntityId())) || (c.getCif() != null && c.getCif().equalsIgnoreCase(e.getEntityId())))))
+                    .filter(e -> e.getEntityId() != null && (segColIds.contains(e.getEntityId()) || segCustIds.contains(e.getEntityId().toUpperCase(Locale.ROOT))))
                     .toList();
 
             BigDecimal segExp = segFacs.stream().map(f -> BigDecimal.valueOf(f.getOutstandingBalance())).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -3152,8 +3182,9 @@ public class DashboardService {
                     .filter(c -> isBranchInDistrict(c.getBranch(), distName))
                     .toList();
 
+            Set<String> distCustIds = buildCustomerIdSet(distCusts);
             List<CimsException> distExcs = ds.exceptions.stream()
-                    .filter(e -> e.getEntityId() != null && (distColIds.contains(e.getEntityId()) || distCusts.stream().anyMatch(c -> (c.getId() != null && c.getId().equalsIgnoreCase(e.getEntityId())) || (c.getCif() != null && c.getCif().equalsIgnoreCase(e.getEntityId())))))
+                    .filter(e -> e.getEntityId() != null && (distColIds.contains(e.getEntityId()) || distCustIds.contains(e.getEntityId().toUpperCase(Locale.ROOT))))
                     .toList();
 
             BigDecimal distExp = distFacs.stream().map(f -> BigDecimal.valueOf(f.getOutstandingBalance())).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -3290,8 +3321,9 @@ public class DashboardService {
                     .filter(c -> b.getName().equalsIgnoreCase(c.getBranch()))
                     .toList();
 
+            Set<String> brCustIds = buildCustomerIdSet(brCusts);
             List<CimsException> brExcs = ds.exceptions.stream()
-                    .filter(e -> e.getEntityId() != null && (brColIds.contains(e.getEntityId()) || brCusts.stream().anyMatch(c -> (c.getId() != null && c.getId().equalsIgnoreCase(e.getEntityId())) || (c.getCif() != null && c.getCif().equalsIgnoreCase(e.getEntityId())))))
+                    .filter(e -> e.getEntityId() != null && (brColIds.contains(e.getEntityId()) || brCustIds.contains(e.getEntityId().toUpperCase(Locale.ROOT))))
                     .toList();
 
             BigDecimal brExp = brFacs.stream().map(f -> BigDecimal.valueOf(f.getOutstandingBalance())).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -3339,7 +3371,7 @@ public class DashboardService {
         }
 
         List<DistrictHierarchy> hierarchies = districtHierarchyRepository.findAll().stream()
-                .filter(h -> h.getDistrictName().toLowerCase().contains(targetDist.toLowerCase()) || targetDist.toLowerCase().contains(h.getDistrictName().toLowerCase()))
+                .filter(h -> h.getDistrictName() != null && (h.getDistrictName().toLowerCase().contains(targetDist.toLowerCase()) || targetDist.toLowerCase().contains(h.getDistrictName().toLowerCase())))
                 .toList();
         Set<String> areaNames = hierarchies.stream().map(DistrictHierarchy::getAreaOffice).collect(Collectors.toCollection(LinkedHashSet::new));
 

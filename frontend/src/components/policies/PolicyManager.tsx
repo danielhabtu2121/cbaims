@@ -318,6 +318,12 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showReopenModal, setShowReopenModal] = useState(false);
   const [showUploadDocModal, setShowUploadDocModal] = useState(false);
+  const [showAllocationsModal, setShowAllocationsModal] = useState(false);
+  const [allocModalItems, setAllocModalItems] = useState<{ collateralId: string; allocatedInsuredAmount: number }[]>([]);
+  const [allocAddCollateralId, setAllocAddCollateralId] = useState('');
+  const [allocAddAmount, setAllocAddAmount] = useState<number>(0);
+  const [allocSubmitting, setAllocSubmitting] = useState(false);
+  const [allocError, setAllocError] = useState<string | null>(null);
 
   const [reopenReason, setReopenReason] = useState('Reopened for active facility coverage');
   const [reopenSubmitting, setReopenSubmitting] = useState(false);
@@ -1464,6 +1470,27 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
                         >
                           <Edit className="w-3.5 h-3.5" />
                           Amend
+                        </button>
+                        <button
+                          onClick={() => {
+                            const existing = (selectedPolicy.collateralAllocations && selectedPolicy.collateralAllocations.length > 0)
+                              ? selectedPolicy.collateralAllocations.map((a) => ({
+                                  collateralId: a.collateralId,
+                                  allocatedInsuredAmount: Number(a.allocatedInsuredAmount) || 0,
+                                }))
+                              : selectedPolicy.collateralId
+                              ? [{ collateralId: selectedPolicy.collateralId, allocatedInsuredAmount: Number(selectedPolicy.insuredAmount) || 0 }]
+                              : [];
+                            setAllocModalItems(existing);
+                            setAllocAddCollateralId('');
+                            setAllocAddAmount(0);
+                            setAllocError(null);
+                            setShowAllocationsModal(true);
+                          }}
+                          className="py-1 px-2.5 text-xs text-cyan-100 hover:text-white font-semibold bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          Manage Collaterals
                         </button>
                         <button
                           onClick={() => {
@@ -4546,6 +4573,199 @@ export const PolicyManager: React.FC<PolicyManagerProps> = ({
           }}
         />
       )}
+
+      {/* Manage Covered Collaterals Modal (Add/Edit/Remove Collaterals on Existing Policy) */}
+      {showAllocationsModal && selectedPolicy && (() => {
+        const primaryColId = allocModalItems[0]?.collateralId || selectedPolicy.collateralId;
+        const primaryCol = collaterals.find((c) => c.id === primaryColId || c.code === primaryColId);
+        const policyBranch = (primaryCol?.branch || '').trim();
+        const selectedIds = new Set(allocModalItems.map((a) => a.collateralId));
+        const availableSameBranchCols = collaterals.filter((c) => {
+          if (selectedIds.has(c.id)) return false;
+          if (!policyBranch) return true;
+          return (c.branch || '').trim().toLowerCase() === policyBranch.toLowerCase();
+        });
+        const totalAlloc = allocModalItems.reduce((s, a) => s + (Number(a.allocatedInsuredAmount) || 0), 0);
+        const remainingCap = Math.max(0, (Number(selectedPolicy.insuredAmount) || 0) - totalAlloc);
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden">
+              <div className="bg-[#00205B] text-white px-5 py-3.5 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold">Manage Covered Collaterals — {selectedPolicy.policyNumber}</h3>
+                  <p className="text-[11px] text-blue-200">
+                    Branch: {policyBranch || 'All'} | Sum Insured: ETB {formatEtbNumber(selectedPolicy.insuredAmount)}
+                  </p>
+                </div>
+                <button onClick={() => setShowAllocationsModal(false)} className="text-blue-200 hover:text-white cursor-pointer text-base font-bold leading-none px-1">
+                  ✕
+                </button>
+              </div>
+              <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto text-xs">
+                {allocError && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 rounded font-medium">
+                    {allocError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase font-semibold">Policy Sum Insured</div>
+                    <div className="font-bold text-[#00205B]">ETB {formatEtbNumber(selectedPolicy.insuredAmount)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase font-semibold">Total Allocated</div>
+                    <div className={`font-bold ${totalAlloc > selectedPolicy.insuredAmount + 0.01 ? 'text-red-600' : 'text-emerald-700'}`}>
+                      ETB {formatEtbNumber(totalAlloc)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase font-semibold">Remaining Capacity</div>
+                    <div className="font-bold text-slate-700">ETB {formatEtbNumber(remainingCap)}</div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="font-bold text-slate-700">Currently Covered Collaterals ({allocModalItems.length})</div>
+                  {allocModalItems.map((item, idx) => {
+                    const col = collaterals.find((c) => c.id === item.collateralId || c.code === item.collateralId);
+                    return (
+                      <div key={item.collateralId} className="flex items-center justify-between gap-3 p-2.5 bg-white border border-slate-200 rounded-lg">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-[#00205B] truncate">
+                            {col ? `${col.code} — ${col.category || col.type}` : item.collateralId}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            Branch: {col?.branch || '—'} | Market Value: ETB {formatEtbNumber(col?.valuationAmount || 0)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[11px] text-slate-500">Allocated (ETB):</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.allocatedInsuredAmount || ''}
+                            onChange={(e) => {
+                              const val = Number(e.target.value) || 0;
+                              setAllocModalItems((prev) => prev.map((x, i) => (i === idx ? { ...x, allocatedInsuredAmount: val } : x)));
+                            }}
+                            className="w-32 px-2 py-1 border border-slate-300 rounded text-right font-mono font-semibold"
+                          />
+                          {allocModalItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setAllocModalItems((prev) => prev.filter((_, i) => i !== idx))}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded cursor-pointer"
+                              title="Remove collateral from this policy"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 space-y-2">
+                  <div className="font-bold text-slate-700">Add Another Collateral (Same Branch)</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={allocAddCollateralId}
+                      onChange={(e) => {
+                        const cid = e.target.value;
+                        setAllocAddCollateralId(cid);
+                        if (cid && remainingCap > 0 && allocAddAmount <= 0) {
+                          setAllocAddAmount(remainingCap);
+                        }
+                      }}
+                      className="flex-1 min-w-[220px] p-2 border border-slate-300 rounded bg-white"
+                    >
+                      <option value="">-- Select Collateral ({availableSameBranchCols.length} eligible) --</option>
+                      {availableSameBranchCols.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} — {c.category || c.type} ({c.branch}) — ETB {formatEtbNumber(c.valuationAmount)}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Allocated ETB"
+                      value={allocAddAmount || ''}
+                      onChange={(e) => setAllocAddAmount(Number(e.target.value) || 0)}
+                      className="w-36 p-2 border border-slate-300 rounded text-right font-mono font-semibold"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!allocAddCollateralId) {
+                          setAllocError('Select a collateral to add.');
+                          return;
+                        }
+                        if (allocAddAmount <= 0) {
+                          setAllocError('Enter an allocated insured amount greater than zero.');
+                          return;
+                        }
+                        setAllocError(null);
+                        setAllocModalItems((prev) => [...prev, { collateralId: allocAddCollateralId, allocatedInsuredAmount: allocAddAmount }]);
+                        setAllocAddCollateralId('');
+                        setAllocAddAmount(0);
+                      }}
+                      className="px-3 py-2 bg-[#00205B] text-white rounded font-semibold hover:bg-blue-900 cursor-pointer flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAllocationsModal(false)}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={allocSubmitting}
+                  onClick={async () => {
+                    if (allocModalItems.length === 0) {
+                      setAllocError('At least one collateral must be covered.');
+                      return;
+                    }
+                    if (allocModalItems.some((a) => !a.allocatedInsuredAmount || a.allocatedInsuredAmount <= 0)) {
+                      setAllocError('Every collateral must have an allocated amount greater than zero.');
+                      return;
+                    }
+                    if (selectedPolicy.insuredAmount > 0 && totalAlloc > selectedPolicy.insuredAmount + 0.01) {
+                      setAllocError(`Total allocated (ETB ${formatEtbNumber(totalAlloc)}) exceeds policy Sum Insured (ETB ${formatEtbNumber(selectedPolicy.insuredAmount)}).`);
+                      return;
+                    }
+                    setAllocSubmitting(true);
+                    setAllocError(null);
+                    try {
+                      await cimsApi.updatePolicyAllocations(selectedPolicy.id, allocModalItems);
+                      if (onReload) await onReload();
+                      setShowAllocationsModal(false);
+                    } catch (err: any) {
+                      setAllocError(err?.message || 'Failed to update policy collateral allocations.');
+                    } finally {
+                      setAllocSubmitting(false);
+                    }
+                  }}
+                  className="px-4 py-1.5 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 rounded cursor-pointer disabled:opacity-50"
+                >
+                  {allocSubmitting ? 'Saving...' : 'Save Allocations'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

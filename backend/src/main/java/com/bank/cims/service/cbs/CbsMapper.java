@@ -133,12 +133,52 @@ public class CbsMapper {
             Map.entry("SMIP", "DBE-Innovation Project Loan"),
             Map.entry("POTL", "POS Device Purchase Financing"),
             Map.entry("TPMF", "Third Party Machinery Financing"),
-            Map.entry("AGCR", "Agricultural Term Loans"),
-            Map.entry("DMTS", "Domestic Trade And Services"),
-            Map.entry("DBAL", "Dube Ale Loan Services"),
-            Map.entry("PERS", "Personal Loans"),
+            Map.entry("AGCR", "Agricultural term loan"),
+            Map.entry("AGCROD", "Agricultural over draft"),
+            Map.entry("ALBC", "Advance loans for bills"),
+            Map.entry("CMWFOD", "Construction Machinery OD"),
+            Map.entry("DMTS", "Domestic Trade Service term loan"),
+            Map.entry("DMTSOD", "Domestic Trade Service OD"),
+            Map.entry("DBAL", "Dube Ale"),
+            Map.entry("ESAL", "ESA Loan"),
+            Map.entry("EXPTOD", "Export OD"),
+            Map.entry("FSDG", "Guilit Financing (Cosap)"),
+            Map.entry("GTEE", "Guarantee facility"),
+            Map.entry("IESL", "IFB ESA"),
+            Map.entry("IMPTOD", "Import OD"),
+            Map.entry("MNFGOD", "Manufacturing OD"),
+            Map.entry("PERS", "Personal Loan"),
+            Map.entry("PLSD", "Personal loan for good depositor"),
+            Map.entry("PLSN", "Personal Loan For NGO Staff"),
+            Map.entry("STFL", "Staff Loan"),
             Map.entry("EDFI", "Student Loan"),
             Map.entry("SMAD", "DBE SME- ADELE")
+    );
+
+    private static final Map<String, String> COLLATERAL_TYPE_MAP = Map.ofEntries(
+            Map.entry("V", "Vehicle"),
+            Map.entry("P", "Property"),
+            Map.entry("M", "Marketable Share"),
+            Map.entry("G", "Guarantee")
+    );
+
+    private static final Map<String, String> COLLATERAL_CATEGORY_MAP = Map.ofEntries(
+            Map.entry("2", "CASA Account"),
+            Map.entry("3", "Export LC"),
+            Map.entry("4", "Guarantee"),
+            Map.entry("5", "Term Deposit"),
+            Map.entry("1001", "Building"),
+            Map.entry("1002", "Vehicle"),
+            Map.entry("1003", "Cash"),
+            Map.entry("1004", "Share Certificate"),
+            Map.entry("1005", "Merchandise"),
+            Map.entry("1006", "Personal Guarantee"),
+            Map.entry("1007", "Business Mortgage"),
+            Map.entry("1008", "Clean"),
+            Map.entry("1009", "Negotiable Bill of Payment"),
+            Map.entry("1010", "ECG"),
+            Map.entry("1011", "Foreign Bank Guarantee"),
+            Map.entry("1012", "Security Issued by Government")
     );
 
     private static final Map<String, String> BUSINESS_SEGMENT_MAP = Map.ofEntries(
@@ -216,8 +256,20 @@ public class CbsMapper {
 
     public static String resolveFacilityType(String rawType) {
         if (rawType == null || rawType.isBlank()) return "Term Loan";
-        String key = normalizeNumericCode(rawType).toUpperCase();
+        String key = normalizeNumericCode(rawType).toUpperCase(java.util.Locale.ROOT);
         return FACILITY_TYPE_MAP.getOrDefault(key, rawType.trim());
+    }
+
+    public static String resolveCollateralType(String rawType) {
+        if (rawType == null || rawType.isBlank()) return "Building";
+        String key = rawType.trim().toUpperCase(java.util.Locale.ROOT);
+        return COLLATERAL_TYPE_MAP.getOrDefault(key, rawType.trim());
+    }
+
+    public static String resolveCollateralCategory(String rawCategory) {
+        if (rawCategory == null || rawCategory.isBlank()) return null;
+        String key = normalizeNumericCode(rawCategory).toUpperCase(java.util.Locale.ROOT);
+        return COLLATERAL_CATEGORY_MAP.getOrDefault(key, rawCategory.trim());
     }
 
     public static String resolveBusinessSegment(String rawSegment) {
@@ -230,7 +282,9 @@ public class CbsMapper {
         if (segment == null || segment.isBlank()) return true;
         String upper = segment.trim().toUpperCase(java.util.Locale.ROOT);
         return upper.equals("GENERAL") || upper.equals("UNSEGMENTED")
-                || upper.equals("SHORT") || upper.equals("MEDIUM") || upper.equals("LONG");
+                || upper.equals("SHORT") || upper.equals("MEDIUM") || upper.equals("LONG")
+                || upper.equals("EMPLOYEE") || upper.equals("PERSONAL")
+                || FACILITY_TYPE_MAP.containsKey(upper);
     }
 
     private static String normalizeNumericCode(String raw) {
@@ -404,10 +458,10 @@ public class CbsMapper {
         }
 
         col.setDescription(ccol.getDescription());
-        col.setCategory(ccol.getCategory());
+        col.setCategory(resolveCollateralCategory(ccol.getCategory()));
 
         // CRITICAL: Distinct mapping for Type vs Ownership Type
-        col.setType(ccol.getCollateralType() != null ? ccol.getCollateralType() : "Building");
+        col.setType(resolveCollateralType(ccol.getCollateralType()));
         col.setOwnerType(ccol.getOwnershipType() != null ? ccol.getOwnershipType() : "Borrower-owned");
 
         col.setCurrency(ccol.getCurrency() != null ? ccol.getCurrency() : "ETB");

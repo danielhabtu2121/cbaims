@@ -1545,6 +1545,18 @@ export const cimsApi = {
     return res;
   },
 
+  async updatePolicyAllocations(
+    policyId: string,
+    collateralAllocations: { collateralId: string; allocatedInsuredAmount: number }[]
+  ): Promise<any> {
+    const res = await requestJson<any>(`${API_BASE}/policies/${encodeURIComponent(policyId)}/allocations`, {
+      method: 'POST',
+      body: JSON.stringify({ collateralAllocations }),
+    });
+    invalidateStateCache();
+    return res;
+  },
+
   async evaluatePolicyCompliance(collateralId: string, policy?: any, loanAccountId?: string): Promise<InsuranceComplianceDto> {
     const params = new URLSearchParams({ collateralId });
     if (loanAccountId) params.set('loanAccountId', loanAccountId);
