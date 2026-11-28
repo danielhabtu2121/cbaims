@@ -1892,7 +1892,7 @@ public class CimsService {
         if (policyId == null || policyId.isBlank()) {
             throw new IllegalArgumentException("Policy ID is required.");
         }
-        assertUserPermission(userId, "Insurance Policies", "EDIT");
+        assertUserPermission(userId, "Insurance", "EDIT");
         InsurancePolicy policy = insurancePolicyRepository.findById(policyId)
                 .or(() -> insurancePolicyRepository.findByPolicyNumber(policyId))
                 .orElseThrow(() -> new IllegalArgumentException("Insurance policy not found: " + policyId));
